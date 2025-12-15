@@ -8,6 +8,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nix-ros-overlay.follows = "nix-ros-overlay";
     };
+    system-manager = {
+      url = "github:numtide/system-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # docs inputs
     nixpkgs-unstable.url = "nixpkgs/nixpkgs-unstable";
     pyproject-nix = {
@@ -58,6 +62,7 @@
       nixpkgs,
       nix-ros-overlay,
       nix-ros-workspace,
+      system-manager,
       nixpkgs-unstable,
       pyproject-nix,
       uv2nix,
@@ -204,6 +209,8 @@
     )
     // {
       homeConfigurations = (import ./software/home-manager/default.nix) inputs;
+    } // {
+      systemConfigs.ubuntu = (import ./software/system-manager/default.nix) inputs;
     };
   nixConfig = {
     extra-substituters = [
