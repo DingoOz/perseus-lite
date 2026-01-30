@@ -741,9 +741,9 @@ namespace hi_can::parameters
             //                     };
             // #pragma pack(pop)
             //                 }
-            //                 class ServoboardParameterGroup : public ParameterGroup {
+            //                 class ControlBoardParameterGroup : public ParameterGroup {
             //                 public:
-            //                     ServoboardParameterGroup(uint8_t servo_id);
+            //                     ControlBoardParameterGroup(uint8_t servo_id);
             //
             //                     // Getters for servo status
             //                     int16_t get_position() const { return _position; }

@@ -2,8 +2,8 @@
 
 using namespace hi_can;
 using namespace hi_can::addressing::post_landing;
-using namespace hi_can::addressing::post_landing::servo::rmd;
-using namespace hi_can::parameters::post_landing::servo::rmd_servo;
+using namespace hi_can::addressing::post_landing::arm::rmd_servo;
+using namespace hi_can::parameters::post_landing::arm::rmd_servo;
 
 RmdDriver::RmdDriver(const rclcpp::NodeOptions& options)
     : Node("rmd_servo_driver", options)
@@ -191,7 +191,7 @@ std::vector<motor_id_t> RmdDriver::_get_online_servos()
 
 void RmdDriver::_set_motor_id(const std::shared_ptr<perseus_msgs::srv::TriggerDevice::Request> request, std::shared_ptr<perseus_msgs::srv::TriggerDevice::Response> response)
 {
-    using function = hi_can::parameters::post_landing::servo::rmd::send_message::function_control_t::function_index_t;
+    using function = hi_can::parameters::post_landing::arm::rmd_servo::send_message::function_control_t::function_index_t;
 
     const motor_id_t current_id = static_cast<motor_id_t>(request->id);
 

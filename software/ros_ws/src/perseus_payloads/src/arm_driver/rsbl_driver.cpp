@@ -4,8 +4,8 @@
 
 using namespace hi_can;
 using namespace hi_can::addressing::post_landing;
-using namespace hi_can::addressing::post_landing::servo::servo_board;
-using namespace hi_can::parameters::post_landing::servo::servo_board;
+using namespace hi_can::addressing::post_landing::arm::control_board;
+using namespace hi_can::parameters::post_landing::arm::control_board;
 
 ArmController::ArmController(const rclcpp::NodeOptions& options)
     : Node("arm_controller", options)
@@ -67,36 +67,33 @@ void ArmController::_handle_arm_control(const perseus_msgs::msg::ArmControl::Sha
             speed_pan = static_cast<uint16_t>(std::abs(msg->velocity[1] * (4096.0 / (2.0 * M_PI))));
         }
 
-        if (_can_interface)
-        {
-            _can_interface->transmit(Packet(
-                static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::WRITE_POS_EX), servo_id_t::SHOULDER_TILT)),
-                send_message::write_pos_ex_t{pos_tilt, speed_tilt, acceleration}));
-        }
+        // if (_can_interface) {
+        //     _can_interface->transmit(Packet(
+        //         static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::WRITE_POS_EX), group::SHOULDER_TILT)),
+        //         send_message::write_pos_ex_t{ pos_tilt, speed_tilt, acceleration }));
+        // }
 
         std::this_thread::sleep_for(PACKET_DELAY_MS);
 
-        if (_can_interface)
-        {
-            _can_interface->transmit(Packet(
-                static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::WRITE_POS_EX), servo_id_t::SHOULDER_PAN)),
-                send_message::write_pos_ex_t{pos_pan, speed_pan, acceleration}));
-        }
+        // if (_can_interface) {
+        //     _can_interface->transmit(Packet(
+        //         static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::WRITE_POS_EX), group::SHOULDER_PAN)),
+        //         send_message::write_pos_ex_t{ pos_pan, speed_pan, acceleration }));
+        // }
 
         std::this_thread::sleep_for(PACKET_DELAY_MS);
     }
 
     for (size_t i = 0; i < msg->normalized.size() && i < 2; i++)  // Handle PWM commands (convert normalized 0.0-1.0 to 0-4095)
     {
-        servo_id_t pwm_id = (i == 0) ? servo_id_t::PWM_1 : servo_id_t::PWM_2;
+        group pwm_id = (i == 0) ? group::PWM_1 : group::PWM_2;
         uint16_t pwm_value = static_cast<uint16_t>(msg->normalized[i] * 4095.0);
 
-        if (_can_interface)
-        {
-            _can_interface->transmit(Packet(
-                static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::SET_PWM_VALUES), pwm_id)),
-                send_message::set_pwm_t(pwm_value).serialize_data()));
-        }
+        // if (_can_interface) {
+        //     _can_interface->transmit(Packet(
+        //         static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::SET_PWM_VALUES), pwm_id)),
+        //         send_message::set_pwm_t(pwm_value).serialize_data()));
+        // }
         std::this_thread::sleep_for(PACKET_DELAY_MS);
     }
 }
@@ -111,13 +108,13 @@ void ArmController::_publish_status_messages()
         if (it != this->PARAMETER_GROUP_MAP.end())
         {
             const auto& parameter_group = it->second;
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_position()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_speed()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_load()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_voltage()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_temperature()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_current()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->is_moving() ? 1 : 0));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_position()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_speed()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_load()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_voltage()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_temperature()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->get_current()));
+            // status_msg.data.emplace_back(static_cast<double>(parameter_group->is_moving() ? 1 : 0));
         }
     }
 
@@ -135,7 +132,7 @@ void ArmController::_publish_motor_positions()
         if (it != this->PARAMETER_GROUP_MAP.end())
         {
             const auto& parameter_group = it->second;
-            position_msg.data[static_cast<size_t>(servo_id)] = static_cast<double>(parameter_group->get_position());
+            // position_msg.data[static_cast<size_t>(servo_id)] = static_cast<double>(parameter_group->get_position());
         }
     }
 
@@ -161,20 +158,18 @@ void ArmController::_request_servo_status()
 {
     for (const auto& servo_id : this->_available_servos)  // Request RSBL servo status
     {
-        if (_can_interface)
-        {
-            _can_interface->transmit(Packet(
-                static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::READ_STATUS_1), servo_id)),
-                std::vector<uint8_t>{}));
-        }
+        // if (_can_interface) {
+        //     _can_interface->transmit(Packet(
+        //         static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::READ_STATUS_1), servo_id)),
+        //         std::vector<uint8_t>{}));
+        // }
         std::this_thread::sleep_for(PACKET_DELAY_MS);
 
-        if (_can_interface)
-        {
-            _can_interface->transmit(Packet(
-                static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::READ_STATUS_2), servo_id)),
-                std::vector<uint8_t>{}));
-        }
+        // if (_can_interface) {
+        //     _can_interface->transmit(Packet(
+        //         static_cast<hi_can::addressing::flagged_address_t>(servo_address_t(static_cast<uint8_t>(command_t::READ_STATUS_2), servo_id)),
+        //         std::vector<uint8_t>{}));
+        // }
         std::this_thread::sleep_for(PACKET_DELAY_MS);
     }
 }
