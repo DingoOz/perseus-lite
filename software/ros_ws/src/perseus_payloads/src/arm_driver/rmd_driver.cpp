@@ -10,7 +10,7 @@ RmdDriver::RmdDriver(const rclcpp::NodeOptions& options)
 {
     try
     {
-        _can_interface.emplace(RawCanInterface(this->declare_parameter("can_bus", "can0")));
+        _can_interface.emplace(RawCanInterface(this->declare_parameter("can_bus", "vcan0")));
         _packet_manager.emplace(_can_interface.value());
     }
     catch (const std::exception& e)
@@ -39,7 +39,7 @@ RmdDriver::RmdDriver(const rclcpp::NodeOptions& options)
     // Setup motor feedback handling
     _status_publisher = this->create_publisher<std_msgs::msg::Float64MultiArray>("/arm/rmd/status", 10);
     _status_timer = this->create_wall_timer(std::chrono::milliseconds(this->FEEDBACK_MESSAGE_MS), std::bind(&RmdDriver::_publish_status_messages, this));
-    _position_publisher = this->create_publisher<std_msgs::msg::Float64MultiArray>("/arm/rmd/positions", 10);
+    _position_publisher = this->create_publisher<std_msgs::msg::Float64MultiArray>("/arm/rmd/positions", 100);
     _position_timer = this->create_wall_timer(std::chrono::milliseconds(this->FEEDBACK_MESSAGE_MS), std::bind(&RmdDriver::_publish_motor_positions, this));
     _enable_debug_stats_service = this->create_service<std_srvs::srv::SetBool>(
         "/arm/rmd/enable_debug_stats",
@@ -108,23 +108,18 @@ void RmdDriver::_publish_status_messages()
 {
     std_msgs::msg::Float64MultiArray status_msg;
 
-    for (const auto& motor_id : this->_get_online_servos())
+    for (const auto& pair : this->PARAMETER_GROUP_MAP)
     {
-        auto it = this->PARAMETER_GROUP_MAP.find(motor_id);
-        if (it != this->PARAMETER_GROUP_MAP.end())
-        {
-            const auto& parameter_group = it->second;
-            status_msg.data.emplace_back(static_cast<double>(motor_id));
-            status_msg.data.emplace_back(static_cast<uint16_t>(parameter_group->get_error_status()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_temp()));
-            status_msg.data.emplace_back(parameter_group->get_voltage());
-            status_msg.data.emplace_back(parameter_group->get_torque_current());
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_speed()));
-            status_msg.data.emplace_back(static_cast<double>(parameter_group->get_angle()));
-            status_msg.data.emplace_back(parameter_group->get_phase_a_current());
-            status_msg.data.emplace_back(parameter_group->get_phase_b_current());
-            status_msg.data.emplace_back(parameter_group->get_phase_c_current());
-        }
+        uint8_t motor_id = static_cast<uint8_t>(pair.first);
+        const auto& parameter_group = pair.second;
+        status_msg.data.emplace_back(static_cast<double>(motor_id));
+        status_msg.data.emplace_back(static_cast<uint16_t>(parameter_group->get_error_status()));
+        status_msg.data.emplace_back(static_cast<double>(parameter_group->get_angle()));
+        status_msg.data.emplace_back(static_cast<double>(parameter_group->get_speed()));
+        status_msg.data.emplace_back(static_cast<double>(parameter_group->get_temp()));
+        status_msg.data.emplace_back(parameter_group->get_voltage());
+        status_msg.data.emplace_back(parameter_group->get_torque_current());
+        status_msg.data.emplace_back(-1);  // Load is not available on RMD servos
     }
 
     _status_publisher->publish(status_msg);

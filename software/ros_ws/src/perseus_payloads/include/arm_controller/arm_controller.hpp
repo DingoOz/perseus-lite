@@ -1,5 +1,6 @@
 #include <actuator_msgs/msg/actuators.hpp>
 #include <chrono>
+#include <hi_can_raw.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 
@@ -14,6 +15,8 @@
 //         /status (subscriber Float64MultiArray) - status messages from servos
 //     /control (subscriber Float64MultiArray) - High level control parameters for the arm
 //     /position (publisher Float64MultiArray) - High level control parameters for the arm
+
+#define STATUS_FIELD_COUNT 8
 
 class ArmController : public rclcpp::Node
 {
@@ -33,6 +36,7 @@ private:
 
     constexpr static auto PUBLISH_TIMER_MS = std::chrono::milliseconds(10);
     std::vector<double> _current_arm_positions;
+    std::vector<double> _motor_status = std::vector(5 * STATUS_FIELD_COUNT, 0.0);  // 5 servos with 8 status fields
     rclcpp::TimerBase::SharedPtr _position_timer;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr _arm_status_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr _arm_position_publisher;
