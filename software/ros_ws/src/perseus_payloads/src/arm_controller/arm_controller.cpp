@@ -27,6 +27,8 @@ ArmController::ArmController(const rclcpp::NodeOptions& options)
         "/arm/positions", 10);
     _position_timer = this->create_wall_timer(
         PUBLISH_TIMER_MS, std::bind(&ArmController::_publish_arm_position, this));
+    _status_timer = this->create_wall_timer(
+        PUBLISH_TIMER_MS, std::bind(&ArmController::_publish_arm_status, this));
     // RMD
     _rmd_control_publisher = this->create_publisher<actuator_msgs::msg::Actuators>(
         "/arm/rmd/control", 10);
@@ -58,6 +60,8 @@ void ArmController::_publish_arm_status()
 
     status_msg.data = this->_motor_status;
     _arm_status_publisher->publish(status_msg);
+
+    RCLCPP_INFO(this->get_logger(), "Published arm status message");
 }
 
 void ArmController::_publish_arm_position()
