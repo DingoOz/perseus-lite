@@ -8,7 +8,7 @@ output: screen
 # Color stream settings.
 # Lightweight profile to reduce bandwidth and CPU load.
 enable_color: true
-rgb_camera.color_profile: 424,240,15
+rgb_camera.color_profile: 640,480,15
 rgb_camera.color_format: RGB8
 rgb_camera.enable_auto_exposure: true
 # Depth and infrared stream settings.
@@ -18,7 +18,7 @@ enable_depth: true
 enable_infra: false
 enable_infra1: false
 enable_infra2: false
-depth_module.depth_profile: 424,240,15
+depth_module.depth_profile: 640,480,30
 depth_module.depth_format: Z16
 depth_module.infra_profile: 424,240,15
 depth_module.infra_format: RGB8
