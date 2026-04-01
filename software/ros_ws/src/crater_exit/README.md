@@ -28,42 +28,43 @@ MONITORING → CRATER_DETECTED → EXITING → CREST_DETECTED → MONITORING
 
 ## Topics
 
-| Topic | Type | Direction | Description |
-|-------|------|-----------|-------------|
-| `/scan` | `sensor_msgs/LaserScan` | Subscribe | 2D laser scan for crater detection |
-| `/livox/imu/corrected` | `sensor_msgs/Imu` | Subscribe | IMU for pitch monitoring |
-| `/autonomy/active_waypoints` | `geometry_msgs/PoseArray` | Subscribe | Cached waypoints from bridge (transient local) |
-| `/autonomy/navigation_info` | `perseus_interfaces/NavigationData` | Subscribe | Nav2 feedback from bridge |
-| `/cmd_vel_crater_exit` | `geometry_msgs/TwistStamped` | Publish | Velocity override (twist_mux priority 5) |
-| `/crater_exit/status` | `std_msgs/String` | Publish | Current state name |
+| Topic                        | Type                                | Direction | Description                                    |
+| ---------------------------- | ----------------------------------- | --------- | ---------------------------------------------- |
+| `/scan`                      | `sensor_msgs/LaserScan`             | Subscribe | 2D laser scan for crater detection             |
+| `/livox/imu/corrected`       | `sensor_msgs/Imu`                   | Subscribe | IMU for pitch monitoring                       |
+| `/autonomy/active_waypoints` | `geometry_msgs/PoseArray`           | Subscribe | Cached waypoints from bridge (transient local) |
+| `/autonomy/navigation_info`  | `perseus_interfaces/NavigationData` | Subscribe | Nav2 feedback from bridge                      |
+| `/cmd_vel_crater_exit`       | `geometry_msgs/TwistStamped`        | Publish   | Velocity override (twist_mux priority 5)       |
+| `/crater_exit/status`        | `std_msgs/String`                   | Publish   | Current state name                             |
 
 ## Services Called
 
-| Service | Type | Description |
-|---------|------|-------------|
+| Service                      | Type                              | Description                                  |
+| ---------------------------- | --------------------------------- | -------------------------------------------- |
 | `/autonomy/cancel_waypoints` | `perseus_interfaces/RunWaypoints` | Cancel active Nav2 goals on crater detection |
-| `/autonomy/run_waypoints` | `perseus_interfaces/RunWaypoints` | Re-send remaining waypoints after exit |
+| `/autonomy/run_waypoints`    | `perseus_interfaces/RunWaypoints` | Re-send remaining waypoints after exit       |
 
 ## Parameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `scan_topic` | `/scan` | LaserScan topic |
-| `imu_topic` | `/livox/imu/corrected` | IMU topic |
-| `cmd_vel_out_topic` | `/cmd_vel_crater_exit` | Output velocity topic |
-| `obstacle_distance_threshold` | `1.5` m | Rays closer than this count as obstacles |
-| `obstacle_coverage_threshold` | `0.7` | Fraction of rays that must be obstacles (0-1) |
-| `detection_confirmation_count` | `5` | Consecutive scans confirming crater before acting |
-| `min_quadrants_with_obstacles` | `3` | Must see obstacles in at least N of 4 quadrants |
-| `exit_linear_speed` | `0.08` m/s | Forward speed during exit |
-| `exit_timeout` | `15.0` s | Max exit duration before aborting |
-| `pitch_threshold_deg` | `-3.0` deg | Average pitch below this = nose down = crested rim |
-| `pitch_window_duration` | `3.0` s | Rolling window for pitch averaging (filters vibration/divots) |
-| `enable_crater_exit` | `true` | Master enable/disable |
+| Parameter                      | Default                | Description                                                   |
+| ------------------------------ | ---------------------- | ------------------------------------------------------------- |
+| `scan_topic`                   | `/scan`                | LaserScan topic                                               |
+| `imu_topic`                    | `/livox/imu/corrected` | IMU topic                                                     |
+| `cmd_vel_out_topic`            | `/cmd_vel_crater_exit` | Output velocity topic                                         |
+| `obstacle_distance_threshold`  | `1.5` m                | Rays closer than this count as obstacles                      |
+| `obstacle_coverage_threshold`  | `0.7`                  | Fraction of rays that must be obstacles (0-1)                 |
+| `detection_confirmation_count` | `5`                    | Consecutive scans confirming crater before acting             |
+| `min_quadrants_with_obstacles` | `3`                    | Must see obstacles in at least N of 4 quadrants               |
+| `exit_linear_speed`            | `0.08` m/s             | Forward speed during exit                                     |
+| `exit_timeout`                 | `15.0` s               | Max exit duration before aborting                             |
+| `pitch_threshold_deg`          | `-3.0` deg             | Average pitch below this = nose down = crested rim            |
+| `pitch_window_duration`        | `3.0` s                | Rolling window for pitch averaging (filters vibration/divots) |
+| `enable_crater_exit`           | `true`                 | Master enable/disable                                         |
 
 ## Usage
 
 Standalone:
+
 ```bash
 ros2 launch crater_exit crater_exit.launch.py
 ```
@@ -73,6 +74,7 @@ The node is also included in `autonomy.launch.py`.
 ## Twist Mux Integration
 
 The node publishes to `/cmd_vel_crater_exit` which is configured in `cmd_vel_mux.yaml` at priority 5:
+
 - Priority 1: Nav2 (`cmd_vel_nav`)
 - Priority 5: Crater exit (`/cmd_vel_crater_exit`)
 - Priority 10: Teleop (`/diff_base_controller/cmd_vel`)
@@ -86,6 +88,7 @@ The `nav2_waypoints_bridge` node publishes active waypoints on `/autonomy/active
 ## Tuning
 
 These parameters will need arena-specific tuning:
+
 - `obstacle_distance_threshold` — depends on crater diameter
 - `obstacle_coverage_threshold` — lower values make detection more sensitive
 - `pitch_threshold_deg` — depends on crater slope angle and IMU noise

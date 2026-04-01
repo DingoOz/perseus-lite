@@ -18,7 +18,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from sensor_msgs.msg import LaserScan, Imu
-from geometry_msgs.msg import PoseArray, PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseArray, TwistStamped
 from std_msgs.msg import String
 
 from perseus_interfaces.msg import NavigationData, Waypoint
@@ -118,7 +118,10 @@ class CraterExitNode(Node):
 
         # Waypoint cache subscription (published by nav2_waypoints_bridge)
         self._waypoints_sub = self.create_subscription(
-            PoseArray, "/autonomy/active_waypoints", self._waypoints_callback, latched_qos
+            PoseArray,
+            "/autonomy/active_waypoints",
+            self._waypoints_callback,
+            latched_qos,
         )
 
         # Navigation feedback subscription (published by nav2_waypoints_bridge)
@@ -130,9 +133,7 @@ class CraterExitNode(Node):
         self._cancel_client = self.create_client(
             RunWaypoints, "/autonomy/cancel_waypoints"
         )
-        self._run_client = self.create_client(
-            RunWaypoints, "/autonomy/run_waypoints"
-        )
+        self._run_client = self.create_client(RunWaypoints, "/autonomy/run_waypoints")
 
         # Publishers
         self._cmd_vel_pub = self.create_publisher(TwistStamped, self._cmd_vel_topic, 10)
@@ -178,7 +179,9 @@ class CraterExitNode(Node):
             if not self._is_crater_signature(msg):
                 self._crater_confirm_counter += 1
                 if self._crater_confirm_counter >= self._confirm_count:
-                    self.get_logger().info("Scan cleared — crater exit confirmed via scan")
+                    self.get_logger().info(
+                        "Scan cleared — crater exit confirmed via scan"
+                    )
                     self._transition_to(State.CREST_DETECTED)
             else:
                 self._crater_confirm_counter = 0
@@ -194,7 +197,12 @@ class CraterExitNode(Node):
         quadrant_has_obstacle = [False, False, False, False]
 
         for i, r in enumerate(scan.ranges):
-            if r < scan.range_min or r > scan.range_max or math.isinf(r) or math.isnan(r):
+            if (
+                r < scan.range_min
+                or r > scan.range_max
+                or math.isinf(r)
+                or math.isnan(r)
+            ):
                 continue
             valid_count += 1
             if r < self._obstacle_dist:
@@ -208,7 +216,9 @@ class CraterExitNode(Node):
         coverage = close_count / valid_count
         num_quadrants = sum(quadrant_has_obstacle)
 
-        return coverage >= self._coverage_thresh and num_quadrants >= self._min_quadrants
+        return (
+            coverage >= self._coverage_thresh and num_quadrants >= self._min_quadrants
+        )
 
     def _imu_callback(self, msg: Imu):
         self._latest_pitch_deg = quaternion_to_pitch(msg.orientation)
@@ -229,7 +239,9 @@ class CraterExitNode(Node):
                 window_filled = (now_sec - oldest_time) >= self._pitch_window
 
                 if window_filled:
-                    avg_pitch = sum(p for _, p in self._pitch_buffer) / len(self._pitch_buffer)
+                    avg_pitch = sum(p for _, p in self._pitch_buffer) / len(
+                        self._pitch_buffer
+                    )
                     if avg_pitch < self._pitch_thresh:
                         self.get_logger().info(
                             f"Avg pitch {avg_pitch:.1f}° over {self._pitch_window}s "
@@ -283,7 +295,9 @@ class CraterExitNode(Node):
 
         elif new_state == State.CREST_DETECTED:
             self._stop_robot()
-            self.get_logger().info("Crater exit complete — re-sending remaining waypoints")
+            self.get_logger().info(
+                "Crater exit complete — re-sending remaining waypoints"
+            )
 
             # Re-send remaining waypoints to resume navigation
             self._resend_remaining_waypoints()
@@ -334,7 +348,9 @@ class CraterExitNode(Node):
         remaining_poses = self._cached_poses[-self._poses_remaining :]
 
         if not self._run_client.service_is_ready():
-            self.get_logger().warn("Run service not available — cannot resume navigation")
+            self.get_logger().warn(
+                "Run service not available — cannot resume navigation"
+            )
             return
 
         # Convert Pose objects back to Waypoint messages
