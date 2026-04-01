@@ -2,6 +2,7 @@
 {
   lib,
   buildRosPackage,
+  ament-python,
   geometry-msgs,
   perseus-interfaces,
   rclpy,
@@ -15,6 +16,7 @@ buildRosPackage rec {
   src = ./../src/crater_exit;
 
   buildType = "ament_python";
+  buildInputs = [ ament-python ];
   propagatedBuildInputs = [
     geometry-msgs
     perseus-interfaces
@@ -22,6 +24,7 @@ buildRosPackage rec {
     sensor-msgs
     std-msgs
   ];
+  nativeBuildInputs = [ ament-python ];
 
   meta = {
     description = "Crater exit behavior node - detects when the rover is stuck in a crater and drives forward until IMU pitch indicates the rim has been crested";
