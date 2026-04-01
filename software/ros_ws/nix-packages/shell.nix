@@ -43,6 +43,7 @@ pkgs.mkShell {
           ament-lint-auto
           ament-lint-common
           ament-pep257
+          ament-python
           backward-ros
           behaviortree-cpp
           boost
