@@ -157,7 +157,7 @@ namespace perseus_lite_hud
         // cmd_vel (fallback velocity)
         auto cmd_vel_topic =
             this->declare_parameter("cmd_vel_topic", std::string("/cmd_vel"));
-        cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+        cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
             cmd_vel_topic, rclcpp::QoS(10),
             std::bind(&HudOverlayNode::_cmd_vel_callback, this,
                       std::placeholders::_1));
@@ -290,13 +290,13 @@ namespace perseus_lite_hud
     }
 
     void HudOverlayNode::_cmd_vel_callback(
-        const geometry_msgs::msg::Twist::ConstSharedPtr& msg)
+        const geometry_msgs::msg::TwistStamped::ConstSharedPtr& msg)
     {
         std::lock_guard<std::mutex> lock(data_mutex_);
         if (!has_velocity_)
         {
-            linear_vel_ = msg->linear.x;
-            angular_vel_ = msg->angular.z;
+            linear_vel_ = msg->twist.linear.x;
+            angular_vel_ = msg->twist.angular.z;
             has_velocity_ = true;
         }
     }

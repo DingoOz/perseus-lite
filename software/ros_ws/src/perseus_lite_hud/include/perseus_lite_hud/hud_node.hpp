@@ -4,7 +4,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <cv_bridge/cv_bridge.hpp>
-#include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <image_transport/image_transport.hpp>
 #include <mutex>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -41,7 +41,7 @@ namespace perseus_lite_hud
         void _imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr& msg);
         void _scan_callback(const sensor_msgs::msg::LaserScan::ConstSharedPtr& msg);
         void _map_callback(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr& msg);
-        void _cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPtr& msg);
+        void _cmd_vel_callback(const geometry_msgs::msg::TwistStamped::ConstSharedPtr& msg);
 
         // Extract yaw from quaternion
         static double _yaw_from_quaternion(double x, double y, double z, double w);
@@ -56,7 +56,7 @@ namespace perseus_lite_hud
         rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
         rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
         rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
-        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+        rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub_;
 
         // TF
         std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
