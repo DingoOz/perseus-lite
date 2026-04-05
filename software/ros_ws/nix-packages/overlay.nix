@@ -1,6 +1,8 @@
 final: prev: {
   autonomy = final.callPackage ./autonomy.nix { };
+  autonomy-diagnostics = final.callPackage ./autonomy-diagnostics.nix { };
   input-devices = final.callPackage ./input-devices.nix { };
+  mapping-autotune = final.callPackage ./mapping-autotune.nix { };
   pcl-to-lsr = final.callPackage ./pcl-to-lsr.nix { };
   perseus = final.callPackage ./perseus.nix { };
   perseus-autonomy-bridge = final.callPackage ./perseus-autonomy-bridge.nix { };
@@ -13,6 +15,7 @@ final: prev: {
   perseus-interfaces = final.callPackage ./perseus-interfaces.nix { };
   perseus-lite = final.callPackage ./perseus-lite.nix { };
   perseus-lite-description = final.callPackage ./perseus-lite-description.nix { };
+  perseus-lite-drifting = final.callPackage ./perseus-lite-drifting.nix { };
   perseus-lite-hardware = final.callPackage ./perseus-lite-hardware.nix { };
   perseus-lite-hud = final.callPackage ./perseus-lite-hud.nix { };
   perseus-mapping = final.callPackage ./perseus-mapping.nix { };

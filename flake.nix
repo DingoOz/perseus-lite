@@ -198,6 +198,16 @@
               type = "app";
               program = "${pkgs.scripts.clean}/bin/clean";
             };
+            autonomy_diagnostics = {
+              type = "app";
+              program = "${pkgs.writeShellScriptBin "autonomy_diagnostics" ''
+                ${rosWorkspaces.default}/bin/ros2 run autonomy_diagnostics autonomy_tui "$@"
+              ''}/bin/autonomy_diagnostics";
+            };
+            autonomy_diag = self.apps.${system}.autonomy_diagnostics;
+            perseus-lite-map-autotune =
+              mkRosLaunchApp "perseus-lite-map-autotune" "mapping_autotune"
+                "autotune.launch.py";
           };
         formatter = treefmtEval.config.build.wrapper;
       }
