@@ -236,4 +236,38 @@ ROS_DOMAIN_ID=42 nixgl rviz2 -d ~/perseus-v2/software/ros_ws/src/perseus_lite/rv
 4. Click **Start Waypoint Following** to execute - the robot will drive to each waypoint in sequence
 5. To send a single goal instead, select **Navigate To Pose** mode and click a point on the map
 
-The joystick can override navigation at any time (higher twist_mux priority).
+The joystick can override navigation at any time (hold dead-man switch).
+
+### Tune Nav2 parameters at runtime
+
+Nav2 parameters can be adjusted in real time without rebuilding. Use `rqt_reconfigure` on your laptop for a GUI with sliders:
+
+```bash
+ROS_DOMAIN_ID=42 ros2 run rqt_reconfigure rqt_reconfigure
+```
+
+Or use the CLI directly:
+
+```bash
+# Max linear speed (m/s)
+ROS_DOMAIN_ID=42 ros2 param set /controller_server FollowPath.max_vel_x 2.0
+
+# Max rotation speed (rad/s)
+ROS_DOMAIN_ID=42 ros2 param set /controller_server FollowPath.max_vel_theta 3.0
+
+# Slow-down factor near goal (lower = less slowdown)
+ROS_DOMAIN_ID=42 ros2 param set /controller_server FollowPath.RotateToGoal.slowing_factor 2.0
+
+# Goal tolerance - how close before declaring "arrived" (meters)
+ROS_DOMAIN_ID=42 ros2 param set /controller_server goal_checker.xy_goal_tolerance 0.15
+
+# Trajectory simulation time (lower = less cautious)
+ROS_DOMAIN_ID=42 ros2 param set /controller_server FollowPath.sim_time 0.8
+
+# Collision monitor slowdown ratio (higher = less slowdown near obstacles)
+ROS_DOMAIN_ID=42 ros2 param set /collision_monitor PolygonSlow.slowdown_ratio 0.8
+
+# Velocity smoother acceleration limits [x, y, theta]
+ROS_DOMAIN_ID=42 ros2 param set /velocity_smoother max_accel "[5.0, 0.0, 5.0]"
+ROS_DOMAIN_ID=42 ros2 param set /velocity_smoother max_decel "[-5.0, 0.0, -5.0]"
+```
