@@ -197,3 +197,43 @@ ROS_DOMAIN_ID=42 ros2 topic hz /map
 ```bash
 ROS_DOMAIN_ID=42 ros2 run nav2_map_server map_saver_cli -f ~/my_map
 ```
+
+## Waypoint Navigation
+
+Drive the robot to waypoints using Nav2. The robot builds a map with SLAM while navigating.
+
+### Terminal 1 - Launch rover with SLAM and Nav2 (on robot)
+
+```bash
+nix run .#perseus-lite
+```
+
+### Terminal 2 - Launch the Xbox controller (optional, on robot or laptop)
+
+```bash
+nix run .#generic_controller
+```
+
+The joystick has higher priority than Nav2 and will override autonomous navigation when active. Hold **left trigger (LT)** as dead-man switch.
+
+### Terminal 3 - Open rviz2 with Nav2 config (on laptop)
+
+```bash
+ROS_DOMAIN_ID=42 rviz2 -d ~/perseus-v2/software/ros_ws/src/perseus_lite/rviz/nav2.rviz
+```
+
+On non-NixOS systems:
+
+```bash
+ROS_DOMAIN_ID=42 nixgl rviz2 -d ~/perseus-v2/software/ros_ws/src/perseus_lite/rviz/nav2.rviz
+```
+
+### Set waypoints and navigate
+
+1. Wait for SLAM to build an initial map (drive the robot around briefly with the joystick)
+2. In the **Navigation 2** panel (bottom-left of rviz2), select **Waypoint / Nav Through Poses** mode
+3. Click multiple points on the map to place waypoints
+4. Click **Start Waypoint Following** to execute - the robot will drive to each waypoint in sequence
+5. To send a single goal instead, select **Navigate To Pose** mode and click a point on the map
+
+The joystick can override navigation at any time (higher twist_mux priority).
