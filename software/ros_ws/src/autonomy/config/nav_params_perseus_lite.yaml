@@ -108,11 +108,11 @@ controller_server:
       debug_trajectory_details: true
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.2 # Reduced from 0.25 for more conservative movement
+      max_vel_x: 2.0
       max_vel_y: 0.0
-      max_vel_theta: 1.0 # Full rotation speed
+      max_vel_theta: 3.0
       min_speed_xy: 0.0
-      max_speed_xy: 0.2 # Reduced from 0.25
+      max_speed_xy: 2.0
       min_speed_theta: 0.0
       acc_lim_x: 3.0 # Increased for more responsive acceleration
       acc_lim_y: 0.0
@@ -128,7 +128,7 @@ controller_server:
       angular_granularity: 0.05 # Coarser trajectory sim (was 0.025)
       transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
       xy_goal_tolerance: 0.1 # Increased from 0.08
-      trans_stopped_velocity: 0.2 # Reduced from 0.25
+      trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: true # Changed to true for efficiency
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
@@ -264,8 +264,8 @@ behavior_server:
     robot_base_frame: base_link
     transform_timeout: 0.2 # Increased from 0.1 for timing tolerance
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0 # Full rotation speed
-    min_rotational_vel: 0.4 # Increased minimum for snappier response
+    max_rotational_vel: 3.0
+    min_rotational_vel: 0.4
     rotational_acc_lim: 3.5 # Match controller limits
     enable_stamped_cmd_vel: true
 waypoint_follower:
@@ -283,8 +283,8 @@ velocity_smoother:
     smoothing_frequency: 10.0 # Reduced from 20.0 for lower CPU
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.25, 0.0, 1.0] # Reduced max velocities for stability
-    min_velocity: [-0.25, 0.0, -1.0]
+    max_velocity: [2.0, 0.0, 3.0]
+    min_velocity: [-2.0, 0.0, -3.0]
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
     max_accel: [3.0, 0.0, 3.5] # Match controller limits
