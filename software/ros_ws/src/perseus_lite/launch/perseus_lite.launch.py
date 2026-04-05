@@ -169,18 +169,9 @@ def generate_launch_description():
         ),
     )
 
-    # twist_mux to arbitrate between joystick and navigation cmd_vel sources
-    twist_mux_config = PathJoinSubstitution(
-        [FindPackageShare("autonomy"), "config", "twist_mux.yaml"]
-    )
-    twist_mux_node = Node(
-        package="twist_mux",
-        executable="twist_mux",
-        name="twist_mux",
-        output="screen",
-        parameters=[twist_mux_config, {"use_sim_time": use_sim_time}],
-        remappings=[("/cmd_vel_out", "/cmd_vel")],
-    )
+    # NOTE: twist_mux removed — it has a DDS bug where only the joystick topic
+    # is forwarded. Nav2's collision_monitor now publishes directly to /cmd_vel.
+    # The joystick controller is remapped to /cmd_vel in the slam_and_nav2 launch.
 
     # Logitech C920 USB camera
     # Uses /dev/c920 symlink from udev rule (config/99-c920-camera.rules).
@@ -244,7 +235,6 @@ def generate_launch_description():
         ina228_launch,
         camera_node,
         hud_launch,
-        twist_mux_node,
         rosbridge_launch,
     ]
 

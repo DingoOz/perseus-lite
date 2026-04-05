@@ -25,6 +25,7 @@ from launch_ros.actions import (
     Node,
     LoadComposableNodes,
     SetParameter,
+    SetRemap,
 )
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.descriptions import ComposableNode, ParameterFile
@@ -464,10 +465,11 @@ def generate_launch_description():
         ],
     )
 
-    # NOTE: twist_mux is already launched by perseus_lite.launch.py
-    # Do not launch cmd_vel_mux.launch.py here to avoid duplicates
+    # NOTE: twist_mux removed — collision_monitor publishes directly to /cmd_vel.
+    # Joystick controller is remapped to /cmd_vel below (overrides Nav2 when active).
 
     # Auto-detect joystick and launch controller if connected
+    # Joystick publishes directly to /cmd_vel (twist_mux removed due to DDS bug)
     def _maybe_launch_controller(context):
         """Launch controller nodes if a joystick device is detected."""
         js_devices = glob.glob("/dev/input/js*")
@@ -478,21 +480,26 @@ def generate_launch_description():
                         js_devices[0]
                     )
                 ),
-                IncludeLaunchDescription(
-                    PythonLaunchDescriptionSource(
-                        PathJoinSubstitution(
-                            [
-                                FindPackageShare("perseus_input"),
-                                "launch",
-                                "controller.launch.py",
-                            ]
-                        )
-                    ),
-                    launch_arguments={
-                        "type": "xbox",
-                        "wireless": "true",
-                        "dual_stick": "true",
-                    }.items(),
+                GroupAction(
+                    actions=[
+                        SetRemap(src="joy_vel", dst="/cmd_vel"),
+                        IncludeLaunchDescription(
+                            PythonLaunchDescriptionSource(
+                                PathJoinSubstitution(
+                                    [
+                                        FindPackageShare("perseus_input"),
+                                        "launch",
+                                        "controller.launch.py",
+                                    ]
+                                )
+                            ),
+                            launch_arguments={
+                                "type": "xbox",
+                                "wireless": "true",
+                                "dual_stick": "true",
+                            }.items(),
+                        ),
+                    ]
                 ),
             ]
         return [LogInfo(msg="No joystick detected, skipping controller launch")]
