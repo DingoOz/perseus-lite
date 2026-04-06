@@ -172,7 +172,7 @@ in
       opencl-headers
       clinfo
 
-      # NVIDIA OpenCL runtime (important for you)
+      # NVIDIA OpenCL runtime
       nvidia_x11
     ];
 
