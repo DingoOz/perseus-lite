@@ -163,4 +163,30 @@ in
       export LD_LIBRARY_PATH="${cudaPkgs.onnxruntime-cuda}/lib:$LD_LIBRARY_PATH"
     '';
   };
+  opencl = mkWorkspace {
+    inherit (pkgs) ros;
+    name = "ROAR OpenCL";
+
+    additionalPrebuiltPkgs = with pkgs; [
+      ocl-icd
+      opencl-headers
+      clinfo
+
+      # NVIDIA OpenCL runtime (important for you)
+      nvidia_x11
+    ];
+
+    additionalDevPkgs = pkgs.ros.simDevPackages;
+
+    additionalPostShellHook = ''
+      echo "OpenCL environment loaded"
+
+      # Ensure OpenCL can find vendor ICDs
+      export LD_LIBRARY_PATH=${pkgs.nvidia_x11}/lib:$LD_LIBRARY_PATH
+
+      # Optional debug
+      clinfo || true
+    '';
+  };
+
 }
