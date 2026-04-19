@@ -10,8 +10,11 @@ aruco_detector:
     allowed_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     # Camera optical frame from perseus_lite_description/urdf/sensors.urdf.xacro.
     camera_frame: camera_optical_frame
-    # Publish marker poses in the global map frame so they can serve as landmarks.
-    tf_output_frame: map
+    # Publish marker poses in the odom frame: TFs there update at ~50 Hz, so
+    # per-image TF lookups don't fail on "extrapolation into the future" as
+    # they do against the ~10 Hz map frame published by SLAM Toolbox. RViz
+    # with Fixed Frame=map still renders correctly via the map->odom chain.
+    tf_output_frame: odom
     # v4l2_camera_node publishes at the root namespace.
     input_img: /image_raw
     output_img: /perseus_vision/aruco/image
@@ -21,10 +24,13 @@ aruco_detector:
     publish_output: true
     output_topic: /perseus_vision/aruco/detections
     min_bounding_box_area: 100.0
-    # v4l2_camera publishes camera_info; if uncalibrated, falls back to the
-    # default camera_matrix below. Run camera_calibration for accurate poses.
+    # v4l2_camera publishes camera_info; if uncalibrated (K all-zero) the
+    # detector ignores the message and keeps these fallback intrinsics.
+    # Run camera_calibration to replace these with measured values.
     use_camera_info: true
     camera_info_topic: /camera_info
-    # Logitech C920 nominal intrinsics at 640x480 (replace with calibrated values).
-    camera_matrix: [530.4, 0.0, 320.0, 0.0, 530.4, 240.0, 0.0, 0.0, 1.0]
+    # Logitech C920 nominal intrinsics scaled to the 320x240 stream the
+    # launch requests (perseus_lite.launch.py sets image_size=[320, 240]).
+    # C920 datasheet HFOV ~= 70.4 deg => fx = (320/2) / tan(35.2 deg) ~= 227.
+    camera_matrix: [227.0, 0.0, 160.0, 0.0, 227.0, 120.0, 0.0, 0.0, 1.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]

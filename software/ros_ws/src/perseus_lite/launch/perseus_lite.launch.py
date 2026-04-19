@@ -186,7 +186,11 @@ def generate_launch_description():
         parameters=[
             {
                 "video_device": "/dev/c920",
-                "image_size": [640, 480],
+                # 320x240 YUYV: 640x480 YUYV needs ~18 MB/s of USB isochronous
+                # bandwidth and uvcvideo on this Jetson fails VIDIOC_REQBUFS
+                # (logged as "Failed mapping device memory") on most boots.
+                # 320x240 keeps the same encoding path and works reliably.
+                "image_size": [320, 240],
                 "pixel_format": "YUYV",
                 "camera_frame_id": "camera_link",
                 "use_sim_time": use_sim_time,

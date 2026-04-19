@@ -343,32 +343,45 @@ namespace perseus_vision
             std::lock_guard<std::mutex> lock(detections_mutex_);
             for (size_t i = 0; i < latest_ids_.size(); ++i)
             {
-                visualization_msgs::msg::Marker marker;
-                marker.header.frame_id = tf_output_frame_;
-                marker.header.stamp = header.stamp;
-                marker.ns = "aruco_markers";
-                marker.id = latest_ids_[i];
-                marker.type = visualization_msgs::msg::Marker::CUBE;
-                marker.action = visualization_msgs::msg::Marker::ADD;
+                // Orientation-independent sphere so the marker is visible from
+                // the top-down map view regardless of the ArUco's wall tilt.
+                visualization_msgs::msg::Marker sphere;
+                sphere.header.frame_id = tf_output_frame_;
+                sphere.header.stamp = header.stamp;
+                sphere.ns = "aruco_markers";
+                sphere.id = latest_ids_[i];
+                sphere.type = visualization_msgs::msg::Marker::SPHERE;
+                sphere.action = visualization_msgs::msg::Marker::ADD;
+                sphere.pose.position = latest_poses_[i].position;
+                sphere.pose.orientation.w = 1.0;
+                sphere.scale.x = sphere.scale.y = sphere.scale.z =
+                    std::max(marker_length_, 0.15);
+                sphere.color.r = 1.0f;
+                sphere.color.g = 0.2f;
+                sphere.color.b = 0.0f;
+                sphere.color.a = 1.0f;
+                sphere.lifetime = rclcpp::Duration(2, 0);
+                marker_array.markers.push_back(sphere);
 
-                marker.pose.position.x = latest_poses_[i].position.x;
-                marker.pose.position.y = latest_poses_[i].position.y;
-                marker.pose.position.z = latest_poses_[i].position.z;
-                marker.pose.orientation = latest_poses_[i].orientation;
-
-                marker.scale.x = marker_length_;
-                marker.scale.y = marker_length_;
-                marker.scale.z = 0.01;  // thin cube for flat marker visualization
-
-                marker.color.r = 1.0f;
-                marker.color.g = 1.0f;
-                marker.color.b = 1.0f;
-                marker.color.a = 1.0f;
-
-                // Set lifetime to ensure stale markers are cleaned up
-                marker.lifetime = rclcpp::Duration(2, 0);
-
-                marker_array.markers.push_back(marker);
+                // Text label with the ID, floating above the sphere.
+                visualization_msgs::msg::Marker text;
+                text.header.frame_id = tf_output_frame_;
+                text.header.stamp = header.stamp;
+                text.ns = "aruco_labels";
+                text.id = latest_ids_[i];
+                text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+                text.action = visualization_msgs::msg::Marker::ADD;
+                text.pose.position = latest_poses_[i].position;
+                text.pose.position.z += std::max(marker_length_, 0.15);
+                text.pose.orientation.w = 1.0;
+                text.scale.z = 0.25;
+                text.color.r = 1.0f;
+                text.color.g = 1.0f;
+                text.color.b = 1.0f;
+                text.color.a = 1.0f;
+                text.text = "ID " + std::to_string(latest_ids_[i]);
+                text.lifetime = rclcpp::Duration(2, 0);
+                marker_array.markers.push_back(text);
             }
         }
         marker_array_pub_->publish(marker_array);
@@ -420,8 +433,18 @@ namespace perseus_vision
             marker_pose_camera.pose.orientation.z = quat.z();
             marker_pose_camera.pose.orientation.w = quat.w();
 
+            // Look up the TF at "latest available" rather than at the image
+            // timestamp. v4l2_camera stamps frames with the kernel monotonic
+            // clock, while EKF/robot_state_publisher stamp TFs with ROS clock,
+            // so per-stamp lookups always race ahead and fail "extrapolation
+            // into the future". The temporal mismatch (a few tens of ms) is
+            // tolerable for marker landmark publishing.
+            geometry_msgs::msg::PoseStamped pose_for_tf = marker_pose_camera;
+            pose_for_tf.header.stamp = rclcpp::Time(0);
             geometry_msgs::msg::PoseStamped marker_pose_out;
-            tf_buffer_->transform(marker_pose_camera, marker_pose_out, tf_output_frame_);
+            tf_buffer_->transform(pose_for_tf, marker_pose_out, tf_output_frame_);
+            // Restore the image timestamp on the published pose.
+            marker_pose_out.header.stamp = header.stamp;
 
             // Cache this detection for service requests
             {
@@ -588,6 +611,20 @@ namespace perseus_vision
 
     void ArucoDetector::camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
     {
+        // Reject uncalibrated CameraInfo (e.g. v4l2_camera publishes an all-zero
+        // K when no calibration file is loaded). Overwriting the YAML fallback
+        // with a zero intrinsics matrix makes solvePnP return tvec ~= 0, which
+        // renders every marker on top of the camera origin.
+        if (msg->k[0] <= 0.0 || msg->k[4] <= 0.0)
+        {
+            RCLCPP_WARN_ONCE(this->get_logger(),
+                             "Ignoring %s: fx/fy are zero (uncalibrated). "
+                             "Keeping YAML fallback camera_matrix. "
+                             "Run camera_calibration or set use_camera_info:=false.",
+                             camera_info_topic_.c_str());
+            return;
+        }
+
         std::lock_guard<std::mutex> lock(camera_matrix_mutex_);
 
         // Extract camera matrix K (3x3)
