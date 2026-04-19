@@ -3,6 +3,7 @@
 /// @file aruco_detector.hpp
 /// @brief ArUco marker detection and 6-DoF pose estimation ROS2 node.
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <opencv2/aruco.hpp>
@@ -10,6 +11,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "cv_bridge/cv_bridge.hpp"
@@ -93,6 +95,9 @@ namespace perseus_vision
         bool should_publish_output_{false};
         std::string output_topic_{"/detection/aruco/detections"};
         std::string camera_info_topic_{"/camera/camera/color/camera_info"};
+
+        // When non-empty, only markers whose ID appears here are processed/published.
+        std::unordered_set<int32_t> allowed_ids_;
 
         // Camera intrinsics
         cv::Mat camera_matrix_;

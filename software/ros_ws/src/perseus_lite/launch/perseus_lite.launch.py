@@ -194,6 +194,24 @@ def generate_launch_description():
         ],
     )
 
+    # ArUco marker detection and localization (IDs 1..12).
+    aruco_detector_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("perseus_lite"),
+                        "launch",
+                        "aruco_detector.launch.py",
+                    ]
+                )
+            ]
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+        }.items(),
+    )
+
     # Camera HUD overlay (compass, mini-map, LiDAR proximity, velocity, odometer)
     hud_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -234,6 +252,7 @@ def generate_launch_description():
         i2c_imu_launch,
         ina228_launch,
         camera_node,
+        aruco_detector_launch,
         hud_launch,
         rosbridge_launch,
     ]

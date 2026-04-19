@@ -60,6 +60,19 @@ namespace perseus_vision
         camera_info_topic_ = this->declare_parameter<std::string>("camera_info_topic", "/camera/camera/color/camera_info");
         min_bounding_box_area_ = this->declare_parameter<double>("min_bounding_box_area", 100.0);
 
+        std::vector<int64_t> allowed_ids_param =
+            this->declare_parameter<std::vector<int64_t>>("allowed_ids", std::vector<int64_t>{});
+        for (int64_t id : allowed_ids_param)
+        {
+            allowed_ids_.insert(static_cast<int32_t>(id));
+        }
+        if (!allowed_ids_.empty())
+        {
+            RCLCPP_INFO(this->get_logger(),
+                        "ArUco ID filter active: %zu allowed IDs.",
+                        allowed_ids_.size());
+        }
+
         std::vector<double> camera_matrix_param = this->declare_parameter<std::vector<double>>(
             "camera_matrix", {530.4, 0.0, 320.0, 0.0, 530.4, 240.0, 0.0, 0.0, 1.0});
         std::vector<double> dist_coeffs_param = this->declare_parameter<std::vector<double>>(
@@ -258,6 +271,14 @@ namespace perseus_vision
 
                 for (size_t i = 0; i < ids.size(); ++i)
                 {
+                    if (!allowed_ids_.empty() && allowed_ids_.count(ids[i]) == 0)
+                    {
+                        RCLCPP_DEBUG(this->get_logger(),
+                                     "Skipping marker %d: not in allowed_ids filter.",
+                                     ids[i]);
+                        continue;
+                    }
+
                     cv::Vec3d rvec, tvec;
                     std::vector<cv::Point2f> image_points(corners[i].begin(), corners[i].end());
 

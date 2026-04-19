@@ -1,0 +1,30 @@
+aruco_detector:
+  ros__parameters:
+    # Physical edge length of the printed marker in metres. Tune to your prints.
+    marker_length: 0.10
+    axis_length: 0.05
+    # 4x4 dictionary with 50 IDs covers IDs 1..12.
+    # 4x4: 50=0, 100=1, 250=2, 1000=3 | 5x5: 50=4, 100=5, 250=6, 1000=7 | 6x6: 50=8, 100=9, 250=10, 1000=11
+    dictionary_id: 0
+    # Restrict detections/publishing to these marker IDs.
+    allowed_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    # Camera optical frame from perseus_lite_description/urdf/sensors.urdf.xacro.
+    camera_frame: camera_optical_frame
+    # Publish marker poses in the global map frame so they can serve as landmarks.
+    tf_output_frame: map
+    # v4l2_camera_node publishes at the root namespace.
+    input_img: /image_raw
+    output_img: /perseus_vision/aruco/image
+    publish_tf: true
+    publish_img: true
+    compressed_io: false
+    publish_output: true
+    output_topic: /perseus_vision/aruco/detections
+    min_bounding_box_area: 100.0
+    # v4l2_camera publishes camera_info; if uncalibrated, falls back to the
+    # default camera_matrix below. Run camera_calibration for accurate poses.
+    use_camera_info: true
+    camera_info_topic: /camera_info
+    # Logitech C920 nominal intrinsics at 640x480 (replace with calibrated values).
+    camera_matrix: [530.4, 0.0, 320.0, 0.0, 530.4, 240.0, 0.0, 0.0, 1.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
