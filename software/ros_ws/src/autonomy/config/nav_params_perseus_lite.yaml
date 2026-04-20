@@ -86,7 +86,7 @@ bt_navigator:
     groot_zmq_server_port: 1667
 controller_server:
   ros__parameters:
-    controller_frequency: 5.0 # Reduced from 10.0 for lower CPU
+    controller_frequency: 10.0 # Aggressive: faster control loop for more responsive navigation
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
@@ -120,10 +120,10 @@ controller_server:
       decel_lim_x: -3.0 # Quicker stopping
       decel_lim_y: 0.0
       decel_lim_theta: -3.5 # Quicker rotation stop
-      vx_samples: 10 # Reduced from 20 for lower CPU
+      vx_samples: 20 # Aggressive: more samples to find faster trajectories
       vy_samples: 0
-      vtheta_samples: 20 # Reduced from 40 for lower CPU
-      sim_time: 1.2 # Reduced from 1.5 for lower CPU
+      vtheta_samples: 40 # Aggressive: more samples for better rotation choices
+      sim_time: 1.5 # Aggressive: look further ahead so high-speed paths are kept
       linear_granularity: 0.10 # Coarser trajectory sim (was 0.05)
       angular_granularity: 0.05 # Coarser trajectory sim (was 0.025)
       transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
@@ -132,7 +132,7 @@ controller_server:
       short_circuit_trajectory_evaluation: true # Changed to true for efficiency
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
-      BaseObstacle.scale: 0.05 # Increased from 0.02 for better obstacle avoidance
+      BaseObstacle.scale: 0.02 # Aggressive: low obstacle aversion, prefer speed
       PathAlign.scale: 32.0 # Reduced from 160.0 for less aggressive path following
       PathAlign.forward_point_distance: 0.325
       GoalAlign.scale: 24.0 # Increased from 12.0 for better goal alignment
@@ -148,8 +148,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 2.0 # Reduced from 5.0 for lower CPU
-      publish_frequency: 1.0 # Reduced from 2.0
+      update_frequency: 5.0 # Aggressive: keep local costmap fresh for fast reactions
+      publish_frequency: 2.0 # Aggressive: faster visualization/consumer updates
       global_frame: odom
       robot_base_frame: base_link
       transform_tolerance: 1.0 # Match global costmap tolerance
@@ -161,8 +161,8 @@ local_costmap:
       plugins: ["obstacle_layer", "inflation_layer"] # Removed voxel_layer to reduce computation
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.20 # Must be >= inscribed radius (0.157)
-        cost_scaling_factor: 5.0 # Faster decay for more navigable free space
+        inflation_radius: 0.18 # Aggressive: tighter inflation, robot will hug obstacles
+        cost_scaling_factor: 8.0 # Aggressive: very fast decay so most free space is low-cost
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -183,8 +183,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 0.5 # Reduced from 1.0 for lower CPU
-      publish_frequency: 0.5 # Reduced from 1.0
+      update_frequency: 1.0 # Aggressive: keep global costmap fresh for replanning
+      publish_frequency: 1.0 # Aggressive: faster visualization/consumer updates
       global_frame: map
       robot_base_frame: base_link
       transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
@@ -212,8 +212,8 @@ global_costmap:
         transform_tolerance: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.20 # Must be >= inscribed radius (0.157)
-        cost_scaling_factor: 5.0 # Faster decay for more navigable free space
+        inflation_radius: 0.18 # Aggressive: tighter inflation, robot will hug obstacles
+        cost_scaling_factor: 8.0 # Aggressive: very fast decay so most free space is low-cost
       always_send_full_costmap: true
 map_server:
   ros__parameters:
@@ -226,7 +226,7 @@ map_saver:
     map_subscribe_transient_local: True
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 2.0 # Reduced from 10.0 - plan less often
+    expected_planner_frequency: 5.0 # Aggressive: replan more often for fluid motion
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
@@ -247,7 +247,7 @@ behavior_server:
     local_footprint_topic: local_costmap/published_footprint
     global_costmap_topic: global_costmap/costmap_raw
     global_footprint_topic: global_costmap/published_footprint
-    cycle_frequency: 5.0 # Reduced from 10.0 for lower CPU
+    cycle_frequency: 10.0 # Aggressive: snappier recovery behaviors
     behavior_plugins: ["spin", "backup", "drive_on_heading", "wait", "assisted_teleop"]
     spin:
       plugin: "nav2_behaviors::Spin"
@@ -280,7 +280,7 @@ waypoint_follower:
       waypoint_pause_duration: 200
 velocity_smoother:
   ros__parameters:
-    smoothing_frequency: 10.0 # Reduced from 20.0 for lower CPU
+    smoothing_frequency: 20.0 # Aggressive: smoother high-rate cmd_vel for full speed
     scale_velocities: false
     feedback: "OPEN_LOOP"
     max_velocity: [2.0, 0.0, 3.0]
@@ -306,7 +306,7 @@ collision_monitor:
     stop_pub_timeout: 2.0
     enable_stamped_cmd_vel: true
     use_realtime_priority: false
-    polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
+    polygons: ["PolygonStop", "FootprintApproach"] # Aggressive: dropped PolygonSlow
     PolygonStop:
       type: "circle"
       radius: 0.10 # Reduced - stop only for obstacles inside robot footprint
@@ -320,15 +320,15 @@ collision_monitor:
       points: "[[0.15, 0.15], [0.15, -0.15], [-0.15, -0.15], [-0.15, 0.15]]"
       action_type: "slowdown"
       min_points: 4
-      slowdown_ratio: 0.5 # Increased from 0.3 for less aggressive slowdown
+      slowdown_ratio: 0.8 # Aggressive: minimal slowdown when something enters slow zone
       visualize: true
       polygon_pub_topic: "polygon_slowdown"
-      enabled: true
+      enabled: false # Aggressive: disabled - rely on FootprintApproach + costmap
     FootprintApproach:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 2.0
+      time_before_collision: 1.2 # Aggressive: only react to imminent collisions
       simulation_time_step: 0.05 # Coarser sim step (was 0.02) for lower CPU
       min_points: 6
       visualize: False
