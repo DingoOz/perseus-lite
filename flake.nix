@@ -208,6 +208,23 @@
             perseus-lite-map-autotune =
               mkRosLaunchApp "perseus-lite-map-autotune" "mapping_autotune"
                 "autotune.launch.py";
+            # Launch rviz2 from the laptop, pre-configured to talk to the
+            # Perseus Lite robot (ROS_DOMAIN_ID=42, CycloneDDS, bumped
+            # MaxAutoParticipantIndex so all Nav2 + SLAM participants are
+            # discoverable). Loads the bundled perseus_lite/rviz/nav2.rviz
+            # config. Tested on Ubuntu 24.04.
+            rviz2-perseus-lite = {
+              type = "app";
+              program = "${pkgs.writeShellScriptBin "rviz2-perseus-lite" ''
+                export ROS_DOMAIN_ID=42
+                export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+                export CYCLONEDDS_URI='<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>120</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>'
+                ${rosWorkspaces.default}/bin/ros2 daemon stop >/dev/null 2>&1 || true
+                ${rosWorkspaces.default}/bin/ros2 daemon start >/dev/null 2>&1 || true
+                RVIZ_CFG="${rosWorkspaces.default}/share/perseus_lite/rviz/nav2.rviz"
+                exec ${rosWorkspaces.default}/bin/rviz2 -d "$RVIZ_CFG" "$@"
+              ''}/bin/rviz2-perseus-lite";
+            };
           };
         formatter = treefmtEval.config.build.wrapper;
       }

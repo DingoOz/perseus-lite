@@ -43,25 +43,30 @@ must match all three or you'll see `RTPS_READER_HISTORY` payload errors,
 "Send goal call failed" from the Nav2 panel, and the SlamToolbox plugin
 hanging on "Waiting for the slam_toolbox node configuration."
 
-A helper script wraps the env and launches rviz2 with the bundled
-`nav2.rviz` config:
+**Recommended (Ubuntu 24.04 with Nix installed):**
 
 ```bash
-# After cloning/updating the repo on the laptop and entering the dev shell
-nix develop
-bash software/ros_ws/src/perseus_lite/scripts/rviz_remote.sh
+cd ~/perseus-v2
+nix run .#rviz2-perseus-lite
 ```
 
-On non-NixOS systems wrap with nixgl:
+That single command sets all the env vars, restarts the ROS daemon, and
+launches rviz2 with the bundled `nav2.rviz` config — no need to install
+ROS or rviz separately on the laptop, the flake provides everything.
+
+If you'd rather not use Nix (system ROS Jazzy on Ubuntu 24.04):
 
 ```bash
-USE_NIXGL=1 bash software/ros_ws/src/perseus_lite/scripts/rviz_remote.sh
+sudo apt install ros-jazzy-desktop ros-jazzy-rmw-cyclonedds-cpp \
+    ros-jazzy-nav2-rviz-plugins ros-jazzy-slam-toolbox
+source /opt/ros/jazzy/setup.bash
+bash ~/perseus-v2/software/ros_ws/src/perseus_lite/scripts/rviz_remote.sh
 ```
 
-Pass extra rviz args (or a different config) by appending them, e.g.
-`bash rviz_remote.sh -d my_other_config.rviz`.
+The script and the `nix run` app do the same thing. Pass extra rviz
+args (or a different config) by appending them.
 
-If launching rviz manually instead, export these first:
+If launching rviz manually, export these first:
 
 ```bash
 export ROS_DOMAIN_ID=42
@@ -71,8 +76,9 @@ ros2 daemon stop && ros2 daemon start
 rviz2 -d software/ros_ws/src/perseus_lite/rviz/nav2.rviz
 ```
 
-Prereq on a non-Nix laptop:
-`sudo apt install ros-jazzy-rmw-cyclonedds-cpp`
+NVIDIA-only note: if `nix run .#rviz2-perseus-lite` fails with an
+OpenGL error on Ubuntu, prefix with NixGL:
+`nix run --impure github:nix-community/nixGL -- nix run .#rviz2-perseus-lite`
 
 In rviz2:
 
