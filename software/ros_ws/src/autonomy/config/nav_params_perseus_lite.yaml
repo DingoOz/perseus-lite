@@ -108,11 +108,11 @@ controller_server:
       debug_trajectory_details: true
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 2.0
+      max_vel_x: 1.0 # Tight-indoor cap: keeps trajectory projections short enough to survive walls
       max_vel_y: 0.0
       max_vel_theta: 3.0
       min_speed_xy: 0.0
-      max_speed_xy: 2.0
+      max_speed_xy: 1.0 # Match max_vel_x
       min_speed_theta: 0.0
       acc_lim_x: 3.0 # Increased for more responsive acceleration
       acc_lim_y: 0.0
@@ -123,7 +123,7 @@ controller_server:
       vx_samples: 20 # Aggressive: more samples to find faster trajectories
       vy_samples: 0
       vtheta_samples: 40 # Aggressive: more samples for better rotation choices
-      sim_time: 1.5 # Aggressive: look further ahead so high-speed paths are kept
+      sim_time: 1.0 # Tight-indoor: 1.0m projection at max speed avoids invalidating fast samples on every wall
       linear_granularity: 0.10 # Coarser trajectory sim (was 0.05)
       angular_granularity: 0.05 # Coarser trajectory sim (was 0.025)
       transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
@@ -133,11 +133,11 @@ controller_server:
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
       BaseObstacle.scale: 0.02 # Aggressive: low obstacle aversion, prefer speed
-      PathAlign.scale: 32.0 # Reduced from 160.0 for less aggressive path following
+      PathAlign.scale: 16.0 # Tight-indoor: tolerate cutting small corners to keep speed
       PathAlign.forward_point_distance: 0.325
       GoalAlign.scale: 24.0 # Increased from 12.0 for better goal alignment
       GoalAlign.forward_point_distance: 0.325
-      PathDist.scale: 32.0
+      PathDist.scale: 16.0 # Tight-indoor: tolerate trajectory deviation from path
       GoalDist.scale: 24.0 # Reduced from 32.0
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
@@ -283,8 +283,8 @@ velocity_smoother:
     smoothing_frequency: 20.0 # Aggressive: smoother high-rate cmd_vel for full speed
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [2.0, 0.0, 3.0]
-    min_velocity: [-2.0, 0.0, -3.0]
+    max_velocity: [1.0, 0.0, 3.0] # Tight-indoor: match controller cap
+    min_velocity: [-1.0, 0.0, -3.0] # Tight-indoor: match controller cap
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
     max_accel: [3.0, 0.0, 3.5] # Match controller limits
