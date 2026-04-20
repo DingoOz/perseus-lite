@@ -37,19 +37,47 @@ nix run .#generic_controller -- type:=logitech wireless:=false
 
 ### Terminal 3 - Visualize in rviz2 (on laptop)
 
+The robot runs on `ROS_DOMAIN_ID=42` with **CycloneDDS** and a bumped
+`MaxAutoParticipantIndex` (Nav2 + SLAM spawn many participants). Your laptop
+must match all three or you'll see `RTPS_READER_HISTORY` payload errors,
+"Send goal call failed" from the Nav2 panel, and the SlamToolbox plugin
+hanging on "Waiting for the slam_toolbox node configuration."
+
+A helper script wraps the env and launches rviz2 with the bundled
+`nav2.rviz` config:
+
 ```bash
-ROS_DOMAIN_ID=42 rviz2
+# After cloning/updating the repo on the laptop and entering the dev shell
+nix develop
+bash software/ros_ws/src/perseus_lite/scripts/rviz_remote.sh
 ```
 
-On non-NixOS systems, use:
+On non-NixOS systems wrap with nixgl:
 
 ```bash
-ROS_DOMAIN_ID=42 nixgl rviz2
+USE_NIXGL=1 bash software/ros_ws/src/perseus_lite/scripts/rviz_remote.sh
 ```
+
+Pass extra rviz args (or a different config) by appending them, e.g.
+`bash rviz_remote.sh -d my_other_config.rviz`.
+
+If launching rviz manually instead, export these first:
+
+```bash
+export ROS_DOMAIN_ID=42
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>120</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>'
+ros2 daemon stop && ros2 daemon start
+rviz2 -d software/ros_ws/src/perseus_lite/rviz/nav2.rviz
+```
+
+Prereq on a non-Nix laptop:
+`sudo apt install ros-jazzy-rmw-cyclonedds-cpp`
 
 In rviz2:
 
-1. Set **Fixed Frame** to `odom` or `base_link`
+1. Set **Fixed Frame** to `map` (or `odom` / `base_link` if SLAM hasn't
+   published a map yet)
 2. Add displays:
    - **Add** → **By topic** → `/scan` → **LaserScan**
    - **Add** → **By topic** → `/tf` → **TF**
