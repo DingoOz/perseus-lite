@@ -101,8 +101,8 @@ controller_server:
     goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.1 # Slightly increased from 0.08
-      yaw_goal_tolerance: 0.2 # Increased from 0.15
+      xy_goal_tolerance: 0.20 # Indoor: wider zone so deceleration overshoot still counts as arrived
+      yaw_goal_tolerance: 0.30 # Indoor: ~17deg final yaw tolerance
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: true
@@ -127,8 +127,8 @@ controller_server:
       linear_granularity: 0.10 # Coarser trajectory sim (was 0.05)
       angular_granularity: 0.05 # Coarser trajectory sim (was 0.025)
       transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
-      xy_goal_tolerance: 0.1 # Increased from 0.08
-      trans_stopped_velocity: 0.25
+      xy_goal_tolerance: 0.20 # Match goal_checker
+      trans_stopped_velocity: 0.10 # Indoor: rotate-to-goal phase starts at lower speed
       short_circuit_trajectory_evaluation: true # Changed to true for efficiency
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
@@ -140,10 +140,10 @@ controller_server:
       PathDist.scale: 16.0 # Tight-indoor: tolerate trajectory deviation from path
       GoalDist.scale: 24.0 # Reduced from 32.0
       RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.slowing_factor: 2.0 # Indoor: less aggressive deceleration window
       RotateToGoal.lookahead_time: -1.0
-      PreferForward.penalty: 1.0 # Penalize backward motion
-      PreferForward.scale: 32.0 # Strong preference for forward movement
+      PreferForward.penalty: 0.0 # Indoor: allow short reverse moves for final goal alignment
+      PreferForward.scale: 32.0 # Kept for path-following preference
     enable_stamped_cmd_vel: true
 local_costmap:
   local_costmap:
