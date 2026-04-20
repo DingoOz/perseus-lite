@@ -104,46 +104,32 @@ controller_server:
       xy_goal_tolerance: 0.20 # Indoor: wider zone so deceleration overshoot still counts as arrived
       yaw_goal_tolerance: 0.30 # Indoor: ~17deg final yaw tolerance
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
-      debug_trajectory_details: true
-      min_vel_x: 0.0
-      min_vel_y: 0.0
-      max_vel_x: 1.0 # Tight-indoor cap: keeps trajectory projections short enough to survive walls
-      max_vel_y: 0.0
-      max_vel_theta: 3.0
-      min_speed_xy: 0.0
-      max_speed_xy: 1.0 # Match max_vel_x
-      min_speed_theta: 0.0
-      acc_lim_x: 3.0 # Increased for more responsive acceleration
-      acc_lim_y: 0.0
-      acc_lim_theta: 3.5 # Increased for snappier rotation
-      decel_lim_x: -3.0 # Quicker stopping
-      decel_lim_y: 0.0
-      decel_lim_theta: -3.5 # Quicker rotation stop
-      vx_samples: 20 # Aggressive: more samples to find faster trajectories
-      vy_samples: 0
-      vtheta_samples: 40 # Aggressive: more samples for better rotation choices
-      sim_time: 1.0 # Tight-indoor: 1.0m projection at max speed avoids invalidating fast samples on every wall
-      linear_granularity: 0.10 # Coarser trajectory sim (was 0.05)
-      angular_granularity: 0.05 # Coarser trajectory sim (was 0.025)
-      transform_tolerance: 1.0 # Increased from 0.5 for timing tolerance
-      xy_goal_tolerance: 0.20 # Match goal_checker
-      trans_stopped_velocity: 0.10 # Indoor: rotate-to-goal phase starts at lower speed
-      short_circuit_trajectory_evaluation: true # Changed to true for efficiency
-      stateful: true
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
-      BaseObstacle.scale: 0.02 # Aggressive: low obstacle aversion, prefer speed
-      PathAlign.scale: 16.0 # Tight-indoor: tolerate cutting small corners to keep speed
-      PathAlign.forward_point_distance: 0.325
-      GoalAlign.scale: 24.0 # Increased from 12.0 for better goal alignment
-      GoalAlign.forward_point_distance: 0.325
-      PathDist.scale: 16.0 # Tight-indoor: tolerate trajectory deviation from path
-      GoalDist.scale: 24.0 # Reduced from 32.0
-      RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 2.0 # Indoor: less aggressive deceleration window
-      RotateToGoal.lookahead_time: -1.0
-      PreferForward.penalty: 0.0 # Indoor: allow short reverse moves for final goal alignment
-      PreferForward.scale: 32.0 # Kept for path-following preference
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # Speed
+      desired_linear_vel: 1.0 # Indoor cap (match velocity_smoother)
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      # Lookahead
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.9
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: true
+      # Rotate-to-heading: the key diff-drive feature
+      use_rotate_to_heading: true # Pivot in place when path heading differs by >= rotate_to_heading_min_angle
+      rotate_to_heading_min_angle: 0.785 # 45 deg - pivot before driving when path turns sharply
+      max_angular_accel: 3.5 # rad/s^2 - matches old DWB acc_lim_theta
+      rotate_to_heading_angular_vel: 1.8 # rad/s during pivot
+      allow_reversing: false # Required when use_rotate_to_heading is true
+      # Regulated velocity (slows in curves, near obstacles)
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: false
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.25
+      # Collision check along carrot
+      use_collision_detection: true
+      transform_tolerance: 1.0 # Match rest of stack
     enable_stamped_cmd_vel: true
 local_costmap:
   local_costmap:
