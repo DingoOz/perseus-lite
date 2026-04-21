@@ -355,18 +355,18 @@ void handle_pwm_data(const Packet& packet, bool is_servo)
             // output
             if (is_servo)
             {
-                // map 16-bit value to servo angle (0-180)
-                double angle = (pwm_value / 65535.0) * 180.0;
-                // servo.write(angle);
+                // map 16-bit value to servo angle
+                double angle = (pwm_value / 65535.0) * 2000.0 + 500.0;  // map to 500-2500 microseconds pulse width
+                servo.writeMicroseconds(angle / 2);
                 printf("writing %f to servo", angle);
 
                 // Space resources only:
-                if (angle < 45)
-                    servo.writeMicroseconds(1000);
-                else if (angle > 135)
-                    servo.writeMicroseconds(2000);
-                else
-                    servo.writeMicroseconds(1500);
+                // if (angle < 45)
+                //     servo.writeMicroseconds(1000);
+                // else if (angle > 135)
+                //     servo.writeMicroseconds(2000);
+                // else
+                //     servo.writeMicroseconds(1500);
             }
             else
             {
@@ -400,9 +400,9 @@ void register_pwm_device(const control_board::pwm_group& group, bool is_servo)
         {
             // attach servo to pin
             servo.attach(pwm_pin_map[group].first);
-            // servo.write(0);  // start at 0 degrees
+            servo.write(0);  // start at 0 degrees
             // space resources:
-            servo.writeMicroseconds(1500);
+            // servo.writeMicroseconds(1500);
         }
         else
         {
