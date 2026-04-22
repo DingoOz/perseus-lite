@@ -249,6 +249,21 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Lightweight telemetry dashboard (HTTP + SSE on port 8080)
+    web_dashboard_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("perseus_lite_web"),
+                        "launch",
+                        "perseus_lite_web.launch.py",
+                    ]
+                )
+            ]
+        ),
+    )
+
     launch_files = [
         OpaqueFunction(function=robot_state_publisher),
         controllers_launch,
@@ -259,6 +274,7 @@ def generate_launch_description():
         aruco_detector_launch,
         hud_launch,
         rosbridge_launch,
+        web_dashboard_launch,
     ]
 
     return LaunchDescription(arguments + launch_files)
