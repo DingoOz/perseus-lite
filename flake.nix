@@ -1,8 +1,11 @@
 {
   inputs = {
     # ros inputs
-    nix-ros-overlay.url = "github:lopsided98/nix-ros-overlay";
-    nixpkgs.follows = "nix-ros-overlay/nixpkgs"; # IMPORTANT!!!
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nix-ros-overlay = {
+      url = "github:lopsided98/nix-ros-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nix-ros-workspace = {
       url = "github:RandomSpaceship/nix-ros-workspace";
       inputs.nixpkgs.follows = "nixpkgs";

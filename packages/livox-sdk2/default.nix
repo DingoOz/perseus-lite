@@ -7,13 +7,13 @@
 
 stdenv.mkDerivation {
   pname = "livox-sdk2";
-  version = "1.2.5";
+  version = "1.3.1";
 
   src = fetchFromGitHub {
     owner = "Livox-SDK";
     repo = "Livox-SDK2";
-    rev = "v1.2.5";
-    sha256 = "sha256-NGscO/vLiQ17yQJtdPyFzhhMGE89AJ9kTL5cSun/bpU=";
+    rev = "v1.3.1";
+    sha256 = "sha256-XM2jhytXbLVd3jkeZrpxDjegPWPiXCaVQ3nYm1DD928=";
   };
 
   patches = [
@@ -38,6 +38,7 @@ stdenv.mkDerivation {
     "-DCMAKE_CXX_STANDARD_REQUIRED=ON"
     "-DCMAKE_CXX_EXTENSIONS=OFF"
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
   ];
 
   meta = with lib; {

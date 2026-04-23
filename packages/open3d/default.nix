@@ -25,7 +25,11 @@
   libsodium,
   vtk,
   minizip,
-  xorg,
+  libx11,
+  libxrandr,
+  libxinerama,
+  libxcursor,
+  libxi,
   librealsense,
   libGL,
   unzip,
@@ -131,11 +135,11 @@ stdenv.mkDerivation rec {
     vtk
     minizip
     python3Packages.pybind11
-    xorg.libX11
-    xorg.libXrandr
-    xorg.libXinerama
-    xorg.libXcursor
-    xorg.libXi
+    libx11
+    libxrandr
+    libxinerama
+    libxcursor
+    libxi
     librealsense
     libGL
   ];
@@ -255,6 +259,7 @@ stdenv.mkDerivation rec {
     # Install configuration - use relative libdir to avoid breaking ExternalProject paths
     "-DCMAKE_INSTALL_PREFIX=${placeholder "out"}"
     "-DCMAKE_INSTALL_LIBDIR=lib"
+    "-Wno-deprecated"
   ];
 
   # Open3D tries to detect git version; provide a fallback since we build from a tarball

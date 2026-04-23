@@ -76,14 +76,16 @@
     "nix-ros-overlay": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": [
+          "nixpkgs"
+        ]
       },
       "locked": {
-        "lastModified": 1773270149,
-        "narHash": "sha256-DpGhjF76u0TsW+ZDbupz6wZy4jeaL4+Y75UBP9mPST4=",
+        "lastModified": 1776886916,
+        "narHash": "sha256-dfBKRIQZya4+ynxrpe3atdCBHWB3nsmiy1LVCJb12pA=",
         "owner": "lopsided98",
         "repo": "nix-ros-overlay",
-        "rev": "78c70cf36d1fe5c6cdfbf7e577a34c7bec6cbcf7",
+        "rev": "4c3c933052113a15b1c2a7fbf3b54c7ffc6e3c8a",
         "type": "github"
       },
       "original": {
@@ -141,16 +143,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1759381078,
-        "narHash": "sha256-gTrEEp5gEspIcCOx9PD8kMaF1iEmfBcTbO0Jag2QhQs=",
+        "lastModified": 1776734388,
+        "narHash": "sha256-vl3dkhlE5gzsItuHoEMVe+DlonsK+0836LIRDnm6MXQ=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "7df7ff7d8e00218376575f0acdcc5d66741351ee",
+        "rev": "10e7ad5bbcb421fe07e3a4ad53a634b0cd57ffac",
         "type": "github"
       },
       "original": {
-        "owner": "lopsided98",
-        "ref": "nix-ros",
+        "owner": "NixOS",
+        "ref": "nixos-25.11",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -224,10 +226,7 @@
         "nix-ros-overlay": "nix-ros-overlay",
         "nix-ros-workspace": "nix-ros-workspace",
         "nixgl": "nixgl",
-        "nixpkgs": [
-          "nix-ros-overlay",
-          "nixpkgs"
-        ],
+        "nixpkgs": "nixpkgs",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
