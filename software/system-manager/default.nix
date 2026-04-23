@@ -8,4 +8,3 @@ system-manager.lib.makeSystemConfig {
     ./system.nix
   ];
 }
-

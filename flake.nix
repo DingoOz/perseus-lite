@@ -209,7 +209,8 @@
     )
     // {
       homeConfigurations = (import ./software/home-manager/default.nix) inputs;
-    } // {
+    }
+    // {
       systemConfigs.ubuntu = (import ./software/system-manager/default.nix) inputs;
     };
   nixConfig = {
