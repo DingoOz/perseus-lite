@@ -10,7 +10,11 @@
     };
     system-manager = {
       url = "github:numtide/system-manager";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-compat.follows = "flake-compat";
+        userborn.inputs.systems.follows = "nix-ros-overlay/flake-utils/systems";
+      };
     };
     # docs inputs
     nixpkgs-unstable.url = "nixpkgs/nixpkgs-unstable";
@@ -211,7 +215,7 @@
       homeConfigurations = (import ./software/home-manager/default.nix) inputs;
     }
     // {
-      systemConfigs.ubuntu = (import ./software/system-manager/default.nix) inputs;
+      systemConfigs = (import ./software/system-manager/default.nix) inputs;
     };
   nixConfig = {
     extra-substituters = [

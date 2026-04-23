@@ -1,7 +1,15 @@
-{ pkgs, ... }:
 {
+  pkgs,
+  systemConfig,
+  ...
+}:
+{
+  imports = [
+    ./configuration.nix
+  ];
   config = {
-    nixpkgs.hostPlatform = "aarch64-linux";
+    nixpkgs.hostPlatform = systemConfig.system;
+    system-graphics.enable = true;
 
     # Enable and configure services
     services = {
@@ -11,6 +19,8 @@
     environment = {
       # Packages that should be installed on a system
       systemPackages = with pkgs; [
+        system-manager
+        home-manager
         direnv
       ];
 
@@ -33,7 +43,7 @@
         can-udev-rule = {
           target = "/udev/rules.d/80-can-txqueuelen.rules";
           text = ''
-            SUBSYSTEM=="net", ACTION=="add|change", KERNEL=="can*", ATTR{tx_queue_len}="128"
+            SUBSYSTEM=="net", ACTION=="add|change", KERNEL=="can*", ATTR{tx_queue_len}="256"
           '';
         };
       };
