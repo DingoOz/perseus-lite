@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ pkgs, ... }:
 {
   config = {
     nixpkgs.hostPlatform = "aarch64-linux";
@@ -10,7 +10,7 @@
 
     environment = {
       # Packages that should be installed on a system
-      systemPackages = [
+      systemPackages = with pkgs; [
         direnv
       ];
 
