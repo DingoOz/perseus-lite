@@ -216,6 +216,24 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Coloured-cube detection (Red/Blue/Green/White, 100 mm cubes).
+    cube_color_detector_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("perseus_lite"),
+                        "launch",
+                        "cube_color_detector.launch.py",
+                    ]
+                )
+            ]
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+        }.items(),
+    )
+
     # Camera HUD overlay (compass, mini-map, LiDAR proximity, velocity, odometer)
     hud_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -257,6 +275,7 @@ def generate_launch_description():
         ina228_launch,
         camera_node,
         aruco_detector_launch,
+        cube_color_detector_launch,
         hud_launch,
         rosbridge_launch,
     ]

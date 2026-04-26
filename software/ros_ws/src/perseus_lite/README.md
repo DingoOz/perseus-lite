@@ -142,6 +142,89 @@ ros2 launch perseus_lite perseus_lite_slam_and_nav2.launch.py \
     ekf_params_file:=/path/to/custom_ekf.yaml
 ```
 
+## Coloured-cube detection
+
+Perseus Lite runs a colour-based 100 mm cube detector alongside the ArUco
+detector. It segments Red/Blue/Green/White cubes in HSV space, fits a quad to
+each visible face contour, and recovers the face's 6-DoF pose with `solvePnP`
+using the known 100 mm edge length. No depth camera or ML model required —
+just the existing Logitech C920.
+
+Brought up automatically by `perseus_lite.launch.py`. To run it standalone
+(camera node must already be publishing `/image_raw` and `/camera_info`):
+
+```bash
+bash ~/perseus-v2/software/ros_ws/src/perseus_lite/scripts/cube_color_detector.sh
+```
+
+The script sources the workspace, sets `ROS_DOMAIN_ID=42` and the bumped
+CycloneDDS `MaxAutoParticipantIndex`, and launches
+`perseus_lite cube_color_detector.launch.py`. Override the domain by
+exporting `ROS_DOMAIN_ID` first; pass extra `key:=value` launch args after
+the script name.
+
+If you need the camera too (e.g. testing without the full bringup):
+
+```bash
+ros2 run v4l2_camera v4l2_camera_node \
+    --ros-args -p video_device:=/dev/c920 -p image_size:=[320,240] \
+                -p pixel_format:=YUYV -p camera_frame_id:=camera_link
+```
+
+### Topics, TF, and service
+
+| Resource                                  | Type                                    | Notes |
+| ----------------------------------------- | --------------------------------------- | ----- |
+| `/perseus_vision/cube_color/detections`   | `perseus_interfaces/ObjectDetections`   | `ids[i]` is the colour code below |
+| `/perseus_vision/cube_color/markers`      | `visualization_msgs/MarkerArray`        | RViz `CUBE` markers, coloured + labelled |
+| `/perseus_vision/cube_color/image`        | `sensor_msgs/Image`                     | Annotated debug stream (drawn quads + axes) |
+| TF: `cube_<colour>_<index>`               | broadcast in `tf_output_frame` (`odom`) | One frame per detection per tick |
+| `/detect_cubes`                           | `perseus_interfaces/DetectObjects`      | Service: returns latest cached detections; `capture_image:=true` saves an annotated PNG to `img_save_path` |
+
+Detection ID encoding (matches the existing ML `cube_detector`):
+
+| ID | Colour |
+| -- | ------ |
+| 0  | blue   |
+| 1  | green  |
+| 2  | red    |
+| 3  | white  |
+
+### Inspect detections
+
+```bash
+# Watch the annotated image in real time
+ros2 run rqt_image_view rqt_image_view /perseus_vision/cube_color/image
+
+# Stream raw detections
+ros2 topic echo /perseus_vision/cube_color/detections
+
+# Verify TF frames are publishing
+ros2 run tf2_tools view_frames
+```
+
+In RViz, add a `MarkerArray` display on `/perseus_vision/cube_color/markers`
+to see each cube rendered as a coloured 100 mm box at its localised pose.
+
+### Tune HSV thresholds
+
+The defaults in `config/cube_color_detector.yaml` are conservative starting
+points for indoor LED light. To tune for your cubes/lighting, edit the
+`hsv_<colour>` arrays — OpenCV scale (`H ∈ [0,180]`, `S/V ∈ [0,255]`):
+
+```yaml
+hsv_blue:  [h_low, h_high, s_low, s_high, v_low, v_high]
+hsv_red:   [h_low1, h_high1, s_low, s_high, v_low, v_high, h_low2, h_high2]
+```
+
+Red is the only colour that needs the optional 7th/8th elements (the hue
+wraps around 180/0). Watch `/perseus_vision/cube_color/image` while you
+tune — colours whose mask is too tight will simply produce no detections;
+masks that are too loose will produce false-positive quads on background
+clutter (filtered out by `min_face_solidity` and `max_aspect_ratio`).
+
+To skip a colour entirely, drop it from `enabled_colors`.
+
 ## Architecture
 
 ```

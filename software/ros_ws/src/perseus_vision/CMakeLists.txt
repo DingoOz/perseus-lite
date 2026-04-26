@@ -53,7 +53,33 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>)
 
-# ── cube_detector ─────────────────────────────────────────────────────────────
+# ── cube_color_detector ───────────────────────────────────────────────────────
+# HSV-based 100mm coloured-cube detector (Red/Blue/Green/White). Mirrors the
+# aruco_detector pattern — pure OpenCV, no ONNX dependency.
+add_executable(
+  cube_color_detector_node src/cube_color_detector.cpp
+                           src/cube_color_detector_node.cpp)
+
+ament_target_dependencies(
+  cube_color_detector_node
+  rclcpp
+  sensor_msgs
+  std_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  visualization_msgs
+  perseus_interfaces)
+
+target_include_directories(
+  cube_color_detector_node
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include>)
+
+# ── cube_detector (YOLO ONNX) ─────────────────────────────────────────────────
 add_executable(cube_detector src/cube_detector.cpp src/cube_detector_node.cpp)
 
 target_include_directories(
@@ -80,7 +106,7 @@ ament_target_dependencies(
   perseus_interfaces)
 
 # ── install ───────────────────────────────────────────────────────────────────
-install(TARGETS aruco_detector_node cube_detector
+install(TARGETS aruco_detector_node cube_color_detector_node cube_detector
         DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/ DESTINATION include/)

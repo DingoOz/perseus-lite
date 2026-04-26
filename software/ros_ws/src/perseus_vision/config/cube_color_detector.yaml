@@ -1,0 +1,39 @@
+cube_color_detector:
+  ros__parameters:
+    # Physical edge length of the cubes (100 mm).
+    cube_size: 0.10
+    axis_length: 0.05
+    # Reject mask blobs smaller than this many pixels (post-morphology).
+    min_contour_area: 300.0
+    # Reject elongated blobs whose bounding rect aspect ratio exceeds this.
+    max_aspect_ratio: 1.6
+    # Reject spiky / non-convex blobs (1.0 = perfect convex hull match).
+    min_face_solidity: 0.85
+
+    camera_frame: camera_color_optical_frame
+    tf_output_frame: odom
+
+    input_img: /camera/camera/color/image_raw
+    output_img: /perseus_vision/cube_color/image
+    output_topic: /perseus_vision/cube_color/detections
+    output_markers_topic: /perseus_vision/cube_color/markers
+    camera_info_topic: /camera/camera/color/camera_info
+
+    publish_tf: true
+    publish_img: true
+    compressed_io: false
+    use_camera_info: true
+    publish_output: true
+
+    enabled_colors: ["red", "blue", "green", "white"]
+
+    # HSV bands. OpenCV scale: H in [0, 180], S/V in [0, 255].
+    # Red wraps the hue circle, so it accepts an extra [h_low2, h_high2] band.
+    hsv_blue:  [100, 130,  90, 255,  60, 255]
+    hsv_green: [ 40,  85,  70, 255,  50, 255]
+    hsv_red:   [  0,  10, 110, 255,  70, 255, 170, 180]
+    hsv_white: [  0, 180,   0,  45, 200, 255]
+
+    # Fallback intrinsics (overridden by camera_info if use_camera_info: true).
+    camera_matrix: [530.4, 0.0, 320.0, 0.0, 530.4, 240.0, 0.0, 0.0, 1.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
