@@ -21,6 +21,7 @@
   (final: prev: {
     inherit self; # add self access for hacks like nixGL
     # alias the output to pkgs.ros to make it easier to use
+    elfutils = if prev.stdenv.hostPlatform.isDarwin then prev.libdwarf else prev.elfutils;
     ros = final.rosPackages.${rosDistro};
     # and add pkgs.unstable access
     unstable = pkgs-unstable;
