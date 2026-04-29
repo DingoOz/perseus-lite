@@ -16,6 +16,7 @@ final: prev: {
   perseus-lite = final.callPackage ./perseus-lite.nix { };
   perseus-lite-description = final.callPackage ./perseus-lite-description.nix { };
   perseus-lite-drifting = final.callPackage ./perseus-lite-drifting.nix { };
+  perseus-lite-explorer = final.callPackage ./perseus-lite-explorer.nix { };
   perseus-lite-hardware = final.callPackage ./perseus-lite-hardware.nix { };
   perseus-lite-hud = final.callPackage ./perseus-lite-hud.nix { };
   perseus-mapping = final.callPackage ./perseus-mapping.nix { };
