@@ -1,0 +1,21 @@
+frontier_explorer:
+  ros__parameters:
+    map_topic: "/map"
+    global_frame: "map"
+    robot_frame: "base_link"
+    # How often to re-evaluate frontiers when no goal is active (seconds).
+    planning_period_sec: 3.0
+    # Reject frontier clusters smaller than this many cells.
+    min_frontier_size_cells: 8
+    # Occupancy thresholds (0..100 in OccupancyGrid). Cells in [0, free_threshold] are free.
+    free_threshold: 30
+    occupied_threshold: 65
+    # If a frontier centroid is within this distance of a blacklisted point, skip it.
+    blacklist_radius_m: 0.4
+    # Goal scoring: bigger frontiers preferred, closer frontiers preferred.
+    distance_weight: 1.0
+    size_weight: 0.5
+    # Cancel and blacklist a goal if Nav2 has not finished within this many seconds.
+    goal_timeout_sec: 60.0
+    # Wait this long after node start before issuing the first goal (let SLAM/TF settle).
+    start_delay_sec: 5.0
