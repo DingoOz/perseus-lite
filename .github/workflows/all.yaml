@@ -203,7 +203,7 @@ jobs:
     name: Build software
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     # this job should run even if `package` is skipped, but not if `format` fails,
     # hence the unusual conditions
