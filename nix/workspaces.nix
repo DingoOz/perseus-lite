@@ -22,6 +22,10 @@ let
       yaml-cpp
       libnice
       ;
+    # Qt6 base (Core/Gui/Widgets + EGLFS plugin) — used by perseus_lite_screen
+    # for the on-robot fullscreen map display. Made available to colcon dev
+    # builds via CMAKE_PREFIX_PATH.
+    inherit (pkgs.qt6) qtbase;
     inherit (pkgs.gst_all_1)
       gstreamer
       gst-plugins-base
