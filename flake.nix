@@ -191,6 +191,31 @@
             perseus-lite-roam =
               mkRosLaunchApp "perseus-lite-roam" "perseus_lite_explorer"
                 "perseus_lite_roam.launch.py";
+            # Voice assistant: Ollama + Piper TTS + Whisper + (opt-in)
+            # openwakeword + YOLOv8 over /image_raw, with a voice-to-robot
+            # intent bridge (publishes TwistStamped on /joy_vel and toggles
+            # frontier_explorer via SetParameters).
+            #
+            # openwakeword and tflite_runtime are not in nixpkgs, so when
+            # wake_enabled:=true we prepend the existing Jetson venv at
+            # ~/Programming/Piper/oww-env/ to PYTHONPATH so those imports
+            # resolve at runtime. Override OLLAMA_VOICE_VENV to relocate.
+            perseus-lite-voice = {
+              type = "app";
+              program = "${pkgs.writeShellScriptBin "perseus-lite-voice" ''
+                export ROS_DOMAIN_ID=''${ROS_DOMAIN_ID:-42}
+                export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+                OWW_VENV="''${OLLAMA_VOICE_VENV:-/home/dingo/Programming/Piper/oww-env}"
+                if [ -d "$OWW_VENV" ]; then
+                  for sp in "$OWW_VENV"/lib/python*/site-packages; do
+                    if [ -d "$sp" ]; then
+                      export PYTHONPATH="$sp''${PYTHONPATH:+:$PYTHONPATH}"
+                    fi
+                  done
+                fi
+                exec ${rosWorkspaces.default}/bin/ros2 launch perseus_lite_voice perseus_lite_voice.launch.py "$@"
+              ''}/bin/perseus-lite-voice";
+            };
             default = self.apps.${system}.perseus;
             generic_controller = mkRosLaunchApp "generic_controller" "perseus_input" "controller.launch.py";
             ros2 = {

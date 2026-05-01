@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>perseus_lite_voice</name>
+  <version>0.1.0</version>
+  <description>Voice assistant ROS 2 node for Perseus Lite: Ollama LLM chat, Piper TTS, Whisper STT, openwakeword wake-word activation, YOLOv8 vision over /image_raw, and a voice-to-robot intent bridge.</description>
+  <maintainer email="nigel.hungerfordsymes@gmail.com">Nigel_H-S</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>cv_bridge</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

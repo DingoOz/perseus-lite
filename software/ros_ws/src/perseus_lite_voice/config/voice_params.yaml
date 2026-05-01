@@ -1,0 +1,33 @@
+perseus_lite_voice:
+  ros__parameters:
+    # LLM
+    ollama_url: "http://localhost:11434/api/chat"
+    ollama_model: "gemma4:e2b"
+    system_prompt: "You are a friendly voice assistant on a small rover named Perseus Lite. Replies will be spoken aloud, so keep them short and conversational. Avoid markdown."
+    # TTS
+    voice_path: "/home/dingo/Programming/Piper/voices/en_US-amy-medium.onnx"
+    audio_device: "plughw:1,0"
+    initial_volume: 0.2
+    # STT
+    mic_enabled: true
+    mic_device: "plughw:0,0"
+    whisper_model: "tiny"
+    # Wake word
+    wake_enabled: false
+    wake_model: "hey_jarvis_v0.1"
+    wake_threshold: 0.5
+    # Vision
+    vision_enabled: true
+    vision_topic: "/image_raw"
+    vision_max_fps: 2.0
+    yolo_model: "yolov8n.pt"
+    # Robot intent bridge
+    enable_robot_bridge: true
+    cmd_vel_topic: "/joy_vel"
+    base_frame_id: "base_link"
+    explorer_node: "frontier_explorer"
+    explorer_default_period_sec: 3.0
+    explorer_pause_period_sec: 999999.0
+    motion_linear_speed: 0.2
+    motion_angular_speed: 0.5
+    motion_pulse_seconds: 1.0
