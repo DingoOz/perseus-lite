@@ -188,6 +188,9 @@
           {
             perseus = mkRosLaunchApp "perseus" "perseus" "perseus.launch.py";
             perseus-lite = mkRosLaunchApp "perseus-lite" "perseus_lite" "perseus_lite_slam_and_nav2.launch.py";
+            perseus-lite-roam =
+              mkRosLaunchApp "perseus-lite-roam" "perseus_lite_explorer"
+                "perseus_lite_roam.launch.py";
             default = self.apps.${system}.perseus;
             generic_controller = mkRosLaunchApp "generic_controller" "perseus_input" "controller.launch.py";
             ros2 = {
@@ -205,6 +208,23 @@
               ''}/bin/autonomy_diagnostics";
             };
             autonomy_diag = self.apps.${system}.autonomy_diagnostics;
+            # Curses TUI for tuning the perseus_lite_explorer (frontier_explorer)
+            # parameters at runtime, with an in-app launcher for perseus-lite-roam.
+            # Matches rviz2-perseus-lite: ROS_DOMAIN_ID=42, CycloneDDS, bumped
+            # MaxAutoParticipantIndex so the full Nav2+SLAM participant set is
+            # discoverable from a fresh DDS instance.
+            perseus-lite-TUI = {
+              type = "app";
+              program = "${pkgs.writeShellScriptBin "perseus-lite-TUI" ''
+                export ROS_DOMAIN_ID=''${ROS_DOMAIN_ID:-42}
+                export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+                export CYCLONEDDS_URI=''${CYCLONEDDS_URI:-'<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>120</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>'}
+                ${rosWorkspaces.default}/bin/ros2 daemon stop >/dev/null 2>&1 || true
+                ${rosWorkspaces.default}/bin/ros2 daemon start >/dev/null 2>&1 || true
+                exec ${rosWorkspaces.default}/bin/ros2 run perseus_lite_tui perseus_lite_tui "$@"
+              ''}/bin/perseus-lite-TUI";
+            };
+            perseus-lite-tui = self.apps.${system}.perseus-lite-TUI;
             perseus-lite-map-autotune =
               mkRosLaunchApp "perseus-lite-map-autotune" "mapping_autotune"
                 "autotune.launch.py";
