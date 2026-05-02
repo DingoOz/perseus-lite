@@ -46,10 +46,19 @@ sudo -u "$NIX_USER" -H "$NIX" build --out-link "$ROOT/screen" \
 sudo -u "$NIX_USER" -H "$NIX" build --out-link "$ROOT/workspace" \
     "path:$REPO#default"
 
-echo "=== installing wrapper + service ==="
+echo "=== installing wrapper + service + modules-load.d ==="
 install -m 0755 "$SCRIPT_DIR/perseus-lite-screen-kiosk" /usr/local/bin/perseus-lite-screen-kiosk
 install -m 0644 "$SCRIPT_DIR/perseus-lite-screen.service" /etc/systemd/system/perseus-lite-screen.service
+# Pulls tegra-drm + nvidia-drm in at boot so /dev/dri/card1 exists before
+# any kiosk service tries to open it.
+install -m 0644 "$SCRIPT_DIR/perseus-lite-display-modload.conf" \
+    /etc/modules-load.d/perseus-lite-display.conf
 systemctl daemon-reload
+# Make sure the modules are loaded right now too (next reboot will rely on
+# /etc/modules-load.d, but on this run we need them available for the
+# kiosk service we're about to start).
+modprobe -q tegra-drm || true
+modprobe -q nvidia-drm modeset=1 || true
 
 echo "=== switching default boot target to multi-user (no GDM at boot) ==="
 systemctl set-default multi-user.target

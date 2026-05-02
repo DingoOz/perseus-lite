@@ -10,6 +10,13 @@ Conflicts=gdm.service display-manager.service
 Type=simple
 # Root needed to acquire DRM master without an active seat session.
 User=root
+# At cold boot under multi-user.target the Tegra DRM (display) and
+# Nvidia DRM (GPU) modules are not pulled in by anything — Xorg/GDM
+# would normally do that. Force-load them here so /dev/dri/card1
+# exists before the binary opens it. `-q` silences nonexistent module
+# errors; the leading `-` lets the unit continue regardless.
+ExecStartPre=-/usr/sbin/modprobe -q tegra-drm
+ExecStartPre=-/usr/sbin/modprobe -q nvidia-drm modeset=1
 ExecStart=/usr/local/bin/perseus-lite-screen-kiosk
 Restart=on-failure
 RestartSec=5

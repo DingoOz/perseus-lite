@@ -200,14 +200,15 @@ config/
 launch/
   perseus_lite_screen.launch.py
 scripts/
-  install-kiosk.sh                  Kiosk installer (sudo)
-  perseus-lite-screen-kiosk         Wrapper called by the kiosk systemd unit
-  perseus-lite-screen.service       Kiosk systemd unit template
-  enable-boot-self-drive.sh         Opt in to 2-min countdown + auto-roam at boot
-  disable-boot-self-drive.sh        Opt out / abort the boot self-drive
-  perseus-self-drive-countdown      Countdown shown on tty1 during the wait
-  perseus-self-drive-roam-launch    Wrapper that exec's `nix run .#perseus-lite-roam`
-  perseus-self-drive-boot.service   systemd unit gluing the countdown + launch
+  install-kiosk.sh                            Kiosk installer (sudo)
+  perseus-lite-screen-kiosk                   Wrapper called by the kiosk systemd unit
+  perseus-lite-screen.service                 Kiosk systemd unit template
+  perseus-lite-display-modload.conf           modules-load.d entry forcing tegra-drm + nvidia-drm at boot
+  enable-boot-self-drive.sh                   Opt in to 2-min countdown + auto-roam at boot
+  disable-boot-self-drive.sh                  Opt out / abort the boot self-drive
+  perseus-self-drive-countdown                Countdown shown on tty1 during the wait
+  perseus-self-drive-roam-launch              Wrapper that exec's `nix run .#perseus-lite-roam`
+  perseus-self-drive-boot.service             systemd unit gluing the countdown + launch
 src/
   main.cpp                QApplication + rclcpp glue
   map_screen_node.cpp/.hpp  ROS subscriptions + TF lookup

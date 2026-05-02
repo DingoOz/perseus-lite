@@ -14,6 +14,19 @@ BIN="$ROOT/screen/lib/perseus_lite_screen/perseus_lite_screen"
 KMS_CFG="$ROOT/screen/share/perseus_lite_screen/config/eglfs_kms.json"
 WS="$ROOT/workspace"
 
+# Wait briefly for /dev/dri/card1 — modprobe in ExecStartPre returns before
+# the kernel finishes creating the device node. Without this the binary
+# can race the device's appearance and abort with
+# "Could not open DRM (NV) device".
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -e /dev/dri/card1 ] && break
+    sleep 0.5
+done
+if [ ! -e /dev/dri/card1 ]; then
+    echo "perseus-lite-screen-kiosk: /dev/dri/card1 missing after 5s; modprobe tegra-drm/nvidia-drm may have failed" >&2
+    exit 1
+fi
+
 # Discover Qt6 plugin dir from the binary's RPATH-resolved libQt6Core.
 QT_LIB=$(ldd "$BIN" | awk '/libQt6Core\.so/{print $3; exit}')
 QT_PLUGINS="${QT_LIB%/*}/qt-6/plugins"
