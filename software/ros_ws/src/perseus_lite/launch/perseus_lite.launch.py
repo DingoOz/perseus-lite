@@ -71,8 +71,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "enable_screen",
-            default_value="True",
-            description="Launch the on-robot 1024x600 Qt EGLFS map display",
+            # Default off: perseus_lite_screen is excluded from the default
+            # nix workspace closure (Qt6 vs rviz2-fixed Qt5 conflict — see
+            # software/ros_ws/src/perseus_lite_screen/README.md), so the
+            # default workspace can't FindPackageShare it. On the robot the
+            # screen is run as a systemd kiosk service instead. Override
+            # `enable_screen:=True` only when you've stacked perseus-lite-
+            # screen onto AMENT_PREFIX_PATH for an ad-hoc launch.
+            default_value="False",
+            description="Launch the on-robot 1024x600 Qt EGLFS map display in-process (off by default; kiosk service handles it on the robot)",
         ),
     ]
 

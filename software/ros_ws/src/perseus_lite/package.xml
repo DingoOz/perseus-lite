@@ -37,7 +37,10 @@
   <!-- camera -->
   <exec_depend>v4l2_camera</exec_depend>
   <exec_depend>perseus_lite_hud</exec_depend>
-  <exec_depend>perseus_lite_screen</exec_depend>
+  <!-- perseus_lite_screen is intentionally NOT a hard exec_depend: it
+       links Qt6 and would conflict with rviz2-fixed (Qt5) in the workspace
+       closure. The on-robot screen is run via the perseus-lite-screen
+       systemd kiosk service instead. -->
   <exec_depend>perseus_vision</exec_depend>
 
   <!-- SLAM and navigation -->
