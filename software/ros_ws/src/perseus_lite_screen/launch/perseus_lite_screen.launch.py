@@ -43,8 +43,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "eglfs_integration",
-            default_value="eglfs_kms",
-            description="EGLFS backend (eglfs_kms for DRM/KMS DisplayPort)",
+            # eglfs_kms_egldevice is the Nvidia EGLStream KMS path used on
+            # Tegra/Jetson — the qtbase nix package only ships this and
+            # eglfs_x11/eglfs_emu (no GBM-based eglfs_kms). Override to
+            # eglfs_kms on hosts with a Mesa-built qtbase.
+            default_value="eglfs_kms_egldevice",
+            description="EGLFS backend (eglfs_kms_egldevice on Tegra; eglfs_kms on Mesa)",
         ),
         DeclareLaunchArgument(
             "eglfs_kms_config",
@@ -67,6 +71,27 @@ def generate_launch_description():
         SetEnvironmentVariable("QT_QPA_EGLFS_KMS_CONFIG", eglfs_kms_config),
         # Hide the mouse cursor in kiosk mode.
         SetEnvironmentVariable("QT_QPA_EGLFS_HIDECURSOR", "1"),
+    ]
+
+    # Inject the Tegra L4T Nvidia EGL driver. The Nix-built binary links
+    # against libglvnd, which dispatches to a vendor ICD found via
+    # __EGL_VENDOR_LIBRARY_DIRS. Without this the eglfs_kms_egldevice plugin
+    # aborts with "EGL_EXT_device_base missing" because no Nvidia ICD is
+    # discoverable. Paths match the L4T 36.x layout; harmless on non-Tegra
+    # hosts (libs simply not found and we fall through to Mesa).
+    tegra_egl_libs = "/usr/lib/aarch64-linux-gnu/tegra-egl"
+    tegra_libs = "/usr/lib/aarch64-linux-gnu/tegra"
+    existing_ld = os.environ.get("LD_LIBRARY_PATH", "")
+    ld_with_tegra = (
+        f"{tegra_egl_libs}:{tegra_libs}:{existing_ld}"
+        if existing_ld
+        else f"{tegra_egl_libs}:{tegra_libs}"
+    )
+    env_actions += [
+        SetEnvironmentVariable("LD_LIBRARY_PATH", ld_with_tegra),
+        SetEnvironmentVariable(
+            "__EGL_VENDOR_LIBRARY_DIRS", "/usr/share/glvnd/egl_vendor.d"
+        ),
     ]
 
     screen_node = Node(

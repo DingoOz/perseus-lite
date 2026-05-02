@@ -22,10 +22,6 @@ let
       yaml-cpp
       libnice
       ;
-    # Qt6 base (Core/Gui/Widgets + EGLFS plugin) — used by perseus_lite_screen
-    # for the on-robot fullscreen map display. Made available to colcon dev
-    # builds via CMAKE_PREFIX_PATH.
-    inherit (pkgs.qt6) qtbase;
     inherit (pkgs.gst_all_1)
       gstreamer
       gst-plugins-base
@@ -131,6 +127,14 @@ let
         export RCUTILS_COLORIZED_OUTPUT=1
         # fix locale issues
         export LOCALE_ARCHIVE=${pkgs.glibcLocales}/lib/locale/locale-archive
+        # Note: Qt6 is intentionally NOT exposed in the dev shell. Adding
+        # qt6.qtbase to the workspace closure (or even string-referencing it
+        # from this hook) collides with Qt5 from rviz2-fixed and aborts
+        # wrapQtAppsHook with "detected mismatched Qt dependencies". Build
+        # perseus_lite_screen via `nix build .#pkgs.ros.perseus-lite-screen`,
+        # or override CMAKE_PREFIX_PATH at colcon invocation time, e.g.:
+        #   CMAKE_PREFIX_PATH=$(nix eval --raw .#pkgs.qt6.qtbase.dev) \
+        #     colcon build --packages-select perseus_lite_screen
         ${pkgs.lib.optionalString isx86_64 ''
           # Open3D Python module and its Python dependencies (plotly, dash, etc.)
           export PYTHONPATH="${pkgs.open3d}/lib/python${pkgs.python3.pythonVersion}/site-packages:${open3dPythonDeps.env}/lib/python${pkgs.python3.pythonVersion}/site-packages''${PYTHONPATH:+:$PYTHONPATH}"

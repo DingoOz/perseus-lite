@@ -30,6 +30,11 @@ buildRosPackage rec {
     qt6.qtbase
   ];
 
+  # Qt6 is intentionally NOT in propagatedBuildInputs. The default workspace
+  # also pulls in rviz2-fixed (Qt5); having both Qt5 and Qt6 in the workspace
+  # closure aborts the shell-env build with "detected mismatched Qt
+  # dependencies". Linking to qt6 via buildInputs is enough — the resulting
+  # binary's RPATH points at qt6.qtbase in the store.
   propagatedBuildInputs = [
     geometry-msgs
     nav-msgs
@@ -38,10 +43,19 @@ buildRosPackage rec {
     tf2
     tf2-geometry-msgs
     tf2-ros
-    qt6.qtbase
   ];
 
   dontWrapQtApps = false;
+
+  # ROS installs the executable to lib/<pkg>/ but wrapQtAppsHook only scans
+  # bin/, sbin/, libexec/, Applications/ — so the auto-wrap is a no-op for
+  # ROS layout. Wrap the ROS-located binary explicitly so QT_PLUGIN_PATH /
+  # QT_QPA_PLATFORM_PLUGIN_PATH are set when the launch file invokes it.
+  postFixup = ''
+    if [ -x "$out/lib/perseus_lite_screen/perseus_lite_screen" ]; then
+      wrapQtApp "$out/lib/perseus_lite_screen/perseus_lite_screen"
+    fi
+  '';
 
   meta = {
     description = "Fullscreen Qt EGLFS top-down map display for Perseus Lite (1024x600 DisplayPort)";
