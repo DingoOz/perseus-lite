@@ -94,6 +94,46 @@ For verbose Qt EGLFS logging, edit
 `/usr/local/bin/perseus-lite-screen-kiosk` and add
 `export QT_LOGGING_RULES="qt.qpa.*=true"` before the final `exec`.
 
+### 3. Auto self-drive on boot (optional, opt-in)
+
+When enabled, the robot at every boot:
+
+1. Shows a 2-minute **"Starting Self Driving in… `MM:SS`"** countdown on
+   the DP-1 console (still text-mode at that point — the kiosk hasn't
+   grabbed DRM yet).
+2. After the countdown, launches `nix run .#perseus-lite-roam` (frontier
+   exploration on top of Nav2 + SLAM).
+3. The kiosk then takes the screen and starts rendering the live map.
+
+The countdown and the roam launch are a single systemd unit
+(`perseus-self-drive-boot.service`) ordered `Before=perseus-lite-screen.service`,
+so the screen waits until roam is up before grabbing the DP.
+
+Disabled by default; opt in with the enable script.
+
+#### Enable
+
+```bash
+sudo software/ros_ws/src/perseus_lite_screen/scripts/enable-boot-self-drive.sh
+```
+
+#### Disable
+
+```bash
+sudo software/ros_ws/src/perseus_lite_screen/scripts/disable-boot-self-drive.sh
+```
+
+`disable` doubles as a runtime abort: if the unit is mid-countdown or
+already running roam, it gets stopped immediately.
+
+#### Trigger / abort manually
+
+```bash
+sudo systemctl start perseus-self-drive-boot.service   # run countdown + roam now
+sudo systemctl stop  perseus-self-drive-boot.service   # abort an in-progress run
+journalctl -u perseus-self-drive-boot.service -f
+```
+
 ## Hardware / driver requirements
 
 This runs on Jetson Orin (L4T 36.x). The kiosk depends on the
@@ -160,9 +200,14 @@ config/
 launch/
   perseus_lite_screen.launch.py
 scripts/
-  install-kiosk.sh        Kiosk installer (sudo)
-  perseus-lite-screen-kiosk         Wrapper called by the systemd unit
-  perseus-lite-screen.service       systemd unit template
+  install-kiosk.sh                  Kiosk installer (sudo)
+  perseus-lite-screen-kiosk         Wrapper called by the kiosk systemd unit
+  perseus-lite-screen.service       Kiosk systemd unit template
+  enable-boot-self-drive.sh         Opt in to 2-min countdown + auto-roam at boot
+  disable-boot-self-drive.sh        Opt out / abort the boot self-drive
+  perseus-self-drive-countdown      Countdown shown on tty1 during the wait
+  perseus-self-drive-roam-launch    Wrapper that exec's `nix run .#perseus-lite-roam`
+  perseus-self-drive-boot.service   systemd unit gluing the countdown + launch
 src/
   main.cpp                QApplication + rclcpp glue
   map_screen_node.cpp/.hpp  ROS subscriptions + TF lookup

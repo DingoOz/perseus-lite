@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Launches `nix run .#perseus-lite-roam` from the perseus-v2 checkout, as
+# the dingo user (so dialout/i2c/gpio group membership applies). Run as
+# the main process of perseus-self-drive-boot.service after the countdown.
+
+set -eu
+
+NIX=/nix/var/nix/profiles/default/bin/nix
+RUN_USER=dingo
+USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
+REPO="${PERSEUS_V2_REPO:-$USER_HOME/perseus-v2}"
+
+if [ ! -f "$REPO/flake.nix" ]; then
+    echo "perseus-v2 flake not found at $REPO" >&2
+    exit 1
+fi
+
+cd "$REPO"
+exec sudo -u "$RUN_USER" -H "$NIX" run "path:$REPO#perseus-lite-roam"

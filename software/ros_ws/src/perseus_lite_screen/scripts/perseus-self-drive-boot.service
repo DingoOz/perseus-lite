@@ -1,0 +1,31 @@
+[Unit]
+Description=Perseus Lite boot self-drive (2 min countdown then perseus-lite-roam)
+Documentation=https://github.com/ROAR-QUTRC/perseus-v2
+After=network-online.target
+Wants=network-online.target
+# Hold off the screen kiosk so the countdown is visible on the DP console
+# until the moment roam launches.
+Before=perseus-lite-screen.service
+# Free tty1 for our countdown display.
+Conflicts=getty@tty1.service gdm.service display-manager.service
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/usr/local/bin/perseus-self-drive-countdown
+ExecStart=/usr/local/bin/perseus-self-drive-roam-launch
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=10
+
+# Render the countdown on tty1 (DP-1 console).
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
+[Install]
+WantedBy=multi-user.target
