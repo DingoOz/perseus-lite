@@ -5,8 +5,6 @@ Subscribes to /scan, sets readings below min_range to inf (invalid),
 updates range_min in the message, and republishes to /scan_filtered.
 """
 
-import math
-
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
@@ -26,7 +24,9 @@ class ScanRangeFilter(Node):
         )
         self._pub = self.create_publisher(LaserScan, "/scan_filtered", qos)
         self._sub = self.create_subscription(LaserScan, "/scan", self._cb, qos)
-        self.get_logger().info(f"Filtering /scan -> /scan_filtered (min_range={self._min_range}m)")
+        self.get_logger().info(
+            f"Filtering /scan -> /scan_filtered (min_range={self._min_range}m)"
+        )
 
     def _cb(self, msg: LaserScan):
         inf = float("inf")

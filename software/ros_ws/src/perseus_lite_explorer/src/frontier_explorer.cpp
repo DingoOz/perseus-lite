@@ -74,7 +74,8 @@ public:
         map_qos.transient_local().reliable();
         _map_sub = create_subscription<nav_msgs::msg::OccupancyGrid>(
             _map_topic, map_qos,
-            [this](nav_msgs::msg::OccupancyGrid::SharedPtr msg) { _latest_map = std::move(msg); });
+            [this](nav_msgs::msg::OccupancyGrid::SharedPtr msg)
+            { _latest_map = std::move(msg); });
 
         _frontier_pub = create_publisher<visualization_msgs::msg::MarkerArray>(
             "/frontier_explorer/frontiers", 10);
@@ -127,10 +128,12 @@ private:
     void on_plan_tick()
     {
         // Wait for SLAM to publish a map and the EKF/TF tree to settle.
-        if ((now() - _start_time).seconds() < _start_delay_sec) {
+        if ((now() - _start_time).seconds() < _start_delay_sec)
+        {
             return;
         }
-        if (!_latest_map) {
+        if (!_latest_map)
+        {
             RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
                                  "Waiting for map on '%s'...", _map_topic.c_str());
             return;
@@ -138,10 +141,12 @@ private:
 
         // Time-out a stuck goal so exploration always makes progress.
         if (_has_active_goal &&
-            (now() - _goal_sent_time).seconds() > _goal_timeout_sec) {
+            (now() - _goal_sent_time).seconds() > _goal_timeout_sec)
+        {
             RCLCPP_WARN(get_logger(), "Goal timed out after %.1fs — cancelling and blacklisting",
                         _goal_timeout_sec);
-            if (_active_goal) {
+            if (_active_goal)
+            {
                 _action_client->async_cancel_goal(_active_goal);
             }
             _blacklist.push_back(_current_goal_point);
@@ -149,19 +154,22 @@ private:
             _active_goal.reset();
         }
 
-        if (_has_active_goal) {
+        if (_has_active_goal)
+        {
             return;  // Let the current goal run.
         }
 
         geometry_msgs::msg::Point robot;
-        if (!get_robot_position(robot)) {
+        if (!get_robot_position(robot))
+        {
             return;
         }
 
         std::vector<Frontier> frontiers = find_frontiers(*_latest_map);
         publish_frontier_markers(frontiers);
 
-        if (frontiers.empty()) {
+        if (frontiers.empty())
+        {
             RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 10000,
                                  "No frontiers detected — exploration may be complete.");
             return;
@@ -171,22 +179,25 @@ private:
         // (bigger frontiers and closer ones are preferred)
         const Frontier* best = nullptr;
         double best_score = -std::numeric_limits<double>::infinity();
-        for (const auto& f : frontiers) {
-            if (is_blacklisted(f.centroid_x, f.centroid_y)) {
+        for (const auto& f : frontiers)
+        {
+            if (is_blacklisted(f.centroid_x, f.centroid_y))
+            {
                 continue;
             }
             const double dx = f.centroid_x - robot.x;
             const double dy = f.centroid_y - robot.y;
             const double dist = std::hypot(dx, dy);
-            const double score = _size_weight * static_cast<double>(f.size)
-                                 - _distance_weight * dist;
-            if (score > best_score) {
+            const double score = _size_weight * static_cast<double>(f.size) - _distance_weight * dist;
+            if (score > best_score)
+            {
                 best_score = score;
                 best = &f;
             }
         }
 
-        if (!best) {
+        if (!best)
+        {
             RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 10000,
                                  "All %zu frontiers blacklisted — clearing blacklist to retry.",
                                  frontiers.size());
@@ -199,7 +210,8 @@ private:
 
     bool get_robot_position(geometry_msgs::msg::Point& out)
     {
-        try {
+        try
+        {
             auto tf = _tf_buffer.lookupTransform(
                 _global_frame, _robot_frame, tf2::TimePointZero,
                 tf2::durationFromSec(0.5));
@@ -207,7 +219,9 @@ private:
             out.y = tf.transform.translation.y;
             out.z = 0.0;
             return true;
-        } catch (const tf2::TransformException& e) {
+        }
+        catch (const tf2::TransformException& e)
+        {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                                  "TF lookup %s -> %s failed: %s",
                                  _global_frame.c_str(), _robot_frame.c_str(), e.what());
@@ -217,8 +231,10 @@ private:
 
     bool is_blacklisted(double x, double y) const
     {
-        for (const auto& p : _blacklist) {
-            if (std::hypot(p.x - x, p.y - y) < _blacklist_radius) {
+        for (const auto& p : _blacklist)
+        {
+            if (std::hypot(p.x - x, p.y - y) < _blacklist_radius)
+            {
                 return true;
             }
         }
@@ -232,28 +248,38 @@ private:
         const auto width = map.info.width;
         const auto height = map.info.height;
         const auto& data = map.data;
-        if (width == 0 || height == 0) {
+        if (width == 0 || height == 0)
+        {
             return {};
         }
 
-        const auto idx = [width](unsigned int x, unsigned int y) {
+        const auto idx = [width](unsigned int x, unsigned int y)
+        {
             return static_cast<std::size_t>(y) * width + x;
         };
 
         // Mark every cell that is on a free/unknown boundary.
         std::vector<uint8_t> is_frontier(static_cast<std::size_t>(width) * height, 0);
-        for (unsigned int y = 0; y < height; ++y) {
-            for (unsigned int x = 0; x < width; ++x) {
+        for (unsigned int y = 0; y < height; ++y)
+        {
+            for (unsigned int x = 0; x < width; ++x)
+            {
                 const int8_t v = data[idx(x, y)];
-                if (!is_free(v, static_cast<int8_t>(_free_threshold))) {
+                if (!is_free(v, static_cast<int8_t>(_free_threshold)))
+                {
                     continue;
                 }
                 bool borders_unknown = false;
-                if (x > 0 && data[idx(x - 1, y)] == -1) borders_unknown = true;
-                else if (x + 1 < width && data[idx(x + 1, y)] == -1) borders_unknown = true;
-                else if (y > 0 && data[idx(x, y - 1)] == -1) borders_unknown = true;
-                else if (y + 1 < height && data[idx(x, y + 1)] == -1) borders_unknown = true;
-                if (borders_unknown) {
+                if (x > 0 && data[idx(x - 1, y)] == -1)
+                    borders_unknown = true;
+                else if (x + 1 < width && data[idx(x + 1, y)] == -1)
+                    borders_unknown = true;
+                else if (y > 0 && data[idx(x, y - 1)] == -1)
+                    borders_unknown = true;
+                else if (y + 1 < height && data[idx(x, y + 1)] == -1)
+                    borders_unknown = true;
+                if (borders_unknown)
+                {
                     is_frontier[idx(x, y)] = 1;
                 }
             }
@@ -262,10 +288,13 @@ private:
         // BFS-cluster the marked cells.
         std::vector<uint8_t> visited(static_cast<std::size_t>(width) * height, 0);
         std::vector<Frontier> frontiers;
-        for (unsigned int y = 0; y < height; ++y) {
-            for (unsigned int x = 0; x < width; ++x) {
+        for (unsigned int y = 0; y < height; ++y)
+        {
+            for (unsigned int x = 0; x < width; ++x)
+            {
                 const auto seed = idx(x, y);
-                if (!is_frontier[seed] || visited[seed]) {
+                if (!is_frontier[seed] || visited[seed])
+                {
                     continue;
                 }
 
@@ -276,7 +305,8 @@ private:
                 double sum_x = 0.0;
                 double sum_y = 0.0;
                 std::size_t count = 0;
-                while (!q.empty()) {
+                while (!q.empty())
+                {
                     auto [cx, cy] = q.front();
                     q.pop();
                     double wx;
@@ -288,17 +318,20 @@ private:
 
                     const int dxs[4] = {-1, 1, 0, 0};
                     const int dys[4] = {0, 0, -1, 1};
-                    for (int n = 0; n < 4; ++n) {
+                    for (int n = 0; n < 4; ++n)
+                    {
                         const int nx = static_cast<int>(cx) + dxs[n];
                         const int ny = static_cast<int>(cy) + dys[n];
                         if (nx < 0 || ny < 0 ||
                             nx >= static_cast<int>(width) ||
-                            ny >= static_cast<int>(height)) {
+                            ny >= static_cast<int>(height))
+                        {
                             continue;
                         }
                         const auto ni = idx(static_cast<unsigned int>(nx),
                                             static_cast<unsigned int>(ny));
-                        if (is_frontier[ni] && !visited[ni]) {
+                        if (is_frontier[ni] && !visited[ni])
+                        {
                             visited[ni] = 1;
                             q.emplace(static_cast<unsigned int>(nx),
                                       static_cast<unsigned int>(ny));
@@ -306,7 +339,8 @@ private:
                     }
                 }
 
-                if (static_cast<int>(count) >= _min_frontier_size) {
+                if (static_cast<int>(count) >= _min_frontier_size)
+                {
                     Frontier f;
                     f.centroid_x = sum_x / static_cast<double>(count);
                     f.centroid_y = sum_y / static_cast<double>(count);
@@ -320,7 +354,8 @@ private:
 
     void send_goal(double x, double y)
     {
-        if (!_action_client->wait_for_action_server(std::chrono::seconds(2))) {
+        if (!_action_client->wait_for_action_server(std::chrono::seconds(2)))
+        {
             RCLCPP_WARN(get_logger(), "/navigate_to_pose action server not available");
             return;
         }
@@ -328,7 +363,8 @@ private:
         // Aim the goal heading towards the frontier (from the robot's current position).
         geometry_msgs::msg::Point robot;
         double yaw = 0.0;
-        if (get_robot_position(robot)) {
+        if (get_robot_position(robot))
+        {
             yaw = std::atan2(y - robot.y, x - robot.x);
         }
 
@@ -343,38 +379,42 @@ private:
 
         rclcpp_action::Client<NavigateToPose>::SendGoalOptions opts;
         opts.goal_response_callback =
-            [this](GoalHandleNav::SharedPtr handle) {
-                if (!handle) {
-                    RCLCPP_WARN(get_logger(), "Goal rejected by Nav2 — blacklisting");
-                    _blacklist.push_back(_current_goal_point);
-                    _has_active_goal = false;
-                    return;
-                }
-                _active_goal = handle;
-                RCLCPP_INFO(get_logger(), "Goal accepted (%.2f, %.2f)",
-                            _current_goal_point.x, _current_goal_point.y);
-            };
-        opts.result_callback =
-            [this](const GoalHandleNav::WrappedResult& result) {
-                switch (result.code) {
-                    case rclcpp_action::ResultCode::SUCCEEDED:
-                        RCLCPP_INFO(get_logger(), "Reached frontier (%.2f, %.2f)",
-                                    _current_goal_point.x, _current_goal_point.y);
-                        break;
-                    case rclcpp_action::ResultCode::ABORTED:
-                        RCLCPP_WARN(get_logger(), "Goal aborted — blacklisting");
-                        _blacklist.push_back(_current_goal_point);
-                        break;
-                    case rclcpp_action::ResultCode::CANCELED:
-                        RCLCPP_INFO(get_logger(), "Goal cancelled");
-                        break;
-                    default:
-                        RCLCPP_WARN(get_logger(), "Goal ended with unknown code");
-                        _blacklist.push_back(_current_goal_point);
-                }
+            [this](GoalHandleNav::SharedPtr handle)
+        {
+            if (!handle)
+            {
+                RCLCPP_WARN(get_logger(), "Goal rejected by Nav2 — blacklisting");
+                _blacklist.push_back(_current_goal_point);
                 _has_active_goal = false;
-                _active_goal.reset();
-            };
+                return;
+            }
+            _active_goal = handle;
+            RCLCPP_INFO(get_logger(), "Goal accepted (%.2f, %.2f)",
+                        _current_goal_point.x, _current_goal_point.y);
+        };
+        opts.result_callback =
+            [this](const GoalHandleNav::WrappedResult& result)
+        {
+            switch (result.code)
+            {
+            case rclcpp_action::ResultCode::SUCCEEDED:
+                RCLCPP_INFO(get_logger(), "Reached frontier (%.2f, %.2f)",
+                            _current_goal_point.x, _current_goal_point.y);
+                break;
+            case rclcpp_action::ResultCode::ABORTED:
+                RCLCPP_WARN(get_logger(), "Goal aborted — blacklisting");
+                _blacklist.push_back(_current_goal_point);
+                break;
+            case rclcpp_action::ResultCode::CANCELED:
+                RCLCPP_INFO(get_logger(), "Goal cancelled");
+                break;
+            default:
+                RCLCPP_WARN(get_logger(), "Goal ended with unknown code");
+                _blacklist.push_back(_current_goal_point);
+            }
+            _has_active_goal = false;
+            _active_goal.reset();
+        };
 
         _current_goal_point.x = x;
         _current_goal_point.y = y;
@@ -396,7 +436,8 @@ private:
         arr.markers.push_back(clear);
 
         int id = 0;
-        for (const auto& f : frontiers) {
+        for (const auto& f : frontiers)
+        {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = _global_frame;
             m.header.stamp = now();

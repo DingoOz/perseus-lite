@@ -56,9 +56,8 @@ target_include_directories(
 # ── cube_color_detector ───────────────────────────────────────────────────────
 # HSV-based 100mm coloured-cube detector (Red/Blue/Green/White). Mirrors the
 # aruco_detector pattern — pure OpenCV, no ONNX dependency.
-add_executable(
-  cube_color_detector_node src/cube_color_detector.cpp
-                           src/cube_color_detector_node.cpp)
+add_executable(cube_color_detector_node src/cube_color_detector.cpp
+                                        src/cube_color_detector_node.cpp)
 
 ament_target_dependencies(
   cube_color_detector_node

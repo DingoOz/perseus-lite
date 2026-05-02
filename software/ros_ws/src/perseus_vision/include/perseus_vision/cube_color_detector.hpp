@@ -127,11 +127,11 @@ namespace perseus_vision
         // -------------------------
         // Parameters
         // -------------------------
-        double cube_size_{0.10};        // Cube edge length in metres (100 mm default).
-        double axis_length_{0.05};      // Drawn axis length on the annotated image.
+        double cube_size_{0.10};    // Cube edge length in metres (100 mm default).
+        double axis_length_{0.05};  // Drawn axis length on the annotated image.
         double min_contour_area_{300.0};
-        double max_aspect_ratio_{1.6};  // Reject elongated blobs (face should be near-square).
-        double min_face_solidity_{0.85}; // contour_area / convex_hull_area; rejects spiky blobs.
+        double max_aspect_ratio_{1.6};    // Reject elongated blobs (face should be near-square).
+        double min_face_solidity_{0.85};  // contour_area / convex_hull_area; rejects spiky blobs.
 
         std::string camera_frame_{"camera_optical_frame"};
         std::string tf_output_frame_{"odom"};

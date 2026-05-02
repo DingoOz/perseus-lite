@@ -173,22 +173,22 @@ ros2 run v4l2_camera v4l2_camera_node \
 
 ### Topics, TF, and service
 
-| Resource                                  | Type                                    | Notes |
-| ----------------------------------------- | --------------------------------------- | ----- |
-| `/perseus_vision/cube_color/detections`   | `perseus_interfaces/ObjectDetections`   | `ids[i]` is the colour code below |
-| `/perseus_vision/cube_color/markers`      | `visualization_msgs/MarkerArray`        | RViz `CUBE` markers, coloured + labelled |
-| `/perseus_vision/cube_color/image`        | `sensor_msgs/Image`                     | Annotated debug stream (drawn quads + axes) |
-| TF: `cube_<colour>_<index>`               | broadcast in `tf_output_frame` (`odom`) | One frame per detection per tick |
-| `/detect_cubes`                           | `perseus_interfaces/DetectObjects`      | Service: returns latest cached detections; `capture_image:=true` saves an annotated PNG to `img_save_path` |
+| Resource                                | Type                                    | Notes                                                                                                      |
+| --------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `/perseus_vision/cube_color/detections` | `perseus_interfaces/ObjectDetections`   | `ids[i]` is the colour code below                                                                          |
+| `/perseus_vision/cube_color/markers`    | `visualization_msgs/MarkerArray`        | RViz `CUBE` markers, coloured + labelled                                                                   |
+| `/perseus_vision/cube_color/image`      | `sensor_msgs/Image`                     | Annotated debug stream (drawn quads + axes)                                                                |
+| TF: `cube_<colour>_<index>`             | broadcast in `tf_output_frame` (`odom`) | One frame per detection per tick                                                                           |
+| `/detect_cubes`                         | `perseus_interfaces/DetectObjects`      | Service: returns latest cached detections; `capture_image:=true` saves an annotated PNG to `img_save_path` |
 
 Detection ID encoding (matches the existing ML `cube_detector`):
 
-| ID | Colour |
-| -- | ------ |
-| 0  | blue   |
-| 1  | green  |
-| 2  | red    |
-| 3  | white  |
+| ID  | Colour |
+| --- | ------ |
+| 0   | blue   |
+| 1   | green  |
+| 2   | red    |
+| 3   | white  |
 
 ### Inspect detections
 
@@ -213,8 +213,8 @@ points for indoor LED light. To tune for your cubes/lighting, edit the
 `hsv_<colour>` arrays — OpenCV scale (`H ∈ [0,180]`, `S/V ∈ [0,255]`):
 
 ```yaml
-hsv_blue:  [h_low, h_high, s_low, s_high, v_low, v_high]
-hsv_red:   [h_low1, h_high1, s_low, s_high, v_low, v_high, h_low2, h_high2]
+hsv_blue: [h_low, h_high, s_low, s_high, v_low, v_high]
+hsv_red: [h_low1, h_high1, s_low, s_high, v_low, v_high, h_low2, h_high2]
 ```
 
 Red is the only colour that needs the optional 7th/8th elements (the hue

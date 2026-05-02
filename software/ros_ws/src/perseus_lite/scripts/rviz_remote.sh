@@ -23,17 +23,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_RVIZ="${SCRIPT_DIR}/../rviz/nav2.rviz"
 
 RVIZ_ARGS=()
-if [[ $# -eq 0 && -f "${DEFAULT_RVIZ}" ]]; then
-    RVIZ_ARGS=(-d "${DEFAULT_RVIZ}")
+if [[ $# -eq 0 && -f ${DEFAULT_RVIZ} ]]; then
+  RVIZ_ARGS=(-d "${DEFAULT_RVIZ}")
 else
-    RVIZ_ARGS=("$@")
+  RVIZ_ARGS=("$@")
 fi
 
 ros2 daemon stop >/dev/null 2>&1 || true
 ros2 daemon start >/dev/null 2>&1 || true
 
-if [[ "${USE_NIXGL:-0}" == "1" ]]; then
-    exec nixgl rviz2 "${RVIZ_ARGS[@]}"
+if [[ ${USE_NIXGL:-0} == "1" ]]; then
+  exec nixgl rviz2 "${RVIZ_ARGS[@]}"
 else
-    exec rviz2 "${RVIZ_ARGS[@]}"
+  exec rviz2 "${RVIZ_ARGS[@]}"
 fi

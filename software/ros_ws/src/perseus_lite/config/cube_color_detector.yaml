@@ -8,39 +8,33 @@ cube_color_detector:
     min_contour_area: 200.0
     max_aspect_ratio: 1.6
     min_face_solidity: 0.85
-
     # Camera optical frame from perseus_lite_description/urdf/sensors.urdf.xacro.
     camera_frame: camera_optical_frame
     # Same rationale as aruco_detector: publish in odom (~50 Hz TF) so per-image
     # lookups don't hit "extrapolation into the future" against the slower
     # SLAM map frame. RViz with Fixed Frame=map still renders correctly.
     tf_output_frame: odom
-
     # v4l2_camera_node publishes at the root namespace.
     input_img: /image_raw
     output_img: /perseus_vision/cube_color/image
     output_topic: /perseus_vision/cube_color/detections
     output_markers_topic: /perseus_vision/cube_color/markers
     camera_info_topic: /camera_info
-
     publish_tf: true
     publish_img: true
     compressed_io: false
     use_camera_info: true
     publish_output: true
-
     enabled_colors: ["red", "blue", "green", "white"]
-
     # HSV bands. OpenCV scale: H in [0, 180], S/V in [0, 255].
     # Tune these against your actual cubes + lighting; defaults are conservative
     # starting points for indoor LED light. Use rqt_image_view on the
     # /perseus_vision/cube_color/image topic to verify.
-    hsv_blue:  [100, 130,  90, 255,  60, 255]
-    hsv_green: [ 40,  85,  70, 255,  50, 255]
+    hsv_blue: [100, 130, 90, 255, 60, 255]
+    hsv_green: [40, 85, 70, 255, 50, 255]
     # Red wraps the hue circle: optional 7th/8th values give the second band.
-    hsv_red:   [  0,  10, 110, 255,  70, 255, 170, 180]
-    hsv_white: [  0, 180,   0,  45, 200, 255]
-
+    hsv_red: [0, 10, 110, 255, 70, 255, 170, 180]
+    hsv_white: [0, 180, 0, 45, 200, 255]
     # C920 nominal intrinsics scaled to 320x240, matching aruco_detector.yaml.
     # Ignored if camera_info publishes a real K; the detector reverts to these
     # only when v4l2_camera publishes the all-zero uncalibrated CameraInfo.

@@ -145,7 +145,9 @@ def _render_hud(pitch_deg, roll_deg, yaw_rate, velocity):
         half_w = 4  # half-width of ladder line in chars
 
         # Dashed line segments
-        dash_char = "\u2500" if angle < 0 else "\u2504"  # ─ solid for nose up, ┄ dashed for nose down
+        dash_char = (
+            "\u2500" if angle < 0 else "\u2504"
+        )  # ─ solid for nose up, ┄ dashed for nose down
         for dc in range(-half_w, half_w + 1):
             c = _HUD_CX + dc
             # Apply roll tilt
@@ -163,8 +165,10 @@ def _render_hud(pitch_deg, roll_deg, yaw_rate, velocity):
                     color[r][c] = 12
 
         # Labels on each side
-        for lc, txt in [(_HUD_CX - half_w - len(label) - 1, label),
-                        (_HUD_CX + half_w + 2, label)]:
+        for lc, txt in [
+            (_HUD_CX - half_w - len(label) - 1, label),
+            (_HUD_CX + half_w + 2, label),
+        ]:
             for i, ch in enumerate(txt):
                 c = lc + i
                 if inner_left <= c <= inner_right:
@@ -176,7 +180,13 @@ def _render_hud(pitch_deg, roll_deg, yaw_rate, velocity):
 
     # --- Boresight / Flight Path Marker (always at centre) ---
     # Classic F-16 FPM:  -◇-
-    fpm_chars = [("\u25c1", 13), ("\u2500", 13), ("\u25c7", 14), ("\u2500", 13), ("\u25b7", 13)]
+    fpm_chars = [
+        ("\u25c1", 13),
+        ("\u2500", 13),
+        ("\u25c7", 14),
+        ("\u2500", 13),
+        ("\u25b7", 13),
+    ]
     for i, (ch, col) in enumerate(fpm_chars):
         c = _HUD_CX - 2 + i
         if inner_left <= c <= inner_right:
@@ -238,7 +248,9 @@ class ImuFilterTuiNode(Node):
         self._cal_stddev = [0.0, 0.0, 0.0]
         self._deadband = self.get_parameter("gyro_deadband").value
         self._stationary_vx_thresh = self.get_parameter("stationary_vx_thresh").value
-        self._stationary_vyaw_thresh = self.get_parameter("stationary_vyaw_thresh").value
+        self._stationary_vyaw_thresh = self.get_parameter(
+            "stationary_vyaw_thresh"
+        ).value
 
         # Latest values for TUI
         self._raw_gyro = [0.0, 0.0, 0.0]
@@ -309,7 +321,9 @@ class ImuFilterTuiNode(Node):
             # Derive pitch/roll from accelerometer
             g_mag = math.sqrt(ax * ax + ay * ay + az * az)
             if g_mag > 0.1:
-                self._pitch_deg = math.degrees(math.atan2(-ax, math.sqrt(ay * ay + az * az)))
+                self._pitch_deg = math.degrees(
+                    math.atan2(-ax, math.sqrt(ay * ay + az * az))
+                )
                 self._roll_deg = math.degrees(math.atan2(ay, az))
 
             # Rate calculation
@@ -438,7 +452,9 @@ class ImuFilterTuiNode(Node):
 
     def adjust_stationary_vyaw(self, delta):
         with self._lock:
-            self._stationary_vyaw_thresh = max(0.0, self._stationary_vyaw_thresh + delta)
+            self._stationary_vyaw_thresh = max(
+                0.0, self._stationary_vyaw_thresh + delta
+            )
 
     def recalibrate(self):
         with self._lock:
@@ -459,7 +475,9 @@ class ImuFilterTuiNode(Node):
                         "gyro_bias_z": round(self._bias[2], 8),
                         "gyro_deadband": round(self._deadband, 8),
                         "stationary_vx_thresh": round(self._stationary_vx_thresh, 6),
-                        "stationary_vyaw_thresh": round(self._stationary_vyaw_thresh, 6),
+                        "stationary_vyaw_thresh": round(
+                            self._stationary_vyaw_thresh, 6
+                        ),
                     }
                 }
             }
@@ -514,6 +532,7 @@ class ImuFilterTuiNode(Node):
 # TUI drawing
 # ──────────────────────────────────────────────────────────────
 
+
 def _draw_tui(stdscr, node: ImuFilterTuiNode):
     """Main curses draw loop with interactive tuning and HUD."""
     curses.curs_set(0)
@@ -522,22 +541,22 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
     curses.start_color()
     curses.use_default_colors()
     # Data panel colors
-    curses.init_pair(1, curses.COLOR_GREEN, -1)     # filtered/good
-    curses.init_pair(2, curses.COLOR_YELLOW, -1)    # bias applied / sparkline
-    curses.init_pair(3, curses.COLOR_RED, -1)        # calibrating
-    curses.init_pair(4, curses.COLOR_CYAN, -1)       # static zeroing
-    curses.init_pair(5, curses.COLOR_WHITE, -1)      # normal text
-    curses.init_pair(6, curses.COLOR_MAGENTA, -1)    # deadband
+    curses.init_pair(1, curses.COLOR_GREEN, -1)  # filtered/good
+    curses.init_pair(2, curses.COLOR_YELLOW, -1)  # bias applied / sparkline
+    curses.init_pair(3, curses.COLOR_RED, -1)  # calibrating
+    curses.init_pair(4, curses.COLOR_CYAN, -1)  # static zeroing
+    curses.init_pair(5, curses.COLOR_WHITE, -1)  # normal text
+    curses.init_pair(6, curses.COLOR_MAGENTA, -1)  # deadband
     curses.init_pair(7, curses.COLOR_BLACK, curses.COLOR_CYAN)  # edit selection
     # HUD colors
-    curses.init_pair(10, curses.COLOR_GREEN, -1)     # HUD border
-    curses.init_pair(11, curses.COLOR_GREEN, -1)     # horizon line
-    curses.init_pair(12, curses.COLOR_YELLOW, -1)    # pitch ladder
-    curses.init_pair(13, curses.COLOR_GREEN, -1)     # FPM wings
-    curses.init_pair(14, curses.COLOR_WHITE, -1)     # FPM diamond
-    curses.init_pair(15, curses.COLOR_GREEN, -1)     # readouts in HUD
-    curses.init_pair(16, curses.COLOR_CYAN, -1)      # yaw tape
-    curses.init_pair(17, curses.COLOR_GREEN, -1)     # velocity bar
+    curses.init_pair(10, curses.COLOR_GREEN, -1)  # HUD border
+    curses.init_pair(11, curses.COLOR_GREEN, -1)  # horizon line
+    curses.init_pair(12, curses.COLOR_YELLOW, -1)  # pitch ladder
+    curses.init_pair(13, curses.COLOR_GREEN, -1)  # FPM wings
+    curses.init_pair(14, curses.COLOR_WHITE, -1)  # FPM diamond
+    curses.init_pair(15, curses.COLOR_GREEN, -1)  # readouts in HUD
+    curses.init_pair(16, curses.COLOR_CYAN, -1)  # yaw tape
+    curses.init_pair(17, curses.COLOR_GREEN, -1)  # velocity bar
 
     SPARK_W = 28
 
@@ -607,7 +626,9 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         mode_str = " [EDIT] " if edit_mode else " [AUTO] "
         bar_len = max(0, (w - len(title) - len(mode_str)) // 2)
         bar = "\u2550" * bar_len
-        safe(row, 0, f"{bar}{title}{mode_str}{bar}", curses.A_BOLD | curses.color_pair(1))
+        safe(
+            row, 0, f"{bar}{title}{mode_str}{bar}", curses.A_BOLD | curses.color_pair(1)
+        )
         row += 1
 
         # Transient status
@@ -621,8 +642,12 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
             blen = 20
             filled = int(s["cal_progress"] * blen)
             prog = "\u2588" * filled + "\u2591" * (blen - filled)
-            safe(row, 0, f" Status: CALIBRATING [{prog}] {pct}%  Keep robot still!",
-                 curses.color_pair(3) | curses.A_BOLD)
+            safe(
+                row,
+                0,
+                f" Status: CALIBRATING [{prog}] {pct}%  Keep robot still!",
+                curses.color_pair(3) | curses.A_BOLD,
+            )
         else:
             stat_str = "YES" if s["stationary"] else "NO"
             sc = curses.color_pair(4) if s["stationary"] else curses.color_pair(1)
@@ -633,35 +658,65 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         # ── Tunable Parameters ──
         safe(row, 0, " Tunable Parameters", curses.A_BOLD | curses.A_UNDERLINE)
         if edit_mode:
-            safe(row, 22, " [\u2190\u2191\u2192\u2193 adjust, [/] 10x]", curses.color_pair(2))
+            safe(
+                row,
+                22,
+                " [\u2190\u2191\u2192\u2193 adjust, [/] 10x]",
+                curses.color_pair(2),
+            )
         row += 1
 
         tunable_values = [
-            s["bias"][0], s["bias"][1], s["bias"][2],
-            s["deadband"], s["stationary_vx_thresh"], s["stationary_vyaw_thresh"],
+            s["bias"][0],
+            s["bias"][1],
+            s["bias"][2],
+            s["deadband"],
+            s["stationary_vx_thresh"],
+            s["stationary_vyaw_thresh"],
         ]
         tunable_labels = [
-            "Bias X", "Bias Y", "Bias Z", "Deadband", "Stat. Vx", "Stat. Vyaw",
+            "Bias X",
+            "Bias Y",
+            "Bias Z",
+            "Deadband",
+            "Stat. Vx",
+            "Stat. Vyaw",
         ]
         tunable_fmts = ["{:+.6f}"] * 3 + ["{:.6f}", "{:.4f}", "{:.4f}"]
 
-        for i, (label, val, fmt) in enumerate(zip(tunable_labels, tunable_values, tunable_fmts)):
+        for i, (label, val, fmt) in enumerate(
+            zip(tunable_labels, tunable_values, tunable_fmts)
+        ):
             marker = " \u25b6 " if (edit_mode and i == selected_row) else "   "
-            attr = curses.color_pair(7) | curses.A_BOLD if (edit_mode and i == selected_row) else curses.color_pair(5)
-            step_str = f" \u00b1{_TUNABLES[i][1]}" if (edit_mode and i == selected_row) else ""
+            attr = (
+                curses.color_pair(7) | curses.A_BOLD
+                if (edit_mode and i == selected_row)
+                else curses.color_pair(5)
+            )
+            step_str = (
+                f" \u00b1{_TUNABLES[i][1]}" if (edit_mode and i == selected_row) else ""
+            )
             safe(row, 0, f"{marker}{label:>10s}: {fmt.format(val)}{step_str}", attr)
             row += 1
 
         sx, sy, sz = s["stddev"]
-        safe(row, 0, f"    \u03c3: x={sx:.6f} y={sy:.6f} z={sz:.6f}",
-             curses.color_pair(5) | curses.A_DIM)
+        safe(
+            row,
+            0,
+            f"    \u03c3: x={sx:.6f} y={sy:.6f} z={sz:.6f}",
+            curses.color_pair(5) | curses.A_DIM,
+        )
         row += 2
 
         # ── Angular Velocity ──
         safe(row, 0, " Angular Velocity (rad/s)", curses.A_BOLD | curses.A_UNDERLINE)
         row += 1
-        safe(row, 0, "         Raw        Filtered    Filter  Sparkline",
-             curses.color_pair(5) | curses.A_DIM)
+        safe(
+            row,
+            0,
+            "         Raw        Filtered    Filter  Sparkline",
+            curses.color_pair(5) | curses.A_DIM,
+        )
         row += 1
 
         axis_names = ["Gx", "Gy", "Gz"]
@@ -681,8 +736,12 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         for i in range(3):
             lc = _FILTER_COLORS.get(flabels[i], curses.color_pair(5))
             spark = _sparkline(raw_hists[i], min(SPARK_W, data_w - 48))
-            safe(row, 0, f" {axis_names[i]}: {raw_g[i]:+9.6f} \u2192 {flt_g[i]:+9.6f}",
-                 curses.color_pair(5))
+            safe(
+                row,
+                0,
+                f" {axis_names[i]}: {raw_g[i]:+9.6f} \u2192 {flt_g[i]:+9.6f}",
+                curses.color_pair(5),
+            )
             safe(row, 35, f"[{flabels[i]:^7s}]", lc)
             safe(row, 45, spark, curses.color_pair(2))
             row += 1
@@ -708,7 +767,7 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         for i in range(3):
             spark = _sparkline(ahists[i], min(SPARK_W, data_w - 48))
             safe(row, 0, f" {accel_names[i]}: {raw_a[i]:+9.4f}", curses.color_pair(5))
-            safe(row, 35, f"[ PASS  ]", curses.color_pair(1))
+            safe(row, 35, "[ PASS  ]", curses.color_pair(1))
             safe(row, 45, spark, curses.color_pair(5))
             row += 1
 
@@ -718,20 +777,26 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         safe(row, 0, " Odometry", curses.A_BOLD | curses.A_UNDERLINE)
         row += 1
         sc = curses.color_pair(4) if s["stationary"] else curses.color_pair(5)
-        safe(row, 0,
-             f" Vx:{s['odom_vx']:+.3f}  Vyaw:{s['odom_vyaw']:+.3f}  "
-             f"Stopped:{'YES' if s['stationary'] else 'NO'}",
-             sc)
+        safe(
+            row,
+            0,
+            f" Vx:{s['odom_vx']:+.3f}  Vyaw:{s['odom_vyaw']:+.3f}  "
+            f"Stopped:{'YES' if s['stationary'] else 'NO'}",
+            sc,
+        )
         row += 1
-        safe(row, 0,
-             f" IMU: {s['imu_rate']:.0f}Hz  N={s['imu_count']}  Pub: /imu/data_filtered",
-             curses.color_pair(5) | curses.A_DIM)
+        safe(
+            row,
+            0,
+            f" IMU: {s['imu_rate']:.0f}Hz  N={s['imu_count']}  Pub: /imu/data_filtered",
+            curses.color_pair(5) | curses.A_DIM,
+        )
         row += 2
 
         # ── Keybindings ──
         safe(row, 0, " Keys:", curses.A_BOLD)
         row += 1
-        binds = "  e:edit  c:recal  s:save  q:quit"
+        binds = "  e:edit  c:recall  s:save  q:quit"
         if edit_mode:
             binds = "  \u2190\u2191\u2192\u2193:tune  []:10x  " + binds
         safe(row, 0, binds, curses.color_pair(5) | curses.A_DIM)
@@ -741,7 +806,8 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
         # ══════════════════════════════════════════════════════
         if w >= hud_col + _HUD_W:
             hud_rows, hud_colors, _, _, _, _ = _render_hud(
-                s["pitch_deg"], s["roll_deg"],
+                s["pitch_deg"],
+                s["roll_deg"],
                 s["filt_gyro"][2],  # yaw rate = filtered gyro Z
                 s["odom_vx"],
             )
@@ -789,14 +855,28 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
                 tape[needle_pos] = "\u25c6"  # ◆ needle
 
                 safe(yr, hud_col + 2, "".join(tape), curses.color_pair(16))
-                safe(yr, hud_col + 2 + tape_w + 1, f"{yaw_rate:+.3f} r/s",
-                     curses.color_pair(16) | curses.A_BOLD)
+                safe(
+                    yr,
+                    hud_col + 2 + tape_w + 1,
+                    f"{yaw_rate:+.3f} r/s",
+                    curses.color_pair(16) | curses.A_BOLD,
+                )
                 yr += 1
 
                 # Left/Right labels
                 safe(yr, hud_col + 2, "L", curses.color_pair(16) | curses.A_DIM)
-                safe(yr, hud_col + 2 + tape_mid, "\u2502", curses.color_pair(16) | curses.A_DIM)
-                safe(yr, hud_col + 2 + tape_w - 1, "R", curses.color_pair(16) | curses.A_DIM)
+                safe(
+                    yr,
+                    hud_col + 2 + tape_mid,
+                    "\u2502",
+                    curses.color_pair(16) | curses.A_DIM,
+                )
+                safe(
+                    yr,
+                    hud_col + 2 + tape_w - 1,
+                    "R",
+                    curses.color_pair(16) | curses.A_DIM,
+                )
                 yr += 1
 
             # ── Velocity bar below yaw tape ──
@@ -810,8 +890,12 @@ def _draw_tui(stdscr, node: ImuFilterTuiNode):
                 arrow = "\u25b6" if vel >= 0 else "\u25c0"
                 bar_str = "\u2588" * filled + "\u2591" * (bar_w - filled)
                 safe(yr, hud_col + 2, f"{arrow}{bar_str}", curses.color_pair(17))
-                safe(yr, hud_col + 2 + bar_w + 2, f"{vel:+.3f} m/s",
-                     curses.color_pair(17) | curses.A_BOLD)
+                safe(
+                    yr,
+                    hud_col + 2 + bar_w + 2,
+                    f"{vel:+.3f} m/s",
+                    curses.color_pair(17) | curses.A_BOLD,
+                )
 
         stdscr.refresh()
         time.sleep(0.1)

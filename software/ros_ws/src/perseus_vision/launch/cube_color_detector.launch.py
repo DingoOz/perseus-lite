@@ -9,9 +9,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     perseus_vision_dir = get_package_share_directory("perseus_vision")
-    config_file = os.path.join(
-        perseus_vision_dir, "config", "cube_color_detector.yaml"
-    )
+    config_file = os.path.join(perseus_vision_dir, "config", "cube_color_detector.yaml")
 
     return LaunchDescription(
         [

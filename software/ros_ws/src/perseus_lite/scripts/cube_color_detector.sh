@@ -37,15 +37,15 @@ export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 export CYCLONEDDS_URI="${CYCLONEDDS_URI:-<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>120</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WS_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"   # .../software/ros_ws
+WS_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)" # .../software/ros_ws
 SETUP="${WS_DIR}/install/setup.bash"
 
-if [[ ! -f "${SETUP}" ]]; then
-    echo "ERROR: ${SETUP} not found." >&2
-    echo "Build the workspace first:" >&2
-    echo "    cd ${WS_DIR}" >&2
-    echo "    colcon build --packages-select perseus_interfaces perseus_vision perseus_lite --symlink-install" >&2
-    exit 1
+if [[ ! -f ${SETUP} ]]; then
+  echo "ERROR: ${SETUP} not found." >&2
+  echo "Build the workspace first:" >&2
+  echo "    cd ${WS_DIR}" >&2
+  echo "    colcon build --packages-select perseus_interfaces perseus_vision perseus_lite --symlink-install" >&2
+  exit 1
 fi
 
 # colcon's generated setup.bash references COLCON_TRACE without checking

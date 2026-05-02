@@ -252,10 +252,12 @@ def generate_launch_description():
     cyclonedds_xml = os.path.join(
         get_package_share_directory("perseus_lite"), "config", "cyclonedds.xml"
     )
-    cyclonedds_uri = SetEnvironmentVariable(
-        "CYCLONEDDS_URI", cyclonedds_xml
-    ) if os.path.isfile(cyclonedds_xml) else LogInfo(
-        msg="cyclonedds.xml not found in install — set CYCLONEDDS_URI manually if needed"
+    cyclonedds_uri = (
+        SetEnvironmentVariable("CYCLONEDDS_URI", cyclonedds_xml)
+        if os.path.isfile(cyclonedds_xml)
+        else LogInfo(
+            msg="cyclonedds.xml not found in install — set CYCLONEDDS_URI manually if needed"
+        )
     )
 
     # Nav2 nodes (non-composable)
@@ -515,8 +517,7 @@ def generate_launch_description():
             os.path.dirname(__file__), "..", "scripts", "scan_range_filter.py"
         )
     scan_range_filter = ExecuteProcess(
-        cmd=["python3", scan_filter_script,
-             "--ros-args", "-p", "min_range:=0.5"],
+        cmd=["python3", scan_filter_script, "--ros-args", "-p", "min_range:=0.5"],
         output="screen",
     )
 

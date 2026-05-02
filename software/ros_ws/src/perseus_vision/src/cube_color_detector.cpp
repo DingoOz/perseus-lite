@@ -68,10 +68,14 @@ namespace perseus_vision
     {
         switch (color)
         {
-            case CubeColor::BLUE:  return "blue";
-            case CubeColor::GREEN: return "green";
-            case CubeColor::RED:   return "red";
-            case CubeColor::WHITE: return "white";
+        case CubeColor::BLUE:
+            return "blue";
+        case CubeColor::GREEN:
+            return "green";
+        case CubeColor::RED:
+            return "red";
+        case CubeColor::WHITE:
+            return "white";
         }
         return "unknown";
     }
@@ -81,10 +85,14 @@ namespace perseus_vision
         // BGR for OpenCV drawing.
         switch (color)
         {
-            case CubeColor::BLUE:  return cv::Scalar(255, 80, 0);
-            case CubeColor::GREEN: return cv::Scalar(0, 220, 0);
-            case CubeColor::RED:   return cv::Scalar(0, 0, 255);
-            case CubeColor::WHITE: return cv::Scalar(240, 240, 240);
+        case CubeColor::BLUE:
+            return cv::Scalar(255, 80, 0);
+        case CubeColor::GREEN:
+            return cv::Scalar(0, 220, 0);
+        case CubeColor::RED:
+            return cv::Scalar(0, 0, 255);
+        case CubeColor::WHITE:
+            return cv::Scalar(240, 240, 240);
         }
         return cv::Scalar(200, 200, 200);
     }
@@ -124,10 +132,10 @@ namespace perseus_vision
         // Per-colour HSV thresholds (OpenCV scale: H in [0,180], S/V in [0,255])
         // -------------------------
         // Defaults are conservative starting points for indoor light; tune via YAML.
-        const HsvRange blue_default  {100, 130,  90,  255,  60, 255, -1, -1};
-        const HsvRange green_default { 40,  85,  70,  255,  50, 255, -1, -1};
-        const HsvRange red_default   {  0,  10, 110,  255,  70, 255, 170, 180};
-        const HsvRange white_default {  0, 180,   0,   45, 200, 255, -1, -1};
+        const HsvRange blue_default{100, 130, 90, 255, 60, 255, -1, -1};
+        const HsvRange green_default{40, 85, 70, 255, 50, 255, -1, -1};
+        const HsvRange red_default{0, 10, 110, 255, 70, 255, 170, 180};
+        const HsvRange white_default{0, 180, 0, 45, 200, 255, -1, -1};
 
         hsv_ranges_[static_cast<size_t>(CubeColor::BLUE)] = parse_hsv_range(
             this->declare_parameter<std::vector<int64_t>>(
@@ -353,10 +361,26 @@ namespace perseus_vision
         {
             double s = static_cast<double>(p.x) + static_cast<double>(p.y);
             double d = static_cast<double>(p.y) - static_cast<double>(p.x);
-            if (s < min_sum) { min_sum = s; ordered[0] = cv::Point2f(p.x, p.y); }      // TL
-            if (s > max_sum) { max_sum = s; ordered[2] = cv::Point2f(p.x, p.y); }      // BR
-            if (d < min_diff) { min_diff = d; ordered[1] = cv::Point2f(p.x, p.y); }    // TR
-            if (d > max_diff) { max_diff = d; ordered[3] = cv::Point2f(p.x, p.y); }    // BL
+            if (s < min_sum)
+            {
+                min_sum = s;
+                ordered[0] = cv::Point2f(p.x, p.y);
+            }  // TL
+            if (s > max_sum)
+            {
+                max_sum = s;
+                ordered[2] = cv::Point2f(p.x, p.y);
+            }  // BR
+            if (d < min_diff)
+            {
+                min_diff = d;
+                ordered[1] = cv::Point2f(p.x, p.y);
+            }  // TR
+            if (d > max_diff)
+            {
+                max_diff = d;
+                ordered[3] = cv::Point2f(p.x, p.y);
+            }  // BL
         }
         return ordered;
     }
@@ -434,9 +458,9 @@ namespace perseus_vision
         // Cube face object points (face on z=0, +Z normal toward camera).
         const float half = static_cast<float>(cube_size_) / 2.0f;
         const std::vector<cv::Point3f> obj_points = {
-            cv::Point3f(-half,  half, 0.0f),  // TL
-            cv::Point3f( half,  half, 0.0f),  // TR
-            cv::Point3f( half, -half, 0.0f),  // BR
+            cv::Point3f(-half, half, 0.0f),   // TL
+            cv::Point3f(half, half, 0.0f),    // TR
+            cv::Point3f(half, -half, 0.0f),   // BR
             cv::Point3f(-half, -half, 0.0f),  // BL
         };
         const std::vector<cv::Point2f> img_pts(image_points.begin(), image_points.end());
@@ -721,13 +745,15 @@ namespace perseus_vision
                         std::string ids_str;
                         for (size_t i = 0; i < ids_copy.size(); ++i)
                         {
-                            if (i > 0) ids_str += "_";
+                            if (i > 0)
+                                ids_str += "_";
                             const int32_t code = ids_copy[i];
                             ids_str += (code >= 0 && code < static_cast<int32_t>(kNumColors))
                                            ? color_name(static_cast<CubeColor>(code))
                                            : "unknown";
                         }
-                        if (ids_str.empty()) ids_str = "no_cubes";
+                        if (ids_str.empty())
+                            ids_str = "no_cubes";
 
                         const std::string filename = request->img_save_path + "/cube_color_" +
                                                      ids_str + "_" + std::to_string(epoch_ms) + ".png";
