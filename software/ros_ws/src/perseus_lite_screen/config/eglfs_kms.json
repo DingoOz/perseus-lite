@@ -1,0 +1,12 @@
+{
+  "device": "/dev/dri/card1",
+  "hwcursor": false,
+  "outputs": [
+    {
+      "name": "DP-1",
+      "mode": "1024x600",
+      "physicalWidth": 220,
+      "physicalHeight": 130
+    }
+  ]
+}

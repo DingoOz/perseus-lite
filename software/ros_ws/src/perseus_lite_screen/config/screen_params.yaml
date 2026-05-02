@@ -1,0 +1,13 @@
+/perseus_lite_screen_node:
+  ros__parameters:
+    # Coordinate frames
+    map_frame: "map"
+    base_frame: "base_link"
+    # Topics
+    map_topic: "/map"
+    scan_topic: "/scan_filtered"
+    plan_topic: "/plan"
+    goal_topic: "/goal_pose"
+    # Render scale: how many screen pixels represent one world meter.
+    # 60 px/m on 1024x600 -> ~17 m wide x 10 m tall field of view.
+    pixels_per_meter: 60.0

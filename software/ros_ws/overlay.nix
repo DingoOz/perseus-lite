@@ -47,9 +47,18 @@ let
           };
           /*
             However, for the final output, we want to remove simulation packages,
-            so people don't download gazebo if they don't need to
+            so people don't download gazebo if they don't need to.
+
+            perseus-lite-screen is also excluded: it links Qt6 and the default
+            workspace already includes rviz2-fixed (Qt5). Mixing Qt5 + Qt6 in
+            one workspace closure trips wrapQtAppsHook with "detected mismatched
+            Qt dependencies", aborting the shell-env build. The package is
+            still reachable via `nix build .#pkgs.ros.perseus-lite-screen`.
           */
-          devPackages = builtins.removeAttrs allDevPackages [ "perseus-simulation" ];
+          devPackages = builtins.removeAttrs allDevPackages [
+            "perseus-simulation"
+            "perseus-lite-screen"
+          ];
           # just take the ones we *removed* from devPackages
           simDevPackages = builtins.removeAttrs allDevPackages (builtins.attrNames devPackages);
         in

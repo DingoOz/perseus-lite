@@ -19,6 +19,7 @@ final: prev: {
   perseus-lite-explorer = final.callPackage ./perseus-lite-explorer.nix { };
   perseus-lite-hardware = final.callPackage ./perseus-lite-hardware.nix { };
   perseus-lite-hud = final.callPackage ./perseus-lite-hud.nix { };
+  perseus-lite-screen = final.callPackage ./perseus-lite-screen.nix { };
   perseus-lite-tui = final.callPackage ./perseus-lite-tui.nix { };
   perseus-mapping = final.callPackage ./perseus-mapping.nix { };
   perseus-payloads = final.callPackage ./perseus-payloads.nix { };

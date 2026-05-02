@@ -69,6 +69,11 @@ def generate_launch_description():
             default_value="/cmd_vel",
             description="Topic name for cmd_vel commands (use /joy_vel for xbox controller compatibility)",
         ),
+        DeclareLaunchArgument(
+            "enable_screen",
+            default_value="True",
+            description="Launch the on-robot 1024x600 Qt EGLFS map display",
+        ),
     ]
 
     # IMPORTED LAUNCH FILES
@@ -249,6 +254,25 @@ def generate_launch_description():
         ),
     )
 
+    # On-robot top-down map display (1024x600 DisplayPort, Qt EGLFS).
+    screen_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("perseus_lite_screen"),
+                        "launch",
+                        "perseus_lite_screen.launch.py",
+                    ]
+                )
+            ]
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+        }.items(),
+        condition=IfCondition(LaunchConfiguration("enable_screen")),
+    )
+
     # Rosbridge WebSocket server (for AndroidRViz / web UI connections on port 9090)
     rosbridge_launch = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
@@ -277,6 +301,7 @@ def generate_launch_description():
         aruco_detector_launch,
         cube_color_detector_launch,
         hud_launch,
+        screen_launch,
         rosbridge_launch,
     ]
 
