@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Kiosk wrapper for perseus_lite_screen on the Jetson DP-1 via Qt EGLFS.
+# Invoked by /etc/systemd/system/perseus-lite-screen.service.
+#
+# Paths under /var/lib/perseus-lite-screen are nix-store symlinks created
+# with `nix build --out-link`, which double as GC roots so the underlying
+# store paths survive nix-collect-garbage. Re-run install-kiosk.sh after
+# any rebuild that bumps the package.
+
+set -eu
+
+ROOT=/var/lib/perseus-lite-screen
+BIN="$ROOT/screen/lib/perseus_lite_screen/perseus_lite_screen"
+KMS_CFG="$ROOT/screen/share/perseus_lite_screen/config/eglfs_kms.json"
+WS="$ROOT/workspace"
+
+# Discover Qt6 plugin dir from the binary's RPATH-resolved libQt6Core.
+QT_LIB=$(ldd "$BIN" | awk '/libQt6Core\.so/{print $3; exit}')
+QT_PLUGINS="${QT_LIB%/*}/qt-6/plugins"
+
+# ROS runtime (rclcpp dlopen's the rmw plugin from AMENT_PREFIX_PATH).
+export AMENT_PREFIX_PATH="$WS"
+export LD_LIBRARY_PATH="$WS/lib:/usr/lib/aarch64-linux-gnu/tegra-egl:/usr/lib/aarch64-linux-gnu/tegra"
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+export RCUTILS_COLORIZED_OUTPUT=0
+
+# Tegra Nvidia EGL driver discovery (libglvnd dispatcher).
+export __EGL_VENDOR_LIBRARY_DIRS=/usr/share/glvnd/egl_vendor.d
+
+# Qt EGLFS via Nvidia EGLStream KMS on /dev/dri/card1.
+export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGINS"
+export QT_QPA_PLATFORM=eglfs
+export QT_QPA_EGLFS_INTEGRATION=eglfs_kms_egldevice
+export QT_QPA_EGLFS_KMS_CONFIG="$KMS_CFG"
+export QT_QPA_EGLFS_HIDECURSOR=1
+
+exec "$BIN" "$@"

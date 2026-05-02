@@ -1,0 +1,21 @@
+[Unit]
+Description=Perseus Lite Qt EGLFS map screen (kiosk on DP-1)
+Documentation=https://github.com/ROAR-QUTRC/perseus-v2
+After=network-online.target
+Wants=network-online.target
+# Don't run while a display manager owns DRM master.
+Conflicts=gdm.service display-manager.service
+
+[Service]
+Type=simple
+# Root needed to acquire DRM master without an active seat session.
+User=root
+ExecStart=/usr/local/bin/perseus-lite-screen-kiosk
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
