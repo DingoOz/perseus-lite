@@ -198,6 +198,17 @@
               type = "app";
               program = "${pkgs.scripts.clean}/bin/clean";
             };
+            # Launch Chocolate Doom on the Jetson Orin Nano with the freely
+            # distributable FreeDoom Phase 1 IWAD. Assumes a screen, keyboard
+            # and speaker are attached. Pass `-iwad /path/to/your.wad` to use
+            # your own IWAD (chocolate-doom honours the last -iwad).
+            doom = {
+              type = "app";
+              program = "${pkgs.writeShellScriptBin "doom" ''
+                exec ${pkgs.chocolate-doom}/bin/chocolate-doom \
+                  -iwad ${pkgs.freedoom}/share/games/doom/freedoom1.wad "$@"
+              ''}/bin/doom";
+            };
           };
         formatter = treefmtEval.config.build.wrapper;
       }
