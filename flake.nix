@@ -208,6 +208,69 @@
             perseus-lite-map-autotune =
               mkRosLaunchApp "perseus-lite-map-autotune" "mapping_autotune"
                 "autotune.launch.py";
+            # Launch Chocolate Doom on the Jetson Orin Nano with the freely
+            # distributable FreeDoom Phase 1 IWAD. Assumes a screen, keyboard
+            # and speaker are attached. Pass `-iwad /path/to/your.wad` to use
+            # your own IWAD (chocolate-doom honours the last -iwad).
+            # The FreeDoom IWAD isn't packaged in the pinned nixpkgs, so we
+            # fetch the upstream release directly.
+            doom =
+              let
+                freedoom = pkgs.fetchzip {
+                  url = "https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip";
+                  sha256 = "0ars45p6rrw7w1rhq800rapsa8zsipdzv2mqasa12mfqhjpizrl9";
+                };
+                # SDL3 (which sdl2-compat wraps) loads its audio backends via
+                # dlopen at runtime. Without an explicit LD_LIBRARY_PATH the
+                # PipeWire/PulseAudio/ALSA shared objects aren't found and
+                # SDL silently falls back to the "dummy" driver — game runs
+                # but produces no sound. Add the runtime libs and force the
+                # PulseAudio driver (PipeWire's pulse compat layer is what
+                # the user session exposes at /run/user/$UID/pulse/native).
+                audioLibs = pkgs.lib.makeLibraryPath [
+                  pkgs.libpulseaudio
+                  pkgs.alsa-lib
+                  pkgs.pipewire
+                ];
+              in
+              {
+                type = "app";
+                program = "${pkgs.writeShellScriptBin "doom" ''
+                  export SDL_AUDIODRIVER="''${SDL_AUDIODRIVER:-pulseaudio}"
+                  export LD_LIBRARY_PATH="${audioLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                  # On the rover the system default sink is the onboard
+                  # analog/HDMI out, but the USB speaker is what we want
+                  # to drive. PULSE_SINK alone isn't enough — PulseAudio's
+                  # module-stream-restore overrides it from the app's saved
+                  # state — so spawn a short-lived watcher that moves new
+                  # chocolate-doom sink-inputs onto the USB sink. Skipped
+                  # if the caller pinned a sink explicitly via PULSE_SINK.
+                  pactl=${pkgs.pulseaudio}/bin/pactl
+                  awk=${pkgs.gawk}/bin/awk
+                  usb_sink=$($pactl list short sinks 2>/dev/null \
+                    | $awk '/\.usb-/ {print $2; exit}')
+                  if [ -n "$usb_sink" ] && [ -z "''${PULSE_SINK:-}" ]; then
+                    export PULSE_SINK="$usb_sink"
+                    (
+                      for _ in $(seq 1 40); do
+                        sleep 0.25
+                        id=$($pactl list sink-inputs 2>/dev/null | $awk '
+                          /^Sink Input #/ {id=$3; sub("#","",id); match_=0; sink=""}
+                          /application\.process\.binary = "chocolate-doom"/ {match_=1}
+                          /^[[:space:]]*Sink: / {sink=$2}
+                          /^$/ && match_ && sink != "TARGET_IDX" {print id; exit}
+                        ')
+                        if [ -n "$id" ]; then
+                          $pactl move-sink-input "$id" "$usb_sink" 2>/dev/null || true
+                          break
+                        fi
+                      done
+                    ) &
+                  fi
+                  exec ${pkgs.chocolate-doom}/bin/chocolate-doom \
+                    -iwad ${freedoom}/freedoom1.wad "$@"
+                ''}/bin/doom";
+              };
           };
         formatter = treefmtEval.config.build.wrapper;
       }
