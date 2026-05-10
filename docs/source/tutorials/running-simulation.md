@@ -1,11 +1,11 @@
 # Running the Gazebo Simulation
 
-This tutorial provides the basic commands needed to run the Perseus rover in Gazebo simulation.
+This tutorial provides the basic commands needed to run the Perseus Lite rover in Gazebo simulation.
 
 ## Prerequisites
 
 - Nix package manager installed
-- Perseus v2 repository cloned locally
+- perseus-lite repository cloned locally
 - Basic familiarity with command line interface
 
 ## Steps
@@ -43,10 +43,10 @@ This sets up the ROS2 environment variables to use the built packages.
 ### 5. Launch the Simulation
 
 ```bash
-ros2 launch perseus_simulation perseus_sim.launch.py
+ros2 launch perseus_lite_simulation perseus_sim.launch.py
 ```
 
-This command launches the Gazebo simulation with the Perseus rover model.
+This command launches the Gazebo simulation with the Perseus Lite rover model.
 
 :::{warning}
 Some simulation environments (e.g. worlds with falling rock obstacles) use external assets hosted online.

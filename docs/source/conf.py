@@ -94,7 +94,7 @@ exhale_args = {
         EXCLUDE_PATTERNS += *.md
         # packages that don't need documentation (most of them)
         # and are problematic to generate docs for (a few of them)
-        EXCLUDE_PATTERNS += */src/perseus_bt_nodes/* */src/perseus_hardware/*
+        EXCLUDE_PATTERNS += */src/perseus_bt_nodes/*
         EXCLUDE_SYMLINKS = YES
 
         BUILTIN_STL_SUPPORT = YES

@@ -7,7 +7,6 @@
   ament-lint-common,
   joint-state-publisher,
   joint-state-publisher-gui,
-  perseus-description,
   robot-state-publisher,
   rviz2,
   urdf,
@@ -28,7 +27,6 @@ buildRosPackage rec {
   propagatedBuildInputs = [
     joint-state-publisher
     joint-state-publisher-gui
-    perseus-description
     robot-state-publisher
     rviz2
     urdf

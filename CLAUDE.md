@@ -26,8 +26,9 @@ The **lite robot** is a smaller, simpler subset of the full perseus-v2 platform:
 - Excavation bucket, elevator module, processing plant, light tower
 - Bespoke perseus-v2 control PCBs (rover-control-board, smol-brain-board)
 
-**Current cleanup state:** Phases 1, 2, and 3 complete on `main`. Phase 4
-not started.
+**Current cleanup state:** All four cleanup phases complete. The fork has
+hard-diverged from upstream — perseus-v2-only packages, firmware, hardware
+designs, and challenge docs are deleted, not just disabled.
 
 ## 2. Repository layout
 
@@ -99,21 +100,21 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 | `packages/{groot2,livox-sdk2,open3d}`                                                      | Nix overlays for autonomy deps                                                                  |
 | `hardware/libraries`, `hardware/templates`                                                 | Shared KiCAD libs                                                                               |
 
-### DISABLED — perseus-v2-only, ignored via `COLCON_IGNORE`
+### REMOVED in Phase 4 — deleted, not in tree
 
-| Package / dir                | Phase | Reason it's v2-only                                                                                |
-| ---------------------------- | ----- | -------------------------------------------------------------------------------------------------- |
-| `perseus`                    | 1     | v2 bringup; assumes mecanum + CAN + VESCs. Lite uses `perseus_lite` instead.                       |
-| `perseus_hardware`           | 1     | `ros2_control` hardware interface for VESCs over CAN. Lite uses `perseus_lite_hardware`.           |
-| `perseus_can_if`             | 1     | CAN payload bridge. Lite has no CAN bus.                                                           |
-| `perseus_payloads`           | 1     | VESC-driven arm/excavator/processing-plant drivers. Lite arm is Feetech (in `arm-teleop-direct`).  |
-| `perseus_simulation`         | 1/3   | Forked to `perseus_lite_simulation` in Phase 3; original kept disabled.                            |
-| `perseus_description`        | 2     | Disabled after Phase 2 mesh migration. Lite no longer references it.                               |
-| `firmware/excavation-bucket` | —     | Excavation arm MCU firmware (not in any default build target).                                     |
-| `firmware/elevator-module`   | —     | Sample-elevator MCU firmware (not in any default build target).                                    |
-| `firmware/light-tower`       | —     | Light-tower MCU firmware (not in any default build target).                                        |
-| `firmware/processing-plant`  | —     | Processing-plant MCU firmware (not in any default build target).                                   |
-| `hardware/dc-motor-driver`   | —     | KiCAD design for v2 DC-motor driver PCB; lite uses Feetech servos.                                 |
+The following were disabled in Phases 1–2 and deleted in Phase 4:
+
+- ROS packages: `perseus`, `perseus_hardware`, `perseus_can_if`,
+  `perseus_payloads`, `perseus_simulation`, `perseus_description`
+- Nix package recipes (`software/ros_ws/nix-packages/`): `perseus.nix`,
+  `perseus-hardware.nix`, `perseus-can-if.nix`, `perseus-payloads.nix`,
+  `perseus-simulation.nix`, `perseus-description.nix`
+- Firmware: `firmware/{excavation-bucket,elevator-module,light-tower,processing-plant}`
+- Hardware: `hardware/dc-motor-driver`
+- Docs: `docs/source/challenge-breakdowns/{excavation-and-construction,space-resources}.md`
+
+To inspect any of these, use `git log -- <path>` or check upstream
+(`ROAR-QUTRC/perseus-v2`) directly.
 
 ### NEEDS WORK — has lite-relevant content but coupled to v2
 
@@ -189,30 +190,34 @@ graph (rsp + controllers + gazebo + rosbridge + twist_mux + ekf + rviz)
 without errors. Actually running Gazebo requires `nix develop .#simulation`
 and a GPU — not validated in this batch.
 
-### Phase 4 — hard-divergence delete (manual approval only)
+### Phase 4 — hard-divergence delete — DONE
 
-Only after the team explicitly decides not to track upstream further:
+Removed all v2-only packages, firmware, hardware designs, and Nix
+recipes (see §4 "REMOVED in Phase 4" for the full list). Also folded
+in two leftovers from earlier phases: `perseus-lite-description.nix`
+no longer declares `perseus-description` as an input (Phase 2
+follow-up), and `perseus-lite-simulation.nix` was created
+(Phase 3 follow-up). GitHub firmware workflow trimmed to BMS-only;
+simulation tutorial repointed at `perseus_lite_simulation`.
 
-- `git rm -r` everything on the DISABLED list and `perseus_description`.
-- Delete `docs/source/challenge-breakdowns/{excavation-and-construction,space-resources}.md`.
-- Rename remote: `git remote rename upstream upstream-archive`.
-
-**Do not execute Phase 4 without an explicit user request.** It is
-irreversible from upstream's perspective and changes the merge strategy
-permanently.
+**Local-machine recommendation (not in repo):** rename the upstream
+remote so reflexive `git pull upstream main` doesn't pull deleted
+packages back: `git remote rename upstream upstream-archive`. Future
+upstream tracking should be `git cherry-pick` of specific commits.
 
 ## 6. Working with upstream
 
-Until Phase 4:
+The fork has hard-diverged. **Do not `git merge upstream/main`** — it will
+re-introduce the v2-only packages that Phase 4 deleted. Instead:
 
 ```bash
 git fetch upstream
-git log --oneline HEAD..upstream/main      # what's incoming
-git merge upstream/main                    # conflicts confined to lite-specific xacro + COLCON_IGNORE
+git log --oneline HEAD..upstream/main                  # see what's new upstream
+git cherry-pick <sha>                                  # pull individual commits
 ```
 
-After Phase 4, prefer `git cherry-pick` of specific upstream commits — full
-merges will pull back the deleted v2 packages.
+If a desired commit touches deleted paths, expect conflicts and resolve by
+keeping the deletions (`git rm` the paths during conflict resolution).
 
 ## 7. Conventions specific to this repo
 

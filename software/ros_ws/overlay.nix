@@ -49,7 +49,7 @@ let
             However, for the final output, we want to remove simulation packages,
             so people don't download gazebo if they don't need to
           */
-          devPackages = builtins.removeAttrs allDevPackages [ "perseus-simulation" ];
+          devPackages = builtins.removeAttrs allDevPackages [ "perseus-lite-simulation" ];
           # just take the ones we *removed* from devPackages
           simDevPackages = builtins.removeAttrs allDevPackages (builtins.attrNames devPackages);
         in
