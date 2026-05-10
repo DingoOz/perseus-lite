@@ -26,8 +26,8 @@ The **lite robot** is a smaller, simpler subset of the full perseus-v2 platform:
 - Excavation bucket, elevator module, processing plant, light tower
 - Bespoke perseus-v2 control PCBs (rover-control-board, smol-brain-board)
 
-**Current cleanup state:** Phase 1 complete on branch
-`feature/lite-cleanup-phase1`. Phases 2–4 not started.
+**Current cleanup state:** Phases 1 and 2 complete on branch
+`feature/lite-cleanup-phase1`. Phases 3–4 not started.
 
 ## 2. Repository layout
 
@@ -83,7 +83,7 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 |---|---|
 | `perseus_lite` | Lite bringup: launch files, controllers, RViz config |
 | `perseus_lite_hardware` | `ros2_control` hardware interface for ST3215 servos over serial |
-| `perseus_lite_description` | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). **Currently `<depend>perseus_description</depend>` — see Phase 2.** |
+| `perseus_lite_description` | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2). |
 | `perseus_sensors` | IMU + lidar drivers (RPLidar, Livox) |
 | `perseus_interfaces` | Custom msg/srv definitions (shared) |
 | `input_devices`, `perseus_input`, `perseus_input_config` | Gamepad/keyboard input + routing |
@@ -98,27 +98,28 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 | `packages/{groot2,livox-sdk2,open3d}` | Nix overlays for autonomy deps |
 | `hardware/libraries`, `hardware/templates` | Shared KiCAD libs |
 
-### DISABLED (Phase 1) — perseus-v2-only, ignored via `COLCON_IGNORE`
+### DISABLED — perseus-v2-only, ignored via `COLCON_IGNORE`
 
-| Package / dir | Reason it's v2-only |
-|---|---|
-| `perseus` | v2 bringup; assumes mecanum + CAN + VESCs. Lite uses `perseus_lite` instead. |
-| `perseus_hardware` | `ros2_control` hardware interface for VESCs over CAN. Lite uses `perseus_lite_hardware`. |
-| `perseus_can_if` | CAN payload bridge. Lite has no CAN bus. |
-| `perseus_payloads` | VESC-driven arm/excavator/processing-plant drivers. Lite arm is Feetech (in `arm-teleop-direct`). |
-| `perseus_simulation` | Depends on `perseus`; cannot build with Phase 1 markers in place. Restored or replaced in Phase 3. |
-| `firmware/excavation-bucket` | Excavation arm MCU firmware. |
-| `firmware/elevator-module` | Sample-elevator MCU firmware. |
-| `firmware/light-tower` | Light-tower MCU firmware. |
-| `firmware/processing-plant` | Processing-plant MCU firmware. |
-| `hardware/dc-motor-driver` | KiCAD design for v2 DC-motor driver PCB; lite uses Feetech servos. |
+| Package / dir | Phase | Reason it's v2-only |
+|---|---|---|
+| `perseus` | 1 | v2 bringup; assumes mecanum + CAN + VESCs. Lite uses `perseus_lite` instead. |
+| `perseus_hardware` | 1 | `ros2_control` hardware interface for VESCs over CAN. Lite uses `perseus_lite_hardware`. |
+| `perseus_can_if` | 1 | CAN payload bridge. Lite has no CAN bus. |
+| `perseus_payloads` | 1 | VESC-driven arm/excavator/processing-plant drivers. Lite arm is Feetech (in `arm-teleop-direct`). |
+| `perseus_simulation` | 1 | Depends on `perseus`; cannot build with Phase 1 markers in place. Restored or replaced in Phase 3. |
+| `perseus_description` | 2 | Disabled after Phase 2 mesh migration. Lite no longer references it. |
+| `firmware/excavation-bucket` | — | Excavation arm MCU firmware (not in any default build target). |
+| `firmware/elevator-module` | — | Sample-elevator MCU firmware (not in any default build target). |
+| `firmware/light-tower` | — | Light-tower MCU firmware (not in any default build target). |
+| `firmware/processing-plant` | — | Processing-plant MCU firmware (not in any default build target). |
+| `hardware/dc-motor-driver` | — | KiCAD design for v2 DC-motor driver PCB; lite uses Feetech servos. |
 
 ### NEEDS WORK — has lite-relevant content but coupled to v2
 
 | Package | What's coupled | Resolution |
 |---|---|---|
-| `perseus_description` | `perseus_lite_description/urdf/*.xacro` reference its meshes (`chassis.dae`, `flange_bearing.dae`, `differential_bar.dae`, `rocker_{left,right}.dae`, `gearbox.dae`). | Phase 2 — copy meshes, repoint xacro, drop dependency. |
 | `docs/source/challenge-breakdowns/{excavation-and-construction,space-resources}.md` | Describe v2 competition tasks lite doesn't run. | Delete in Phase 4; harmless until then. |
+| `teleop_diagnostics/config/teleop_diagnostics.yaml` | Comment line points at `perseus_description/urdf/wheel.urdf.xacro`. | Update comment when convenient — non-blocking. |
 
 ### DELETE-LATER (Phase 4)
 
@@ -145,30 +146,21 @@ Firmware modules (`excavation-bucket`, `elevator-module`, `light-tower`,
 of any default build target — no Phase 1 action was needed. They stay
 in-tree until Phase 4 deletion.
 
-### Phase 2 — break the `perseus_description` mesh dependency
+### Phase 2 — break the `perseus_description` mesh dependency — DONE
 
-```bash
-cd software/ros_ws/src
-mkdir -p perseus_lite_description/meshes
-for f in chassis flange_bearing differential_bar rocker_left rocker_right gearbox; do
-  cp perseus_description/meshes/${f}.dae perseus_lite_description/meshes/
-done
-```
+Six meshes (`chassis`, `flange_bearing`, `differential_bar`, `rocker_left`,
+`rocker_right`, `gearbox`) copied into
+`perseus_lite_description/meshes/`. Three xacro files
+(`chassis.urdf.xacro`, `rocker.urdf.xacro`, `motor_wheel.urdf.xacro`)
+repointed from `$(find perseus_description)` to
+`$(find perseus_lite_description)`. `<depend>perseus_description</depend>`
+removed from `perseus_lite_description/package.xml`.
+`perseus_description` itself disabled via `COLCON_IGNORE`.
 
-Then in `perseus_lite_description/urdf/*.xacro`, replace every
-`$(find perseus_description)/meshes/...` with
-`$(find perseus_lite_description)/meshes/...`. Remove
-`<depend>perseus_description</depend>` from
-`perseus_lite_description/package.xml`. Verify:
-
-```bash
-colcon build --packages-select perseus_lite_description
-ros2 launch perseus_lite_description view_robot.launch.py   # if it exists,
-                                                            # else use perseus_lite robot_state_publisher.launch.py
-```
-
-After Phase 2, `perseus_description` is unreferenced and can move to the
-DISABLED list (add its `COLCON_IGNORE`).
+Verified: `xacro src/perseus_lite/urdf/perseus_lite.urdf.xacro` resolves
+to a 644-line URDF with 18 mesh references, all under
+`perseus_lite_description/`, zero stale `perseus_description` refs.
+`colcon build` passes with 15 packages.
 
 ### Phase 3 — repoint or fork `perseus_simulation`
 
