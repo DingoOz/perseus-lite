@@ -54,8 +54,6 @@ pkgs.mkShell {
           geometry-msgs
           gz-ros2-control
           hardware-interface
-          hi-can
-          hi-can-raw
           joint-state-broadcaster
           joint-state-publisher
           joint-state-publisher-gui
@@ -63,7 +61,6 @@ pkgs.mkShell {
           laser-geometry
           launch
           launch-ros
-          mecanum-drive-controller
           message-filters
           nav2-msgs
           navigation2
