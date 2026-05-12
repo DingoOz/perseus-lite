@@ -26,8 +26,8 @@ The **lite robot** is a smaller, simpler subset of the full perseus-v2 platform:
 - Excavation bucket, elevator module, processing plant, light tower
 - Bespoke perseus-v2 control PCBs (rover-control-board, smol-brain-board)
 
-**Current cleanup state:** Phases 1 and 2 complete on branch
-`feature/lite-cleanup-phase1`. Phases 3–4 not started.
+**Current cleanup state:** Phases 1, 2, and 3 complete on `main`. Phase 4
+not started.
 
 ## 2. Repository layout
 
@@ -79,40 +79,41 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 
 ### KEEP — used directly by lite
 
-| Package / dir                                                                              | Role                                                                                            |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `perseus_lite`                                                                             | Lite bringup: launch files, controllers, RViz config                                            |
-| `perseus_lite_hardware`                                                                    | `ros2_control` hardware interface for ST3215 servos over serial                                 |
-| `perseus_lite_description`                                                                 | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2). |
-| `perseus_sensors`                                                                          | IMU + lidar drivers (RPLidar, Livox)                                                            |
-| `perseus_interfaces`                                                                       | Custom msg/srv definitions (shared)                                                             |
-| `input_devices`, `perseus_input`, `perseus_input_config`                                   | Gamepad/keyboard input + routing                                                                |
-| `teleop_diagnostics`                                                                       | TUI debug for teleop (shared)                                                                   |
-| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `perseus_mapping`, `pcl_to_lsr` | Nav2 / SLAM / behavior trees / pointcloud→laserscan                                             |
-| `perseus_vision`                                                                           | ONNX detectors (cube, ArUco)                                                                    |
-| `software/arm-teleop-direct`                                                               | Serial Feetech arm teleop                                                                       |
-| `firmware/battery-management-system`                                                       | BMS firmware (powers whole rover)                                                               |
-| `firmware/components`                                                                      | Shared firmware libs (board-support, hi-can, crc, type)                                         |
-| `software/shared`                                                                          | Shared C++ libs (hi-can, fd-wrapper, crc, ptr-wrapper, type-demangle)                           |
-| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`                          | General infra                                                                                   |
-| `packages/{groot2,livox-sdk2,open3d}`                                                      | Nix overlays for autonomy deps                                                                  |
-| `hardware/libraries`, `hardware/templates`                                                 | Shared KiCAD libs                                                                               |
+| Package / dir                                                                              | Role                                                                                                     |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `perseus_lite`                                                                             | Lite bringup: launch files, controllers, RViz config                                                     |
+| `perseus_lite_hardware`                                                                    | `ros2_control` hardware interface for ST3215 servos over serial                                          |
+| `perseus_lite_description`                                                                 | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).          |
+| `perseus_sensors`                                                                          | IMU + lidar drivers (RPLidar, Livox)                                                                     |
+| `perseus_interfaces`                                                                       | Custom msg/srv definitions (shared)                                                                      |
+| `input_devices`, `perseus_input`, `perseus_input_config`                                   | Gamepad/keyboard input + routing                                                                         |
+| `teleop_diagnostics`                                                                       | TUI debug for teleop (shared)                                                                            |
+| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `perseus_mapping`, `pcl_to_lsr` | Nav2 / SLAM / behavior trees / pointcloud→laserscan                                                      |
+| `perseus_vision`                                                                           | ONNX detectors (cube, ArUco)                                                                             |
+| `perseus_lite_simulation`                                                                  | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3). |
+| `software/arm-teleop-direct`                                                               | Serial Feetech arm teleop                                                                                |
+| `firmware/battery-management-system`                                                       | BMS firmware (powers whole rover)                                                                        |
+| `firmware/components`                                                                      | Shared firmware libs (board-support, hi-can, crc, type)                                                  |
+| `software/shared`                                                                          | Shared C++ libs (hi-can, fd-wrapper, crc, ptr-wrapper, type-demangle)                                    |
+| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`                          | General infra                                                                                            |
+| `packages/{groot2,livox-sdk2,open3d}`                                                      | Nix overlays for autonomy deps                                                                           |
+| `hardware/libraries`, `hardware/templates`                                                 | Shared KiCAD libs                                                                                        |
 
 ### DISABLED — perseus-v2-only, ignored via `COLCON_IGNORE`
 
-| Package / dir                | Phase | Reason it's v2-only                                                                                |
-| ---------------------------- | ----- | -------------------------------------------------------------------------------------------------- |
-| `perseus`                    | 1     | v2 bringup; assumes mecanum + CAN + VESCs. Lite uses `perseus_lite` instead.                       |
-| `perseus_hardware`           | 1     | `ros2_control` hardware interface for VESCs over CAN. Lite uses `perseus_lite_hardware`.           |
-| `perseus_can_if`             | 1     | CAN payload bridge. Lite has no CAN bus.                                                           |
-| `perseus_payloads`           | 1     | VESC-driven arm/excavator/processing-plant drivers. Lite arm is Feetech (in `arm-teleop-direct`).  |
-| `perseus_simulation`         | 1     | Depends on `perseus`; cannot build with Phase 1 markers in place. Restored or replaced in Phase 3. |
-| `perseus_description`        | 2     | Disabled after Phase 2 mesh migration. Lite no longer references it.                               |
-| `firmware/excavation-bucket` | —     | Excavation arm MCU firmware (not in any default build target).                                     |
-| `firmware/elevator-module`   | —     | Sample-elevator MCU firmware (not in any default build target).                                    |
-| `firmware/light-tower`       | —     | Light-tower MCU firmware (not in any default build target).                                        |
-| `firmware/processing-plant`  | —     | Processing-plant MCU firmware (not in any default build target).                                   |
-| `hardware/dc-motor-driver`   | —     | KiCAD design for v2 DC-motor driver PCB; lite uses Feetech servos.                                 |
+| Package / dir                | Phase | Reason it's v2-only                                                                               |
+| ---------------------------- | ----- | ------------------------------------------------------------------------------------------------- |
+| `perseus`                    | 1     | v2 bringup; assumes mecanum + CAN + VESCs. Lite uses `perseus_lite` instead.                      |
+| `perseus_hardware`           | 1     | `ros2_control` hardware interface for VESCs over CAN. Lite uses `perseus_lite_hardware`.          |
+| `perseus_can_if`             | 1     | CAN payload bridge. Lite has no CAN bus.                                                          |
+| `perseus_payloads`           | 1     | VESC-driven arm/excavator/processing-plant drivers. Lite arm is Feetech (in `arm-teleop-direct`). |
+| `perseus_simulation`         | 1/3   | Forked to `perseus_lite_simulation` in Phase 3; original kept disabled.                           |
+| `perseus_description`        | 2     | Disabled after Phase 2 mesh migration. Lite no longer references it.                              |
+| `firmware/excavation-bucket` | —     | Excavation arm MCU firmware (not in any default build target).                                    |
+| `firmware/elevator-module`   | —     | Sample-elevator MCU firmware (not in any default build target).                                   |
+| `firmware/light-tower`       | —     | Light-tower MCU firmware (not in any default build target).                                       |
+| `firmware/processing-plant`  | —     | Processing-plant MCU firmware (not in any default build target).                                  |
+| `hardware/dc-motor-driver`   | —     | KiCAD design for v2 DC-motor driver PCB; lite uses Feetech servos.                                |
 
 ### NEEDS WORK — has lite-relevant content but coupled to v2
 
@@ -162,20 +163,31 @@ to a 644-line URDF with 18 mesh references, all under
 `perseus_lite_description/`, zero stale `perseus_description` refs.
 `colcon build` passes with 15 packages.
 
-### Phase 3 — repoint or fork `perseus_simulation`
+### Phase 3 — fork `perseus_simulation` → `perseus_lite_simulation` — DONE
 
-The current package builds a Gazebo model of perseus-v2. Two options:
+Took **Option A** (full fork). `perseus_simulation/` was copied to
+`perseus_lite_simulation/` (the original keeps its `COLCON_IGNORE`):
 
-- **Option A (preferred long-term):** copy `perseus_simulation/` to
-  `perseus_lite_simulation/`, swap `<exec_depend>perseus</exec_depend>` for
-  `perseus_lite`, replace v2 URDF references with `perseus_lite_description`,
-  drop mecanum/arm/excavation models, retain Gazebo plumbing. Then add
-  `COLCON_IGNORE` to the original `perseus_simulation`.
-- **Option B (interim, less work):** edit `perseus_simulation/launch/*` to
-  reference `perseus_lite` instead of `perseus`. Cheaper, but invites merge
-  conflicts when upstream changes the package.
+- `package.xml`: `<name>perseus_lite_simulation</name>`,
+  `<exec_depend>perseus</exec_depend>` → `<exec_depend>perseus_lite</exec_depend>`,
+  maintainer updated.
+- `CMakeLists.txt`: `project(perseus_lite_simulation)`.
+- `launch/perseus_sim.launch.py`: `FindPackageShare("perseus")` for
+  `robot_state_publisher.launch.py` and `controllers.launch.py` swapped to
+  `perseus_lite`.
+- `launch/gazebo.launch.py`: Gazebo spawn-entity name `"perseus"` →
+  `"perseus_lite"`.
+- `launch/twist_mux.launch.py` + `config/twist_mux.yaml`: vendored from the
+  v2 `perseus` package; the launch file now self-references
+  `perseus_lite_simulation`.
+- `tests/gz_bridge_config_test.cpp`: hardcoded path updated by the bulk
+  rename.
 
-State the choice here in CLAUDE.md when one is made.
+Verified: `colcon build` passes 16 packages; `ROS2 launch --show-args
+perseus_lite_simulation perseus_sim.launch.py` resolves the full launch
+graph (rsp + controllers + gazebo + rosbridge + twist_mux + ekf + rviz)
+without errors. Actually running Gazebo requires `nix develop .#simulation`
+and a GPU — not validated in this batch.
 
 ### Phase 4 — hard-divergence delete (manual approval only)
 
