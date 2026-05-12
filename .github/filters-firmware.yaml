@@ -7,12 +7,3 @@ common: &common
 bms:
   - *common
   - "firmware/battery-management-system/**"
-light-tower:
-  - *common
-  - "firmware/light-tower/**"
-processing-plant:
-  - *common
-  - "firmware/processing-plant/**"
-elevator-module:
-  - *common
-  - "firmware/elevator-module/**"
