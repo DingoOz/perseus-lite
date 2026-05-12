@@ -116,24 +116,11 @@ The following were disabled in Phases 1–2 and deleted in Phase 4:
 To inspect any of these, use `git log -- <path>` or check upstream
 (`ROAR-QUTRC/perseus-v2`) directly.
 
-### NEEDS WORK — has lite-relevant content but coupled to v2
-
-| Package                                                                             | What's coupled                                                      | Resolution                                     |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
-| `docs/source/challenge-breakdowns/{excavation-and-construction,space-resources}.md` | Describe v2 competition tasks lite doesn't run.                     | Delete in Phase 4; harmless until then.        |
-| `teleop_diagnostics/config/teleop_diagnostics.yaml`                                 | Comment line points at `perseus_description/urdf/wheel.urdf.xacro`. | Update comment when convenient — non-blocking. |
-
-### DELETE-LATER (Phase 4)
-
-Everything on the DISABLED list above, **plus** `perseus_description` once
-Phase 2 is done, **plus** the v2-specific docs files. Only after the team
-commits to a hard divergence from upstream (see §6).
-
 ## 5. Phased cleanup playbook
 
-The fork should currently support clean `git merge upstream/main` pulls. The
-goal of this playbook is to **strip the v2-only code without losing that
-property** until a deliberate decision to hard-diverge.
+All four phases are complete; the sections below are kept as a record of
+what was done and why. New work on the lite fork should follow §6 for
+upstream cherry-picks rather than re-running these phases.
 
 ### Phase 1 — disable (safe, reversible) — DONE
 
@@ -233,9 +220,9 @@ keeping the deletions (`git rm` the paths during conflict resolution).
 
 1. Read this file end-to-end.
 2. `git fetch upstream && git log --oneline HEAD..upstream/main` — see
-   pending upstream drift.
-3. `colcon list` in `software/ros_ws/` and cross-check against the KEEP /
-   DISABLED tables in §4.
+   pending upstream drift. Use `git cherry-pick`, not `git merge` (§6).
+3. `colcon list` in `software/ros_ws/` — should be 16 packages, all on
+   the KEEP table in §4.
 4. Check `ERRORS.md` (per global rules) for any prevention rules touching
    files you plan to edit. Create `ERRORS.md` and log new bugs as
    instructed in `~/.claude/CLAUDE.md`.
