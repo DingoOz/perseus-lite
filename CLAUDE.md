@@ -80,29 +80,27 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 
 ### KEEP — used directly by lite
 
-| Package / dir                                                                              | Role                                                                                                     |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `perseus_lite`                                                                             | Lite bringup: launch files, controllers, RViz config                                                     |
-| `perseus_lite_hardware`                                                                    | `ros2_control` hardware interface for ST3215 servos over serial                                          |
-| `perseus_lite_description`                                                                 | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).          |
-| `perseus_sensors`                                                                          | IMU + lidar drivers (RPLidar, Livox)                                                                     |
-| `perseus_interfaces`                                                                       | Custom msg/srv definitions (shared)                                                                      |
-| `input_devices`, `perseus_input`, `perseus_input_config`                                   | Gamepad/keyboard input + routing                                                                         |
-| `teleop_diagnostics`                                                                       | TUI debug for teleop (shared)                                                                            |
-| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `perseus_mapping`, `pcl_to_lsr` | Nav2 / SLAM / behavior trees / pointcloud→laserscan                                                      |
-| `perseus_vision`                                                                           | ONNX detectors (cube, ArUco)                                                                             |
-| `perseus_lite_simulation`                                                                  | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3). |
-| `software/arm-teleop-direct`                                                               | Serial Feetech arm teleop                                                                                |
-| `firmware/battery-management-system`                                                       | BMS firmware (powers whole rover)                                                                        |
-| `firmware/components`                                                                      | Shared firmware libs (board-support, hi-can, crc, type)                                                  |
-| `software/shared`                                                                          | Shared C++ libs (hi-can, fd-wrapper, crc, ptr-wrapper, type-demangle)                                    |
-| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`                          | General infra                                                                                            |
-| `packages/{groot2,livox-sdk2,open3d}`                                                      | Nix overlays for autonomy deps                                                                           |
-| `hardware/libraries`, `hardware/templates`                                                 | Shared KiCAD libs                                                                                        |
+| Package / dir                                                           | Role                                                                                                     |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `perseus_lite`                                                          | Lite bringup: launch files, controllers, RViz config                                                     |
+| `perseus_lite_hardware`                                                 | `ros2_control` hardware interface for ST3215 servos over serial                                          |
+| `perseus_lite_description`                                              | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).          |
+| `perseus_sensors`                                                       | IMU + lidar drivers (RPLidar)                                                                            |
+| `perseus_interfaces`                                                    | Custom msg/srv definitions (shared)                                                                      |
+| `input_devices`, `perseus_input`, `perseus_input_config`                | Gamepad/keyboard input + routing                                                                         |
+| `teleop_diagnostics`                                                    | TUI debug for teleop (shared)                                                                            |
+| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `pcl_to_lsr` | Nav2 / SLAM (slam_toolbox) / behavior trees / pointcloud→laserscan                                       |
+| `perseus_vision`                                                        | ONNX detectors (cube, ArUco)                                                                             |
+| `perseus_lite_simulation`                                               | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3). |
+| `software/arm-teleop-direct`                                            | Serial Feetech arm teleop                                                                                |
+| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle)                         |
+| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra                                                                                            |
+| `packages/{groot2,open3d}`                                              | Nix overlays for autonomy deps                                                                           |
+| `hardware/libraries`, `hardware/templates`                              | Shared KiCAD libs                                                                                        |
 
-### REMOVED in Phase 4 — deleted, not in tree
+### REMOVED — deleted, not in tree
 
-The following were disabled in Phases 1–2 and deleted in Phase 4:
+Phase 1–4 removals:
 
 - ROS packages: `perseus`, `perseus_hardware`, `perseus_can_if`,
   `perseus_payloads`, `perseus_simulation`, `perseus_description`
@@ -112,6 +110,24 @@ The following were disabled in Phases 1–2 and deleted in Phase 4:
 - Firmware: `firmware/{excavation-bucket,elevator-module,light-tower,processing-plant}`
 - Hardware: `hardware/dc-motor-driver`
 - Docs: `docs/source/challenge-breakdowns/{excavation-and-construction,space-resources}.md`
+
+Post-Phase-4 v2-residual cleanup (`feature/v2-residual-cleanup` branch):
+
+- Entire `firmware/` tree — `battery-management-system` and
+  `components/{board-support,crc,hi-can,type}` are v2-only (lite carries
+  no BMS-over-CAN). Also `.github/workflows/firmware.yaml` +
+  `.github/filters-firmware.yaml`.
+- hi-can shared C++ libs: `software/shared/{hi-can,hi-can-net,hi-can-raw,hi-can-generator}/`,
+  `software/native/examples/hi-can/`, `software/scripts/vcan-setup.sh`.
+- Livox MID-360 + fast-lio chain: `packages/livox-sdk2/`,
+  `software/ros_ws/third-party-packages/{livox-ros-driver2,fast-lio}/`,
+  `software/ros_ws/src/perseus_mapping/`,
+  `software/ros_ws/nix-packages/perseus-mapping.nix`,
+  `software/ros_ws/src/perseus_sensors/launch/livox.launch.py`.
+  (Lite uses RPLidar + slam_toolbox.)
+- v2-only docs: `docs/source/hardware/{vescs,can-daisy-chain,rover-control-board,smol-brain-board}.md`,
+  `docs/source/systems/can-bus.md`,
+  `docs/source/tutorials/hi-can-index.md` + `docs/source/tutorials/hi-can/`.
 
 To inspect any of these, use `git log -- <path>` or check upstream
 (`ROAR-QUTRC/perseus-v2`) directly.
@@ -221,7 +237,7 @@ keeping the deletions (`git rm` the paths during conflict resolution).
 1. Read this file end-to-end.
 2. `git fetch upstream && git log --oneline HEAD..upstream/main` — see
    pending upstream drift. Use `git cherry-pick`, not `git merge` (§6).
-3. `colcon list` in `software/ros_ws/` — should be 16 packages, all on
+3. `colcon list` in `software/ros_ws/` — should be 15 packages, all on
    the KEEP table in §4.
 4. Check `ERRORS.md` (per global rules) for any prevention rules touching
    files you plan to edit. Create `ERRORS.md` and log new bugs as

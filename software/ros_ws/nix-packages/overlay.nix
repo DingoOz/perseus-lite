@@ -11,7 +11,6 @@ final: prev: {
   perseus-lite-description = final.callPackage ./perseus-lite-description.nix { };
   perseus-lite-hardware = final.callPackage ./perseus-lite-hardware.nix { };
   perseus-lite-simulation = final.callPackage ./perseus-lite-simulation.nix { };
-  perseus-mapping = final.callPackage ./perseus-mapping.nix { };
   perseus-sensors = final.callPackage ./perseus-sensors.nix { };
   perseus-vision = final.callPackage ./perseus-vision.nix { };
   teleop-diagnostics = final.callPackage ./teleop-diagnostics.nix { };

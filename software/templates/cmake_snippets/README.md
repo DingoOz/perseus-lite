@@ -29,7 +29,7 @@ Create a `CMakeLists.txt` file and insert the following snippets in order, editi
 - (OPTIONAL) `compile_lib`: Nothing to edit here.
 - (OPTIONAL) `link_private`: Edit the library name(s)
 - (OPTIONAL, non-ROS only) `link_public`: Edit the library name(s).
-  For every public library you link, you need to to add the requisite `find_package(library_name REQUIRED)` lines at the start of `config.cmake.in` - see `hi_can_raw` for an example of this.
+  For every public library you link, you need to to add the requisite `find_package(library_name REQUIRED)` lines at the start of `config.cmake.in` - see `simple_networking` for an example of this.
   For ROS libraries, ament handles fixes for this behind the scenes so you don't need to do anything extra.
 - (OPTIONAL, ROS only) `ros_link_public`: If the project includes possibly local dependencies (`include_local_lib`), add an extra `ament_target_dependencies` line which includes those libraries specifically.
 - `install_exe`: Nothing to edit here. Make sure node names are updated in `project_setup`.

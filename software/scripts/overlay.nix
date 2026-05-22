@@ -29,13 +29,6 @@ in
     };
     clean = build-wrapped-script "clean" (with prev; [ git ]);
     machine-setup = build-wrapped-script "machine-setup" (with prev; [ git ]);
-    vcan-setup = build-wrapped-script "vcan-setup" (
-      with prev;
-      [
-        iproute2
-        kmod
-      ]
-    );
     cuda-test = build-wrapped-script "cuda-test" (
       with prev;
       [
