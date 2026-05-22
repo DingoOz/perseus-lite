@@ -10,7 +10,6 @@ Whilst those two documents contain the majority of the information you'll need d
 
 - The [CI/CD](project:/systems/ci-cd.md) pipeline is what runs our automated testing and handles deploying this very website
 - Speaking of this website, its build process can be a little bit convoluted, so it gets a [document](project:/systems/documentation.md) too
-- You've probably noticed by now that we use Nix to manage all our software - this gets complicated quickly and there's only so much that source comments can do, so it's explained [here](project:/systems/nix.md)
 
 % A lite-specific system-architecture diagram is TBD; the upstream
 % perseus-v2 diagram (CAN bus + VESC topology) does not represent the

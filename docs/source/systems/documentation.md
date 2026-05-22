@@ -2,7 +2,6 @@
 
 Good documentation is key to a project's long-term success.
 As such, the documentation pipeline which ends up generating these very webpages is explained in this document.
-If you're looking to start _writing_ documentation, check out the [maintenance](project:/maintenance/documentation.md) page after reading through this one.
 
 ## Tech Stack
 
