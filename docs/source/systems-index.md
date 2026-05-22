@@ -12,8 +12,9 @@ Whilst those two documents contain the majority of the information you'll need d
 - Speaking of this website, its build process can be a little bit convoluted, so it gets a [document](project:/systems/documentation.md) too
 - You've probably noticed by now that we use Nix to manage all our software - this gets complicated quickly and there's only so much that source comments can do, so it's explained [here](project:/systems/nix.md)
 
-If you're just looking for a high-level overview, this diagram contains the basics of the information flow between modules (as well as some power information):
-![Architecture](generated/system-architecture.drawio.svg){.has-dark-opt}
+% A lite-specific system-architecture diagram is TBD; the upstream
+% perseus-v2 diagram (CAN bus + VESC topology) does not represent the
+% lite robot's hardware.
 
 ```{toctree}
 :maxdepth: 1

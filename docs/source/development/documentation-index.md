@@ -49,7 +49,7 @@ For general development, you should use the `nix develop` option described above
 :::
 
 :::{note}
-A quick start to view changes locally is to run the following commands from the /perseus-v2 directory
+A quick start to view changes locally is to run the following commands from the /perseus-lite directory
 
 sudo nix build .#docs --option sandbox relaxed
 

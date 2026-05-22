@@ -12,7 +12,7 @@ External libraries will not be documented here. View their official docs:
 - The database ORM used is [remult](https://remult.dev)
 
 :::{note}
-All file paths in this page are relative to the root of the Web UI project (`perseus-v2/software/web-ui`).
+All file paths in this page are relative to the root of the Web UI project (`perseus-lite/software/web-ui`).
 :::
 
 ## Server
@@ -77,7 +77,7 @@ The first script tag has the `module` property meaning it is run once on widget 
 |------|------|-------------|
 | `name` | `string` | This is where you can set the name of the widget which will be displayed in the Web UI. This is also used as a unique key and duplicate widgets will not be loaded. |
 | `description` | `string` (Optional) | Provide a description for the widget which can be seen in the settings panel. While there is no character limit, this should be kept to 1 to 2 sentences. |
-| `group` | `"ROS" \| "CAN Bus" \| "Gstreamer" \| "Misc"` (Optional) | This sets the group that the widget is part of in the "add widget" dropdown. If new groups are needed edit the type located in [`src/lib/scripts/state.svelte.ts`](https://github.com/ROAR-QUTRC/perseus-v2/blob/main/software%2Fweb_ui%2Fsrc%2Flib%2Fscripts%2Fstate.svelte.ts). |
+| `group` | `"ROS" \| "Gstreamer" \| "Misc"` (Optional) | This sets the group that the widget is part of in the "add widget" dropdown. If new groups are needed edit the type located in [`src/lib/scripts/state.svelte.ts`](https://github.com/DingoOz/perseus-lite/blob/main/software%2Fweb_ui%2Fsrc%2Flib%2Fscripts%2Fstate.svelte.ts). |
 | `isRosDependant` | `boolean` (Optional) | This should be set to `true` for any widget that uses the `getRosConnection()` function. This will make any widgets lock when ROS2 connection is lost. |
 | `settings` | `WidgetSettingsType` (More details below) | This object is evaluated into the settings panel and is saved as a JSON string in the layout database. |
 
@@ -337,14 +337,8 @@ As a result of this effect pattern the following rules should be followed while 
 
 - Avoid making ROS2 related variables reactive as they will be assigned inside an `$effect` and that will cause a render loop.
 - Do **not** initialise anything related to ROS2 in the `onMount` hook as there is no guarantee that a ROS2 connection is available and will require duplicate code.
-- Always set `isRosDependant` to `true` and `group` to `'ROS'` if using the `getRosConnection()` function (When using ROS2 purely to access CAN data the `group` export should be `"CAN Bus"`).
+- Always set `isRosDependant` to `true` and `group` to `'ROS'` if using the `getRosConnection()` function.
 - Dispose of all ROS2 resources you created in the function returned by the `onMount` hook (the return value is run on unmount).
-
-## CAN Bus Interface
-
-No direct interface between the Web UI and CAN exists. Instead the work around is to read CAN Bus data with a ROS2 node and publish on a ROS2 topic.
-
-Topics used for relaying CAN Bus data should favour lower frequencies to reduce network load. If a node already consumes the required CAN Bus data then the topic should be created in there otherwise a new node inside `software/ros_ws/src/perseus_can_if` should be created. Additionally, these topics should be prefixed with `web/` to avoid confusion.
 
 ## Yarn
 

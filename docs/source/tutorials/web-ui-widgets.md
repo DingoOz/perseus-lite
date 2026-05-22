@@ -8,7 +8,7 @@ Before beginning this tutorial you must:
 - Complete the [getting started](project:/home/getting-started.md) guide
 
 :::{note}
-All file paths mentioned in this tutorial are relative to the root of the Web-UI (`perseus-v2/software/web-ui`)
+All file paths mentioned in this tutorial are relative to the root of the Web-UI (`perseus-lite/software/web-ui`)
 :::
 
 :::{important}
@@ -88,7 +88,7 @@ Before we start writing code for connecting to the ROS2 bridge we need to run so
 Development of ROS2 nodes is beyond the scope of this tutorial and for guidance you should consult the official documentation. We will still need something to test our widget with, my recommendation is to create new talker and listener nodes by following the tutorial linked above.
 
 :::{warning}
-Ensure you make the talker and listener inside `perseus-v2/software/ros_ws` and run all the following commands from inside the perseus-v2 repo aswell so you get access to the ROS2 Jazzy install we use for the rover.
+Ensure you make the talker and listener inside `perseus-lite/software/ros_ws` and run all the following commands from inside the perseus-lite repo aswell so you get access to the ROS2 Jazzy install we use for the rover.
 :::
 
 :::{tip}
@@ -97,7 +97,7 @@ I would strongly recommend using a terminal multiplexer so each node can be run 
 
 Now that we have all the ROS2 nodes ready you can follow these steps to run them:
 
-1. Navigate to `perseus-v2/software/ros_ws` in two terminal windows.
+1. Navigate to `perseus-lite/software/ros_ws` in two terminal windows.
 2. Build and source the new talker and listener nodes in both terminal windows: `colcon build && source install/setup.bash` (the suffix `.bash` may be different depending on your shell).
 3. Run the talker in one window and the listener in another using `ros2 run cpp_pubsub talker` and `ros2 run cpp_pubsub listener` respectively.
 4. In a new terminal window run `ros2 launch rosbridge_server rosbridge_websocket.xml` to start the ROS2 bridge.

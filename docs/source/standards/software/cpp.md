@@ -230,20 +230,20 @@ void load_settings_from_file(void) { };
 
 ### Namespaces
 
-There is very little need for namespaces in ROAR software (except for common libraries such as `hi-can-lib` and associated libs under `hi_can`). However, if you do need a namespace, keep it to all lowercase single words, and if that's impractical, multiple words of `snake_case` is also acceptable - just keep it as short as possible while remaining understandable.
+There is very little need for namespaces in Perseus-Lite software (most ROS2 nodes live inside their own package and don't need an extra layer). However, if you do need a namespace for a shared library, keep it to all lowercase single words, and if that's impractical, multiple words of `snake_case` is also acceptable - just keep it as short as possible while remaining understandable.
 
 #### Acceptable
 
 ```cpp
-hi_can
-hi_can::drive
-hi_can::drive::traction_control
+networking
+networking::tcp
+networking::tcp::client
 ```
 
 #### Incorrect
 
 ```cpp
-rover_libraries::drive
+rover_libraries::networking
 RoverLibraries
 ```
 

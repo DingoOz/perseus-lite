@@ -25,13 +25,13 @@ The most important packages are are detailed below - if you want more informatio
 When creating a new ROS2 package you must stage the ROS2 package in git (locally) before attempting to build with nix. Failure to add to git will result in nix not being able to see the new ROS2 package and your nix build will fail.
 :::
 
-### `perseus`
+### `perseus_lite`
 
-This is a "meta-package" which depends on the other packages and contains ROS2 launch files for the main tasks needed to bring up the rover.
+This is the bringup package and contains ROS2 launch files for the main tasks needed to bring up the lite rover (controllers, robot state publisher, SLAM + Nav2, etc.).
 
-### `perseus_hardware`
+### `perseus_lite_hardware`
 
-This contains implementations of all hardware-specific interfaces and tasks, and should be one of the only places in the ROS code which interacts directly with the real world.
+This contains the `ros2_control` hardware interface for the four Feetech ST3215 wheel servos communicating over serial, and should be one of the only places in the ROS code which interacts directly with the real world.
 If hardware-specific code is distributed throughout the codebase, it makes mocking for tests and simulation much more difficult than it needs to be.
 There are two types of output inside this package: [Hardware Components](https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/hardware_components_userdoc.html) for `ros2_control` and follow its spec, and [nodes](inv:ros#Concepts/Basic/About-Nodes) which interact with other software using either [topics](inv:ros#Concepts/Basic/About-Topics), [actions](inv:ros#Concepts/Basic/About-Actions), or [services](inv:ros#Concepts/Basic/About-Services).
 

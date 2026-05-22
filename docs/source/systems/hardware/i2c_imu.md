@@ -1,6 +1,6 @@
 # I2C IMU
 
-The Perseus V2 system includes an I2C IMU (Inertial Measurement Unit) driver that provides orientation, angular velocity, and linear acceleration data through ROS2.
+Perseus-Lite includes an I2C IMU (Inertial Measurement Unit) driver that provides orientation, angular velocity, and linear acceleration data through ROS2.
 
 ## Supported IMU Types
 

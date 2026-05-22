@@ -20,7 +20,7 @@ They all share similar syntax, because they operate on the same data, just in di
 Since Nix is _{term}`declarative<declarative programming>`_ and _configuration-based_, you need to tell it _where_ that configuration it should act upon is.
 This is the next argument after the command to run, and should point to the root of this repository (or one of its subdirectories) [^nix-search].
 For example, if your current working directory is the repository root, and you run `nix build .` [^shell-dot], it will build the _default_ output of this repository - which is the workspace with everything built and ready to run.
-If you're located in the _parent directory_ of the repository, you would instead run `nix build ./perseus-v2`.
+If you're located in the _parent directory_ of the repository, you would instead run `nix build ./perseus-lite`.
 :::{tip}
 The leading `./` (or `../`) in this case is important!
 Without it, Nix will try to resolve the location by searching through a list of predefined locations, which typically isn't what you want (except for the `nix shell` command).
@@ -97,7 +97,7 @@ For example, if you ran `nix shell .#rosCore .#pkgs.net-can-server`, you would h
 
 All the `nix` commands documented above take what Nix calls "[installables](https://nix.dev/manual/nix/latest/command-ref/new-cli/nix#installables)" as their "targets".
 In most cases, this is a flake output from the local directory, but it can also be something selected from any location which contains a [`flake.nix`](#nix-flakes) file.
-You can use a filesystem path (like `.` or `~/perseus-v2`), `nixpkgs` (or a branch), or even fetch a repository from GitHub (like `github:github:wentasah/ros2nix`).
+You can use a filesystem path (like `.` or `~/perseus-lite`), `nixpkgs` (or a branch), or even fetch a repository from GitHub (like `github:github:wentasah/ros2nix`).
 
 :::{note}
 The `nixpkgs` input is special syntax, since normally you'd have to enter the full path `github:NixOS/nixpkgs`.

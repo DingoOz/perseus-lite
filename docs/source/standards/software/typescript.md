@@ -17,7 +17,7 @@ Note: if you are unsure what symbols are that's fine as they are primarily usefu
 
 ## Naming
 
-For any JavaScript, TypeScript or Svelte code there are a number of naming conventions that contradict other language standards for perseus-v2:
+For any JavaScript, TypeScript or Svelte code there are a number of naming conventions that contradict other language standards for perseus-lite:
 
 - Variables, functions and files should use **camelCase**
 - Svelte components when referenced in markdown should use **PascalCase**
