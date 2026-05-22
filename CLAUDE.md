@@ -80,23 +80,23 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 
 ### KEEP — used directly by lite
 
-| Package / dir                                                                              | Role                                                                                                     |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `perseus_lite`                                                                             | Lite bringup: launch files, controllers, RViz config                                                     |
-| `perseus_lite_hardware`                                                                    | `ros2_control` hardware interface for ST3215 servos over serial                                          |
-| `perseus_lite_description`                                                                 | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).          |
-| `perseus_sensors`                                                                          | IMU + lidar drivers (RPLidar)                                                                            |
-| `perseus_interfaces`                                                                       | Custom msg/srv definitions (shared)                                                                      |
-| `input_devices`, `perseus_input`, `perseus_input_config`                                   | Gamepad/keyboard input + routing                                                                         |
-| `teleop_diagnostics`                                                                       | TUI debug for teleop (shared)                                                                            |
-| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `pcl_to_lsr`                    | Nav2 / SLAM (slam_toolbox) / behavior trees / pointcloud→laserscan                                       |
-| `perseus_vision`                                                                           | ONNX detectors (cube, ArUco)                                                                             |
-| `perseus_lite_simulation`                                                                  | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3). |
-| `software/arm-teleop-direct`                                                               | Serial Feetech arm teleop                                                                                |
-| `software/shared`                                                                          | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle)                         |
-| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`                          | General infra                                                                                            |
-| `packages/{groot2,open3d}`                                                                 | Nix overlays for autonomy deps                                                                           |
-| `hardware/libraries`, `hardware/templates`                                                 | Shared KiCAD libs                                                                                        |
+| Package / dir                                                           | Role                                                                                                     |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `perseus_lite`                                                          | Lite bringup: launch files, controllers, RViz config                                                     |
+| `perseus_lite_hardware`                                                 | `ros2_control` hardware interface for ST3215 servos over serial                                          |
+| `perseus_lite_description`                                              | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).          |
+| `perseus_sensors`                                                       | IMU + lidar drivers (RPLidar)                                                                            |
+| `perseus_interfaces`                                                    | Custom msg/srv definitions (shared)                                                                      |
+| `input_devices`, `perseus_input`, `perseus_input_config`                | Gamepad/keyboard input + routing                                                                         |
+| `teleop_diagnostics`                                                    | TUI debug for teleop (shared)                                                                            |
+| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `pcl_to_lsr` | Nav2 / SLAM (slam_toolbox) / behavior trees / pointcloud→laserscan                                       |
+| `perseus_vision`                                                        | ONNX detectors (cube, ArUco)                                                                             |
+| `perseus_lite_simulation`                                               | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3). |
+| `software/arm-teleop-direct`                                            | Serial Feetech arm teleop                                                                                |
+| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle)                         |
+| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra                                                                                            |
+| `packages/{groot2,open3d}`                                              | Nix overlays for autonomy deps                                                                           |
+| `hardware/libraries`, `hardware/templates`                              | Shared KiCAD libs                                                                                        |
 
 ### REMOVED — deleted, not in tree
 
