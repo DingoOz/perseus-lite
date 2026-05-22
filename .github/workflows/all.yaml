@@ -23,7 +23,9 @@ jobs:
       is-main: ${{ (github.repository == 'ROAR-QUTRC/perseus-v2') && (github.ref == 'refs/heads/main') }}
       has-cachix-secret: ${{ secrets.CACHIX_AUTH_TOKEN != '' }}
       has-repo-secret: ${{ secrets.REPO_DEPLOY_KEY != '' }}
-      can-push-commits: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') }}
+      # Direct pushes to main are blocked by branch protection on this fork,
+      # so skip auto-commit there. Feature branches and manual dispatch keep working.
+      can-push-commits: ${{ (github.event_name == 'workflow_dispatch') || ((github.event_name == 'push') && (github.ref != 'refs/heads/main')) }}
     steps:
       - name: Export Nix config
         id: export-vars
