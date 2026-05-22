@@ -10,7 +10,6 @@ Whilst those two documents contain the majority of the information you'll need d
 
 - The [CI/CD](project:/systems/ci-cd.md) pipeline is what runs our automated testing and handles deploying this very website
 - Speaking of this website, its build process can be a little bit convoluted, so it gets a [document](project:/systems/documentation.md) too
-- If you're writing firmware or a hardware interface that talks on the CAN bus, you'll need to read through what we've titled the [Canifesto](project:/systems/can-bus.md)
 - You've probably noticed by now that we use Nix to manage all our software - this gets complicated quickly and there's only so much that source comments can do, so it's explained [here](project:/systems/nix.md)
 
 If you're just looking for a high-level overview, this diagram contains the basics of the information flow between modules (as well as some power information):

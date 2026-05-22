@@ -61,17 +61,6 @@ To ensure that this doesn't happen at all, run a clean after every git pull or a
 Shared libraries can be made available to your ROS2 package and nodes by including them as a dependency in your package's package.xml and then running the script 'nix-package.sh'
 :::
 
-### Hi-CAN
-
-Abbreviated from "hierarchical CAN", Hi-CAN is the library implementing the standards laid out [here](project:/systems/can-bus.md), and is shared across ROS and native code, as well as firmware.
-The main library contains the code defining the main interfaces with which code will interact with the library, as well as all of the devices on the bus and their parameters.
-:::{warning}
-Since this particular library is shared between both the ROS code _and_ the firmware, it needs to be written in pure C++ (no external dependencies).
-:::
-However, this on its own is not particularly useful - which is where implementations come in.
-The `hi-can-raw` library implements {class}`hi_can::FilteredCanInterface` using the Linux SocketCAN [`RAW_CAN`](https://docs.kernel.org/networking/can.html#raw-protocol-sockets-with-can-filters-sock-raw) interface, and is what most code uses to interface with the CAN bus.
-The `hi-can-net` library is currently unused, but may become an implementation of {class}`hi_can::CanInterface` which forwards all traffic over a network connection.
-
 ### Simple-networking
 
 The simple-networking library provides a modern C++ implementation for handling network socket communications, with a primary focus on client-side operations.
