@@ -6,19 +6,20 @@ URDF (Unified Robot Description Format) is an XML-based file format, central to 
 
 ## Overview
 
-The Perseus Rover URDF (Unified Robot Description Format) is rebuilt to provide a complete, modular, and simulation-ready description of the rover’s physical structure, joints, sensors, and coordinate frames. It is designed to support RViz visualisation, Gazebo Sim simulation, and Nav2-based navigation, following **[REP-103](https://www.ros.org/reps/rep-0103.html)[^2]** conventions and ROS2 best practices. The URDF is built using Xacro macros to improve maintainability and allow rapid redesign of components such as sensors, drivetrain, and chassis geometry.
+The Perseus-Lite URDF (Unified Robot Description Format) provides a complete, modular, and simulation-ready description of the lite rover’s physical structure, joints, sensors, and coordinate frames. It is designed to support RViz visualisation, Gazebo Sim simulation, and Nav2-based navigation, following **[REP-103](https://www.ros.org/reps/rep-0103.html)[^2]** conventions and ROS2 best practices. The URDF is built using Xacro macros to improve maintainability and allow rapid redesign of components such as sensors, drivetrain, and chassis geometry.
 
 ## Repository Structure
 
-The [`perseus_description`](https://github.com/ROAR-QUTRC/perseus-v2/tree/main/software/ros_ws/src/perseus_description) package contains the full URDF/Xacro model of the Perseus Rover.
+The [`perseus_lite_description`](https://github.com/DingoOz/perseus-lite/tree/main/software/ros_ws/src/perseus_lite_description) package contains the full URDF/Xacro model of the lite rover.
 It provides a central source of truth for the robot’s physical structure, and is shared across other packages such as simulation, control, perception, and navigation.
 
 Below is the structure:
 
 ```none
-perseus_description/
+perseus_lite_description/
  ├── launch/
- │    └── view_perseus.launch.py               # Launch file to visualise the URDF in RViz
+ │    ├── view_robot.launch.py                  # Launch file to visualise the URDF in RViz
+ │    └── view_robot_nixgl.launch.py            # nixGL variant for hardware-accelerated RViz
  │
  ├── meshes/                                    # Visual/collision 3D models used by URDF
  │    ├── chassis.dae
@@ -31,31 +32,28 @@ perseus_description/
  │    └── wheel.dae
  │
  ├── ros2_control/
- │    └── perseus.ros2_control.xacro           # Hardware interface definition for ros2_control
+ │    └── perseus_lite.ros2_control.xacro       # Hardware interface definition for ros2_control
  │
  ├── rviz/
- │    ├── view_odom.rviz                       # RViz configuration for odometry view
- │    └── view_perseus.rviz                    # RViz configuration for robot model inspection
+ │    ├── view_odom.rviz                        # RViz configuration for odometry view
+ │    └── view_robot.rviz                       # RViz configuration for robot model inspection
  │
  ├── urdf/                                      # All Xacro modules that compose the robot
- │    ├── camera_depth.urdf.xacro              # Depth camera frame and model
- │    ├── chassis.urdf.xacro                   # Main chassis link definition
- │    ├── flange_bearing.urdf.xacro            # Bearing component used in joints
- │    ├── inertia_macros.xacro                 # Standard inertia & mass macros
- │    ├── motor_wheel.urdf.xacro               # Motor + wheel assembly macros
- │    ├── perseus.materials.xacro              # Material/color definitions
- │    ├── perseus.urdf.xacro                   # Main combined URDF entry point
- │    ├── rocker.urdf.xacro                    # Rocker suspension mechanism
- │    ├── sensors.urdf.xacro                   # Sensor mounts (2D & 3D Lidar)
- │    └── wheel.urdf.xacro                     # Wheel link geometry + joint
+ │    ├── chassis.urdf.xacro                    # Main chassis link definition
+ │    ├── motor_wheel.urdf.xacro                # Motor + wheel assembly macros
+ │    ├── perseus_lite.materials.xacro          # Material/color definitions
+ │    ├── perseus_lite.urdf.xacro               # Main combined URDF entry point
+ │    ├── rocker.urdf.xacro                     # Rocker suspension mechanism
+ │    ├── sensors.urdf.xacro                    # Sensor mounts (RPLidar, IMU)
+ │    └── wheel.urdf.xacro                      # Wheel link geometry + joint
  │
- ├── CMakeLists.txt                            # Package build configuration
- └── package.xml                               # ROS2 package manifest
+ ├── CMakeLists.txt                             # Package build configuration
+ └── package.xml                                # ROS2 package manifest
 ```
 
 ## Robot Architecture
 
-The following diagram illustrates the TF architecture of the Perseus Rover when operating with odometry (`/odom`) estimation enabled. This representation shows how major physical components, drivetrain assemblies, and sensors attach to the `base_link`, which serves as the primary reference frame for state estimation, navigation, and perception.
+The following diagram illustrates the TF architecture of Perseus-Lite when operating with odometry (`/odom`) estimation enabled. This representation shows how major physical components, drivetrain assemblies, and sensors attach to the `base_link`, which serves as the primary reference frame for state estimation, navigation, and perception.
 
 ```dot
     odom -> base_link;
@@ -89,7 +87,7 @@ The following diagram illustrates the TF architecture of the Perseus Rover when 
 
 ## Coordinate Frames (REP-103 Compliance)
 
-The Perseus Rover URDF follows **REP-103** conventions [^2] to ensure consistent coordinate alignment across ROS2 tools such as RViz, Nav2, AMCL, EKF, and perception pipelines. These conventions guarantee that all sensors, wheels, and robot links behave predictably in both simulation and real-world deployments.
+The Perseus-Lite URDF follows **REP-103** conventions [^2] to ensure consistent coordinate alignment across ROS2 tools such as RViz, Nav2, AMCL, EKF, and perception pipelines. These conventions guarantee that all sensors, wheels, and robot links behave predictably in both simulation and real-world deployments.
 
 ### **Base Frame (`base_link`)**
 
@@ -132,7 +130,7 @@ This is required for correct handling of projection matrices, point cloud orient
 
 ## Links & Joints Description
 
-The Perseus Rover URDF defines a complete kinematic chain composed of multiple rigid links connected through joints that reflect the rover’s physical articulation and drivetrain mechanics. Each link represents a physical component of the robot—such as the chassis, rocker arms, wheels, and sensor housings—while each joint defines how that component moves relative to others. Together, these form the structural foundation for motion simulation, TF (transform) generation, and controller integration.
+The Perseus-Lite URDF defines a complete kinematic chain composed of multiple rigid links connected through joints that reflect the rover’s physical articulation and drivetrain mechanics. Each link represents a physical component of the robot—such as the chassis, rocker arms, wheels, and sensor housings—while each joint defines how that component moves relative to others. Together, these form the structural foundation for motion simulation, TF (transform) generation, and controller integration.
 
 ### **Chassis Link (`chassis`)**
 
@@ -206,7 +204,7 @@ This structure ensures a physically consistent model where motion commands, sens
 
 ## Mass, Inertia & Collision Geometry
 
-The mass values used in the Perseus URDF are derived from real measurements of the rover’s physical components to ensure that the simulated dynamics accurately reflect the behavior of the actual system. Corresponding inertia tensors were computed based on the component geometries and are included to provide stable and realistic physics interactions.
+The mass values used in the Perseus-Lite URDF are derived from real measurements of the rover’s physical components to ensure that the simulated dynamics accurately reflect the behavior of the actual system. Corresponding inertia tensors were computed based on the component geometries and are included to provide stable and realistic physics interactions.
 
 To maintain high simulation performance and avoid unnecessary computational load, collision geometry has been deliberately simplified. Instead of using detailed mesh models—which typically contain thousands of small triangles and significantly increase physics processing time—the URDF employs basic geometric primitives such as boxes and cylinders for collision representation. These simplified shapes greatly reduce computational overhead while still providing accurate enough contact behaviour for locomotion, obstacle interaction, and navigation tasks.
 

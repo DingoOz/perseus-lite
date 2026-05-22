@@ -101,7 +101,7 @@ Finally, the aforementioned script does one thing - it takes in a source file pa
 As detailed in the [CI/CD Systems](project:ci-cd.md) document, this entire project uses Nix for everything - and that extends to building in the CI/CD pipeline.
 However, that only covers the CI part of CI/CD - deployment needs its own handling.
 
-The built documentation is currently hosted using [GitHub Pages](https://pages.github.com/), and as such requires a backing repository containing the contents which is located [here](https://github.com/ROAR-QUTRC/roar-qutrc.github.io).
+The built documentation can be hosted using [GitHub Pages](https://pages.github.com/) via a separate static-content repository that the CI pipeline pushes the built output into. The fork does not yet wire this up; the rest of this section describes the deployment shape inherited from upstream so it can be re-enabled with a deploy key when needed.
 :::{note}
 This is a "top-level" repository - this means that we can place a `robots.txt` file inside it, and it will be obeyed since it's located under the website root in the final deployment.
 Currently it's configured to block all crawlers, thus keeping the site off any search engines (although the repo itself can still be found).

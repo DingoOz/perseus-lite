@@ -27,7 +27,7 @@ This guide covers the basic teleoperation of Perseus-Lite using keyboard control
 
 The following conditions must be met before beginning:
 
-- The laptop runs a Linux distribution with the latest code from the perseus-v2 Github repository:
+- The laptop runs a Linux distribution with the latest code from the perseus-lite Github repository:
   ```console
   git checkout main
   git pull
@@ -59,7 +59,7 @@ The following conditions must be met before beginning:
 Build the Perseus-Lite software using Nix:
 
 ```console
-cd perseus-v2
+cd perseus-lite
 nix build
 ```
 
@@ -140,7 +140,7 @@ When the robot is stationary, velocities should be near zero. Position values ac
 In a new terminal, launch keyboard teleoperation:
 
 ```console
-cd perseus-v2
+cd perseus-lite
 export LC_ALL=C && export LANG=C
 nix develop --command bash -c "source software/ros_ws/install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -r cmd_vel:=key_vel"
 ```
@@ -177,7 +177,7 @@ Control messages are only sent when the terminal with keyboard teleoperation has
 If you prefer Xbox controller input:
 
 ```console
-cd perseus-v2
+cd perseus-lite
 export LC_ALL=C && export LANG=C
 nix develop --command bash -c "source software/ros_ws/install/setup.bash && ros2 launch input_devices xbox_controller.launch.py"
 ```

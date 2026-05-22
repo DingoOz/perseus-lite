@@ -19,7 +19,7 @@ sudo apt-get install curl
 Then, you can run this command (it will prompt you for sudo permissions):
 
 ```console
-curl https://raw.githubusercontent.com/ROAR-QUTRC/perseus-v2/refs/heads/main/software/scripts/member-setup.sh | bash
+curl https://raw.githubusercontent.com/DingoOz/perseus-lite/refs/heads/main/software/scripts/member-setup.sh | bash
 ```
 
 Which automates the manual process described below. After you run this command, you may need to restart your shell to ensure `direnv` loads properly.
@@ -36,12 +36,12 @@ sudo apt-get install -y gh git curl direnv
 ```
 
 3. Log into GitHub: `gh auth login -w -p https`
-4. Clone (means to download a copy from the server to your machine) the repository (often referred to as repo) into `~/perseus-v2` and `cd` (change directory) into it:
+4. Clone (means to download a copy from the server to your machine) the repository (often referred to as repo) into `~/perseus-lite` and `cd` (change directory) into it:
 
 ```{code-block} console
 cd ~
-gh repo clone ROAR-QUTRC/perseus-v2
-cd perseus-v2
+gh repo clone DingoOz/perseus-lite
+cd perseus-lite
 ```
 
 5. Run the setup script (it will prompt you for sudo permissions):
@@ -58,7 +58,7 @@ cd perseus-v2
 
 7. Accept all config options when prompted by typing `y`, then press enter
 8. Restart your shell
-9. Run `cd ~/perseus-v2`
+9. Run `cd ~/perseus-lite`
 10. Wait for the downloads (and potentially builds)
 11. If asked, accept all config options with `y`
 12. Run `nix build` - this will attempt to build the workspace. If this succeeds, you're done, and the built workspace is now available under the `./result` folder!
@@ -68,11 +68,11 @@ cd perseus-v2
 
 #### [VSCode](https://code.visualstudio.com/) (recommended)
 
-Open the `perseus-v2/perseus-v2.code-workspace` workspace file (`File/Open Workspace from File`) and install all the recommended extensions.
+Open the `perseus-lite/perseus-lite.code-workspace` workspace file (`File/Open Workspace from File`) and install all the recommended extensions.
 This will install language support extensions (Python and C++), an extension for the formatter in use ([`treefmt`](https://github.com/numtide/treefmt) - configured using [`treefmt-nix`](https://github.com/numtide/treefmt-nix/)), and configure VSCode to respect the project settings.
 
 :::{important}
-You specifically need to open the `perseus-v2.code-workspace` file, not the folder, as otherwise settings won't apply.
+You specifically need to open the `perseus-lite.code-workspace` file, not the folder, as otherwise settings won't apply.
 In the event that you open the folder by mistake, VSCode will prompt you to open the workspace file:
 
 ![VSCode Prompt](open-code-workspace.png)

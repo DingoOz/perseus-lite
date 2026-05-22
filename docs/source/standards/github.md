@@ -4,13 +4,12 @@ tocdepth: 4
 
 # GitHub Standards
 
-This document outlines our professional standards and best practices for contributing to the Perseus-v2 GitHub repository. The ROAR Project is a multi-year, multi-discipline endeavour and the Perseus-v2 repository represents the code for the current rover platform used at Australian and international competitions.
+This document outlines our professional standards and best practices for contributing to the Perseus-Lite GitHub repository.
 
-The Perseus-v2 repository contains all the software for the Perseus rover and includes:
+The Perseus-Lite repository contains all the software for the lite rover and includes:
 
-- firmware (ESP32 based)
-- hardware specific code
-- shared libraries for communication such as CAN and networking,
+- hardware-specific code (Feetech ST3215 servo `ros2_control` interface)
+- shared libraries for serial communication and networking
 - the custom web browser UI
 - a complete ROS2 workspace for teleoperation and autonomous operation
 
@@ -69,14 +68,14 @@ It is possible to run 'git log --oneline' at the terminal to see a summary of th
 
 ```none
 0290680 docs(simulation): add tutorial on launching the simulation
-4c6fd68 Merge pull request #217 from ROAR-QUTRC/feat/livox-fixing
+4c6fd68 Merge pull request #42 from DingoOz/feat/rplidar-tuning
 b970635 chore(perseus_sensors): format and lint
-ca97a15 fix(perseus_sensors): update Livox driver to run on /tmp
+ca97a15 fix(perseus_sensors): update RPLidar driver scan rate
 d2cb256 chore(perseus_sensors): format and lint
-5136806 fix(perseus_sensors): resolve Livox launch issues
-3fad5bd Merge pull request #216 from ROAR-QUTRC/feat/web-ui
+5136806 fix(perseus_sensors): resolve RPLidar launch issues
+3fad5bd Merge pull request #41 from DingoOz/feat/web-ui
 74913ae fix(docs): correct typo
-2fe1d6d Merge pull request #215 from ROAR-QUTRC/clean/nuking
+2fe1d6d Merge pull request #40 from DingoOz/clean/v2-residual
 f99acf2 refactor(perseus_sensors): remove old camera code
 e69a4db chore(ros_ws): format and lint
 93e47cf docs(setup): update power on steps and add zellij notes
@@ -121,11 +120,11 @@ The scope should indicate the part of the codebase being changed:
 
 ```none
 - perseus_lite
+- perseus_lite_hardware
+- perseus_lite_description
+- perseus_lite_simulation
 - perseus_sensors
-- perseus_nav
-- perseus_control
-- hardware
-- firmware
+- autonomy
 - web-ui
 - docs
 ```
@@ -143,7 +142,7 @@ The scope should indicate the part of the codebase being changed:
 Please note the use of a line to separate the initial short summary from the body
 
 ```none
-feat(perseus_sensors): add M2M2 lidar support
+feat(perseus_sensors): add RPLidar driver wrapper
 
 - corrected the number of points published to /scan
 - allowed param to select applicable USB device
@@ -153,10 +152,10 @@ feat(perseus_sensors): add M2M2 lidar support
 Other examples:
 
 ```none
-fix(perseus_control): resolve motor timeout issue
-docs(perseus_nav): update obstacle avoidance documentation
+fix(perseus_lite_hardware): resolve servo timeout issue
+docs(autonomy): update obstacle avoidance documentation
 refactor(web-ui): simplify dashboard component structure
-test(perseus_lite): add unit tests for CAN communication
+test(perseus_lite_hardware): add unit tests for ST3215 protocol
 ```
 
 #### Examples of Poor Commit Messages to Avoid
@@ -220,7 +219,7 @@ Examples:
 
 ```none
 feat(perseus_nav): add autonomous navigation mode
-fix(firmware): resolve CAN bus communication issues
+fix(perseus_lite_hardware): resolve serial communication issues
 docs(setup): improve installation instructions
 ```
 

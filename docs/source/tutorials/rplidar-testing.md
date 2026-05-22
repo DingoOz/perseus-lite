@@ -6,13 +6,13 @@ This tutorial covers testing the connection and functionality of a C1 RPLidar se
 
 The following conditions must be met before beginning:
 
-- The laptop runs a Linux distribution with the latest code from the perseus-v2 Github repository:
+- The laptop runs a Linux distribution with the latest code from the perseus-lite Github repository:
   ```console
   git checkout main
   git pull
   ```
 - RPLidar C1 is physically connected via USB
-- Required fonts are installed for rendering the terminal with the [`powerlevel10k`](https://github.com/romkatv/powerlevel10k) theme (available in /perseus-v2/fonts)
+- Required fonts are installed for rendering the terminal with the [`powerlevel10k`](https://github.com/romkatv/powerlevel10k) theme (available in /perseus-lite/fonts)
 
 ## Summary
 

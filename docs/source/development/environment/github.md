@@ -16,12 +16,12 @@ The main sections to work through within the levels menu are the 'Introduction S
 
 - **Git** is a version control system (VCS) that is used for tracking changes in files. It is a local system that can interface with external systems (repositories)
 - **GitHub** is a remote repository manager, which provides a central location for changes to be tracked between devices. It also provides additional functionality in regards to continuous integration/development (CI/CD) and the docs.
-- **Repository** This is a collection of files and folders that git is tracking. For example, `perseus-v2` is the repository that contains all the files for the perseus rover.
+- **Repository** This is a collection of files and folders that git is tracking. For example, `perseus-lite` is the repository that contains all the files for the lite rover.
 - **Main** The main branch or _main_ is the production branch for all the perseus code and files. Files on the main branch are shared with everyone, and are protected by certain CI/CD commands to prevent any broken changes from entering production (for more details see <project:/standards/github.md>)
 - **Branches** Each branch is an independent collection of commits, that tracks changes from a certain point in time. Think of branches like a tree, the main branch is the trunk (where everything stems from) and each branch is, well, a branch. Each branch can develop code independently from everything else, allowing changes, testing, and development to happen without breaking production.
 - **Commits** A commit in it's simplest form is a set of changes. It consists of files that have been added, modified, or deleted. Each commit also includes a message describing what it has changed. The repository is made up of commits, which git tracks.
 - **Push** When you make a commit following [The Standards](project:/standards/github.md), it is a local commit (only on your device). The same applies to any new branches created. A push is when you upload those commits and any new branch to the remote repository on GitHub.
-- **Pull** When changes are made to the remote repository you can _pull_ changes to update your local repository and ensure you are up to date with the latest version of the `perseus-v2` repository.
+- **Pull** When changes are made to the remote repository you can _pull_ changes to update your local repository and ensure you are up to date with the latest version of the `perseus-lite` repository.
 
 For more details and further terminology see [the official docs](https://git-scm.com/docs/gitglossary).
 
@@ -79,7 +79,7 @@ Or (to add the current folder):
 git add .
 ```
 
-If you do this while in the base folder (`~/perseus-v2`), it will add all changed files in the local repository.
+If you do this while in the base folder (`~/perseus-lite`), it will add all changed files in the local repository.
 
 Then you can push your commits to the remote GitHub repository. The first time you do this, you'll need to run `git push --set-upstream origin NEW_BRANCH_NAME` to add your local branch to the GitHub.
 After that, you can just run `git push` whenever you want to update the remote GitHub branch from your local branch (after staging changes). Make sure that you follow the GitHub standards when making commits to ensure the repository remains professional.
@@ -98,7 +98,7 @@ Have a look at <project:/systems/ci-cd.md> for more details on our CI/CD.
 
 ## Pull Requests
 
-Once you've finished developing on your branch , you can open a Pull Request (PR) to merge your branch into the main branch. To do this, go to the [Perseus GitHub repo](https://github.com/ROAR-QUTRC/perseus-v2) and go to "Pull requests" then click "New pull request". Select your branch and click "View pull request". This will take you to the pull request page, where you can write a title and a description of your changes. Make sure your branch is not behind main when submitting the pull request, see <project:#merges> below for more detail.
+Once you've finished developing on your branch , you can open a Pull Request (PR) to merge your branch into the main branch. To do this, go to the [Perseus-Lite GitHub repo](https://github.com/DingoOz/perseus-lite) and go to "Pull requests" then click "New pull request". Select your branch and click "View pull request". This will take you to the pull request page, where you can write a title and a description of your changes. Make sure your branch is not behind main when submitting the pull request, see <project:#merges> below for more detail.
 
 :::{warning}
 _Finished developing_ means your code is finalised, has been tested, and in your opinion should not require any more changes. Testing is required before a pull-request is made, you must be able to show/prove your code works before it can get merged into the main Github branch.

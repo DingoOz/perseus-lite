@@ -22,7 +22,7 @@ This script is designed to be run on the big-brain to setup any config that the 
 This script should be run whenever installing the repo on a fresh device. It installs required packages (direnv, git, gh), clones the repo, runs nix-setup.sh, builds the nix packages, and restarts the shell. It is designed to be run by the command:
 
 ```console
-curl https://raw.githubusercontent.com/ROAR-QUTRC/perseus-v2/refs/heads/main/software/scripts/member-setup.sh | bash
+curl https://raw.githubusercontent.com/DingoOz/perseus-lite/refs/heads/main/software/scripts/member-setup.sh | bash
 ```
 
 Which gets the raw content of the .sh file and executes it by piping it directly into bash.

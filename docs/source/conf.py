@@ -12,8 +12,8 @@ from exhale import utils
 # Project information
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "Perseus V2"
-author = "ROAR Team"
+project = "Perseus Lite"
+author = "DingoOz"
 copyright = f"%Y, {author}"
 
 # General configuration
@@ -85,7 +85,7 @@ exhale_args = {
     # dedent so we can provide multiline string
     "exhaleDoxygenStdin": dedent(
         """
-        INPUT= ./../../software ./../../firmware/components
+        INPUT= ./../../software
         RECURSIVE = YES
         EXCLUDE_PATTERNS = */tests/* */test/* */launch/*
         EXCLUDE_PATTERNS += */build/*
@@ -207,8 +207,8 @@ accent = "indigo"
 
 # sphinx-immaterial theme options
 html_theme_options = {
-    "repo_url": "https://github.com/ROAR-QUTRC/perseus-v2",
-    "repo_name": "Perseus V2",
+    "repo_url": "https://github.com/DingoOz/perseus-lite",
+    "repo_name": "Perseus Lite",
     "icon": {
         "repo": "material/github",
         "edit": "material/file-edit-outline",
@@ -283,7 +283,6 @@ nitpick_ignore_regex = {
     # or ROS things
     ("cpp:identifier", "rclcpp.*"),
     # silence {expr} role namespace warnings
-    ("cpp:identifier", "hi_can.*"),
     ("cpp:identifier", "addressing.*"),
     ("cpp:identifier", "parameters.*"),
 }
