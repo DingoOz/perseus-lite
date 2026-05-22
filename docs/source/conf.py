@@ -202,8 +202,8 @@ html_js_files = [
 html_logo = "_static/Rover-Logo.svg"
 html_favicon = "_static/Logo-Simple.png"
 
-primary = "deep-orange"
-accent = "indigo"
+primary = "indigo"
+accent = "pink"
 
 # sphinx-immaterial theme options
 html_theme_options = {
