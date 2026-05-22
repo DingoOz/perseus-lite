@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # push built packages
-nix build --json | jq -r '.[].outputs | to_entries[].value' | cachix push roar-qutrc
+nix build --json | jq -r '.[].outputs | to_entries[].value' | cachix push perseus-lite
 
 # push input flakes
-nix flake archive --json | jq -r '.path,(.inputs|to_entries[].value.path)' | cachix push roar-qutrc
+nix flake archive --json | jq -r '.path,(.inputs|to_entries[].value.path)' | cachix push perseus-lite

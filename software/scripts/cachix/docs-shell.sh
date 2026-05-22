@@ -6,6 +6,6 @@ set -euo pipefail
 
 # push dev shell environment
 nix develop .#docs --profile roar-devenv -c true
-cachix push roar-qutrc roar-devenv
+cachix push perseus-lite roar-devenv
 
 rm roar-devenv*
