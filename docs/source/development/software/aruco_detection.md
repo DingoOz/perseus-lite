@@ -2,6 +2,52 @@
 
 ## Overview
 
+```{graphviz}
+:caption: ArUco detection — image in, poses and TF frames out
+:align: center
+
+digraph aruco_pipeline {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.3, ranksep=0.5];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.18,0.10"];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    cam   [label="Camera driver", fillcolor="#1a237e", fontcolor="white"];
+    info  [label="/camera/.../camera_info", shape=note, fillcolor="#3949ab", fontcolor="white"];
+    img   [label="/camera/.../image_raw\n(or /compressed)", shape=note, fillcolor="#3949ab", fontcolor="white"];
+
+    subgraph cluster_node {
+        label=<<b>aruco_detector</b>>; labeljust="l";
+        style="rounded,filled"; color="#5e35b1"; fillcolor="#311b92"; fontcolor="#d6c8ff";
+
+        detect [label="detectMarkers\n(OpenCV dict)", fillcolor="#4527a0", fontcolor="white"];
+        pnp    [label="solvePnP\nmarker → pose", fillcolor="#4527a0", fontcolor="white"];
+        bbox   [label="bbox area filter\n(min_bounding_box_area)", fillcolor="#ad1457", fontcolor="white"];
+        tf_xf  [label="transform\ncamera → tf_output_frame", fillcolor="#4527a0", fontcolor="white"];
+        cache  [label="cache annotated\nframe + poses", shape=cylinder, fillcolor="#1a237e", fontcolor="white"];
+    }
+
+    debug    [label="/detection/aruco/image\n(annotated)", shape=note, fillcolor="#00838f", fontcolor="white"];
+    det_msg  [label="/detection/aruco/detections\n(ObjectDetections)", shape=note, fillcolor="#00838f", fontcolor="white"];
+    tf_out   [label="TF: aruco_marker_<id>", shape=note, fillcolor="#00838f", fontcolor="white"];
+    srv      [label="/detect_objects\n(service, capture PNG)", shape=octagon, fillcolor="#ec407a", fontcolor="white"];
+
+    cam  -> img  [style=dashed];
+    cam  -> info [style=dashed];
+
+    img  -> detect;
+    info -> pnp [style=dashed, label="intrinsics\n(if enabled)"];
+
+    detect -> pnp -> bbox -> tf_xf -> cache;
+
+    cache -> debug   [label="publish_img"];
+    cache -> det_msg [label="publish_output"];
+    cache -> tf_out  [label="publish_tf"];
+    cache -> srv     [label="latest cache", style=dashed];
+}
+```
+
 `aruco_detector` detects **OpenCV ArUco markers** in a camera stream and estimates each marker’s **6-DoF pose** using known camera intrinsics + marker size. It can:
 
 - Subscribe to **raw** or **compressed** images
