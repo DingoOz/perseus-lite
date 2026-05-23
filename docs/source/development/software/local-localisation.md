@@ -8,6 +8,48 @@ A variety of sensing modalities can be used to estimate odometry, including **wh
 
 ## Overview
 
+```{graphviz}
+:caption: Sensor fusion — wheel encoders and IMU into an EKF, then on to Nav2
+:align: center
+
+digraph ekf_flow {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.3, ranksep=0.55];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.18,0.10"];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    enc [label="Wheel encoders\nST3215 servos", fillcolor="#ec407a", fontcolor="white"];
+    imu [label="I2C IMU", fillcolor="#ec407a", fontcolor="white"];
+
+    odom_node [label="diff_drive_controller\n→ /odom", fillcolor="#5e35b1", fontcolor="white"];
+    imu_node  [label="i2c_imu_driver\n→ /imu/data", fillcolor="#5e35b1", fontcolor="white"];
+
+    ekf [label="robot_localization\nEKF\n15-state fusion", fillcolor="#311b92", fontcolor="white", penwidth=2.0];
+
+    filtered [label="/odometry/filtered\n+ TF: odom → base_link", fillcolor="#00838f", fontcolor="white"];
+    nav2 [label="Nav2\nlocal & global planners", fillcolor="#00bcd4", fontcolor="white"];
+
+    enc -> odom_node [label="encoder ticks"];
+    imu -> imu_node  [label="raw IMU"];
+
+    odom_node -> ekf [label="vx, vyaw\n(short-term accurate)", color="#ec407a"];
+    imu_node  -> ekf [label="orientation, ω, a\n(drift-bounded rotation)", color="#ec407a"];
+
+    ekf -> filtered;
+    filtered -> nav2;
+
+    note [shape=note, fillcolor="#15122c", fontcolor="#d6c8ff",
+          label=<
+            <b>Why two sensors?</b><br align="left"/>
+            Encoders drift under slip<br align="left"/>
+            IMU drifts on integration<br align="left"/>
+            Together they bound each other<br align="left"/>
+          >, fontsize=9];
+    ekf -> note [style=invis];
+}
+```
+
 For a Lunar Rover operating on the Moon, several localisation techniques commonly used on Earth are **not feasible**. For example:
 
 - **GPS cannot be used**, as there is no satellite navigation infrastructure on the Moon.

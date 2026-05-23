@@ -55,8 +55,43 @@ perseus_lite_description/
 
 The following diagram illustrates the TF architecture of Perseus-Lite when operating with odometry (`/odom`) estimation enabled. This representation shows how major physical components, drivetrain assemblies, and sensors attach to the `base_link`, which serves as the primary reference frame for state estimation, navigation, and perception.
 
-```dot
-    odom -> base_link;
+```{graphviz}
+:caption: Perseus-Lite TF tree (odom enabled)
+:align: center
+
+digraph tf_tree {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.25, ranksep=0.55];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.16,0.08"];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    odom            [label="odom", fillcolor="#5e35b1", fontcolor="white", shape=oval];
+    base_link       [label="base_link", fillcolor="#311b92", fontcolor="white", penwidth=2.0];
+    base_footprint  [label="base_footprint", fillcolor="#1a237e", fontcolor="white"];
+    chassis         [label="chassis", fillcolor="#3949ab", fontcolor="white"];
+
+    camera_link         [label="camera_link", fillcolor="#ad1457", fontcolor="white"];
+    camera_link_optical [label="camera_link_optical", fillcolor="#ad1457", fontcolor="white"];
+    laser_2d_frame      [label="laser_2d_frame", fillcolor="#ad1457", fontcolor="white"];
+    laser_frame         [label="laser_frame", fillcolor="#ad1457", fontcolor="white"];
+
+    flange_bearing   [label="flange_bearing", fillcolor="#00838f", fontcolor="white"];
+    differential_bar [label="differential_bar", fillcolor="#00838f", fontcolor="white"];
+    left_rocker      [label="left_rocker", fillcolor="#00838f", fontcolor="white"];
+    right_rocker     [label="right_rocker", fillcolor="#00838f", fontcolor="white"];
+
+    front_left_motor  [label="front_left_motor", fillcolor="#ec407a", fontcolor="white"];
+    rear_left_motor   [label="rear_left_motor", fillcolor="#ec407a", fontcolor="white"];
+    front_right_motor [label="front_right_motor", fillcolor="#ec407a", fontcolor="white"];
+    rear_right_motor  [label="rear_right_motor", fillcolor="#ec407a", fontcolor="white"];
+
+    front_left_wheel  [label="front_left_wheel", fillcolor="#880e4f", fontcolor="white", shape=ellipse];
+    rear_left_wheel   [label="rear_left_wheel",  fillcolor="#880e4f", fontcolor="white", shape=ellipse];
+    front_right_wheel [label="front_right_wheel", fillcolor="#880e4f", fontcolor="white", shape=ellipse];
+    rear_right_wheel  [label="rear_right_wheel",  fillcolor="#880e4f", fontcolor="white", shape=ellipse];
+
+    odom -> base_link [penwidth=2.0, color="#ec407a"];
     base_link -> base_footprint;
     base_link -> chassis;
 
@@ -67,22 +102,14 @@ The following diagram illustrates the TF architecture of Perseus-Lite when opera
     chassis -> laser_2d_frame;
     chassis -> laser_frame;
 
-    camera_link -> camera_link_optical;
-
+    camera_link    -> camera_link_optical;
     flange_bearing -> differential_bar;
 
-    left_rocker -> front_left_motor;
-    front_left_motor -> front_left_wheel;
-
-    left_rocker -> rear_left_motor;
-    rear_left_motor -> rear_left_wheel;
-
-    right_rocker -> front_right_motor;
-    front_right_motor -> front_right_wheel;
-
-    right_rocker -> rear_right_motor;
-    rear_right_motor -> rear_right_wheel;
-
+    left_rocker  -> front_left_motor  -> front_left_wheel;
+    left_rocker  -> rear_left_motor   -> rear_left_wheel;
+    right_rocker -> front_right_motor -> front_right_wheel;
+    right_rocker -> rear_right_motor  -> rear_right_wheel;
+}
 ```
 
 ## Coordinate Frames (REP-103 Compliance)
@@ -191,13 +218,29 @@ These joints define not only kinematic relationships but also how transforms pro
 
 All links and joints come together to form a coherent kinematic chain:
 
-```none
-base_link
- └── chassis
-      ├── rocker links
-      │     └── motor → wheel assemblies
-      ├── sensor links
-      └── differential bar
+```{graphviz}
+:caption: Schematic link–joint hierarchy
+:align: center
+
+digraph link_hierarchy {
+    graph [rankdir=TB, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.3, ranksep=0.4];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.18,0.08"];
+    edge  [color="#7a6cad", arrowsize=0.7];
+
+    base    [label="base_link", fillcolor="#311b92", fontcolor="white", penwidth=2.0];
+    chassis [label="chassis", fillcolor="#3949ab", fontcolor="white"];
+    rockers [label="rocker links", fillcolor="#00838f", fontcolor="white"];
+    motors  [label="motor → wheel assemblies", fillcolor="#ec407a", fontcolor="white"];
+    sensors [label="sensor links\n(camera, lidar, IMU)", fillcolor="#ad1457", fontcolor="white"];
+    diff    [label="differential bar", fillcolor="#00838f", fontcolor="white"];
+
+    base -> chassis;
+    chassis -> rockers -> motors;
+    chassis -> sensors;
+    chassis -> diff;
+}
 ```
 
 This structure ensures a physically consistent model where motion commands, sensor alignment, and transform propagation match the rover’s real-world design.

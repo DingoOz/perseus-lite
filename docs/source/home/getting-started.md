@@ -3,6 +3,15 @@
 This project is built using [Nix](https://nixos.org/), which makes getting started quite easy - all you have to do is install Nix and `direnv`, and they take care of the rest.
 Whilst this page will get you started, it is strongly recommended that you read through <project:nix-basics.md> after reading through this document so you understand how to use the tooling.
 
+## Conventions
+
+### File Paths
+
+Unless otherwise specified, file paths in these docs are relative to the repository root.
+:::{example}
+If you checked out the repository at `~/perseus-lite`, `docs/source/index.md` would refer to `~/perseus-lite/docs/source/index.md`.
+:::
+
 ## First-time Setup
 
 If you're on a Debian-based distro (like Ubuntu), you can run the `member-setup.sh` script, which will automatically set everything up for you. If you're not or you just want to, you can go through the steps manually (but you'll have to adjust the apt commands to suit your distro).

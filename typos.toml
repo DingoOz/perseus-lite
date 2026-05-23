@@ -3,7 +3,6 @@
 extend-exclude = [
   "typos.toml",
   "treefmt.toml",
-  "hardware/**",
   "**/sdkconfig.*",
   "*.svg",
   "*.png",

@@ -38,7 +38,6 @@ designs, and challenge docs are deleted, not just disabled.
 | `software/arm-teleop-direct/`                                             | Standalone serial Feetech arm teleop (C++). Lite-relevant.     |
 | `software/{daemons,scripts,utilities,web_ui,shared,native,home-manager}/` | General system infra — keep.                                   |
 | `firmware/`                                                               | ESP32/MCU firmware. Subdirs split lite/v2 — see §4.            |
-| `hardware/`                                                               | KiCAD PCB designs. Mostly v2-specific propulsion.              |
 | `packages/`                                                               | Nix overlays for third-party deps (Groot2, Livox SDK, Open3D). |
 | `docs/`                                                                   | Sphinx docs site (mostly perseus-v2 — see §4).                 |
 | `nix/`, `flake.nix`, `default.nix`, `shell.nix`                           | Nix-based dev shell + build.                                   |
@@ -96,7 +95,6 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 | `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle)                         |
 | `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra                                                                                            |
 | `packages/{groot2,open3d}`                                              | Nix overlays for autonomy deps                                                                           |
-| `hardware/libraries`, `hardware/templates`                              | Shared KiCAD libs                                                                                        |
 
 ### REMOVED — deleted, not in tree
 

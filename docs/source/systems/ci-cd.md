@@ -30,6 +30,43 @@ For this project, we aren't employing continuous deployment for anything but the
 The CI/CD pipeline for this project is run entirely using [GitHub Actions](https://docs.github.com/en/actions).
 The typical workflow looks something like this:
 
+```{graphviz}
+:caption: Per-push CI pipeline, end-to-end
+:align: center
+
+digraph cicd {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.3, ranksep=0.45];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.18,0.10"];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    trigger [label="git push\n/ pull_request", shape=cds, fillcolor="#ec407a", fontcolor="white"];
+
+    subgraph cluster_run {
+        label=<<b>GitHub Actions runner</b>>; labeljust="l";
+        style="rounded,filled"; color="#3949ab"; fillcolor="#1a237e"; fontcolor="#d6c8ff";
+
+        checkout [label="actions/checkout", fillcolor="#311b92", fontcolor="white"];
+        installnix [label="nix-quick-install-action", fillcolor="#311b92", fontcolor="white"];
+        cache [label="magic-nix-cache-action\n(read cache)", shape=cylinder, fillcolor="#0277bd", fontcolor="white"];
+        update [label="optional\nnix run …\nauto-commit", fillcolor="#ad1457", fontcolor="white", style="rounded,filled,dashed"];
+        build [label="nix build / check -L", fillcolor="#5e35b1", fontcolor="white", penwidth=2.0];
+        push_cache [label="cachix push\n(scripts.cachix.*)", shape=cylinder, fillcolor="#00838f", fontcolor="white"];
+    }
+
+    pass [label="✓ green build", shape=oval, fillcolor="#2e7d32", fontcolor="white"];
+    fail [label="✗ failure", shape=oval, fillcolor="#b71c1c", fontcolor="white"];
+
+    trigger    -> checkout;
+    checkout   -> installnix -> cache -> update -> build;
+    cache      -> build [style=dashed, label="cache hit"];
+    build      -> push_cache [label="on success"];
+    push_cache -> pass;
+    build      -> fail [label="non-zero exit", color="#b71c1c"];
+}
+```
+
 1. Check out the repo with [`actions/checkout`](https://github.com/actions/checkout)
 2. Install Nix with [`nixbuild/nix-quick-install-action`](https://github.com/nixbuild/nix-quick-install-action)
 3. Set up Nix output caching with [`DeterminateSystems/magic-nix-cache-action`](https://github.com/DeterminateSystems/magic-nix-cache-action)
