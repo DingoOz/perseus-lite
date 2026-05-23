@@ -5,6 +5,100 @@ Since it's a ROS2 project, it's comprised of code in two languages - C++ and Pyt
 Although, as detailed in the [standards](project:/standards/software/general.md), we try to keep all the software to C++, there are some cases for which Python just makes more sense (such as input handling - see the `input_devices` package).
 The C++ code is all built using [CMake](https://cmake.org/) since that's what ROS2 uses by default, and extending that to non-ROS code allows easy interoperability, as you'll see shortly.
 
+## System architecture at a glance
+
+The diagram below shows how data moves from operator input, through the ROS 2 graph, and out to the four ST3215 wheel servos.
+SLAM, Nav2 and vision sit alongside teleop as additional command sources, all multiplexed by `twist_mux`.
+
+```{graphviz}
+:caption: Perseus-Lite ROS 2 control & autonomy graph
+:align: center
+
+digraph perseus_lite_arch {
+    graph [rankdir=LR, splines=spline, bgcolor="transparent", fontname="Roboto",
+           pad=0.25, nodesep=0.35, ranksep=0.55];
+    node  [shape=box, style="rounded,filled", fontname="Roboto",
+           fontsize=11, margin="0.18,0.10", penwidth=1.1];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad", penwidth=1.1];
+
+    // ---- Operator-facing inputs ----
+    subgraph cluster_input {
+        label="Operator input"; style="rounded,dashed";
+        color="#9c6cff"; fontcolor="#9c6cff"; fontsize=11;
+        gamepad [label="Xbox / gamepad\n(input_devices)", fillcolor="#5e35b1", fontcolor="white"];
+        keyboard [label="teleop_twist_keyboard", fillcolor="#5e35b1", fontcolor="white"];
+        webui   [label="Web UI\n(rosbridge)", fillcolor="#5e35b1", fontcolor="white"];
+    }
+
+    // ---- Autonomy ----
+    subgraph cluster_auto {
+        label="Autonomy"; style="rounded,dashed";
+        color="#00bcd4"; fontcolor="#00bcd4"; fontsize=11;
+        slam    [label="slam_toolbox", fillcolor="#00838f", fontcolor="white"];
+        nav2    [label="Nav2 stack", fillcolor="#00838f", fontcolor="white"];
+        bt      [label="Behaviour trees\n(perseus_bt_nodes)", fillcolor="#00838f", fontcolor="white"];
+    }
+
+    // ---- Perception ----
+    subgraph cluster_perc {
+        label="Perception"; style="rounded,dashed";
+        color="#ec407a"; fontcolor="#ec407a"; fontsize=11;
+        lidar   [label="RPLidar driver", fillcolor="#ad1457", fontcolor="white"];
+        imu     [label="I2C IMU driver", fillcolor="#ad1457", fontcolor="white"];
+        camera  [label="Camera + ArUco\n(perseus_vision)", fillcolor="#ad1457", fontcolor="white"];
+        ekf     [label="robot_localization\nEKF", fillcolor="#ad1457", fontcolor="white"];
+    }
+
+    // ---- Core control plane ----
+    subgraph cluster_core {
+        label="ros2_control plane"; style="rounded,filled";
+        color="#3a1f7a"; fillcolor="#1a1340"; fontcolor="#d6c8ff"; fontsize=11;
+        twistmux [label="twist_mux", fillcolor="#311b92", fontcolor="white"];
+        diffdrive [label="diff_drive_controller\n(TwistStamped)", fillcolor="#311b92", fontcolor="white"];
+        hwif    [label="perseus_lite_hardware\n(ST3215 system interface)", fillcolor="#1a237e", fontcolor="white"];
+    }
+
+    // ---- Hardware ----
+    subgraph cluster_hw {
+        label="Hardware"; style="rounded,dashed";
+        color="#ec407a"; fontcolor="#ec407a"; fontsize=11;
+        serial  [label="/dev/ttyACM0\nFeetech serial bus", shape=cylinder, fillcolor="#37474f", fontcolor="white"];
+        fl [label="FL  id 1", shape=circle, fixedsize=true, width=0.7, fillcolor="#ec407a", fontcolor="white"];
+        fr [label="FR  id 2", shape=circle, fixedsize=true, width=0.7, fillcolor="#ec407a", fontcolor="white"];
+        rl [label="RL  id 3", shape=circle, fixedsize=true, width=0.7, fillcolor="#ec407a", fontcolor="white"];
+        rr [label="RR  id 4", shape=circle, fixedsize=true, width=0.7, fillcolor="#ec407a", fontcolor="white"];
+    }
+
+    // ---- Input → twist_mux ----
+    gamepad  -> twistmux [label="/joy_vel"];
+    keyboard -> twistmux [label="/key_vel"];
+    webui    -> twistmux [label="/web_vel"];
+    nav2     -> twistmux [label="/nav_vel"];
+
+    // ---- Autonomy flow ----
+    lidar -> slam    [label="/scan"];
+    slam  -> nav2    [label="/map"];
+    bt    -> nav2    [label="goals"];
+    ekf   -> nav2    [label="/odometry/filtered"];
+
+    // ---- Perception → EKF ----
+    imu      -> ekf       [label="/imu/data"];
+    hwif     -> ekf       [label="/odom"];
+    camera   -> bt        [label="markers / cubes", style=dashed];
+
+    // ---- Control path ----
+    twistmux  -> diffdrive [label="/cmd_vel_out", penwidth=2.2, color="#ec407a"];
+    diffdrive -> hwif      [label="wheel cmds", penwidth=2.2, color="#ec407a"];
+    hwif      -> serial    [label="SYNC_WRITE\n@ ~50 Hz", penwidth=2.2, color="#ec407a"];
+    serial    -> fl;
+    serial    -> fr;
+    serial    -> rl;
+    serial    -> rr;
+}
+```
+
+## Code layout
+
 Internally, the code is split into several sections:
 
 - {file}`software/native/`: Programs which run natively, independent of ROS

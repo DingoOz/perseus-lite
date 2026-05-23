@@ -33,6 +33,67 @@ During Practice:
 
 Assumption: All systems need to be able to concurrently operate on 20 Mhz (Max ~97 Mbps)
 
+## Topology
+
+The base-station and on-rover networks join at the wireless link between the **U7 Outdoor** (directional, base) and the **U7 Long Range** (on-board).
+A phone tethered over USB-C ethernet supplies WAN for the UCG Max.
+
+```{graphviz}
+:caption: Competition network topology — base station, wireless link, rover
+:align: center
+
+digraph network_topo {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.4, ranksep=0.6, compound=true];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1, margin="0.18,0.10"];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    // ---- Base station ----
+    subgraph cluster_base {
+        label=<<b>Base station</b>>; labeljust="l";
+        style="rounded,filled"; color="#3949ab"; fillcolor="#1a237e"; fontcolor="#d6c8ff";
+
+        phone   [label="Phone\n(USB-C → ethernet)", shape=note, fillcolor="#5e35b1", fontcolor="white"];
+        ucg     [label="UCG Max\n(gateway / controller)", fillcolor="#311b92", fontcolor="white"];
+        sw      [label="US 8 PoE 150W\n(switch)", fillcolor="#311b92", fontcolor="white"];
+        laptop  [label="Operator laptop", shape=component, fillcolor="#0d47a1", fontcolor="white"];
+        ap_out  [label="U7 Outdoor AP\n(directional)", shape=octagon, fillcolor="#0277bd", fontcolor="white"];
+    }
+
+    // ---- RF link ----
+    subgraph cluster_rf {
+        label=<<b>RF link</b>  <font point-size="9">QUTRC-ROAR-LOCAL  · 2.4 / 5 GHz</font>>;
+        labeljust="l"; style="rounded,dashed"; color="#ec407a"; fontcolor="#ec407a";
+        rf [label="Wi-Fi\n20 / 40 MHz\nchan 1, 6 or 11", shape=ellipse, fillcolor="#ad1457", fontcolor="white"];
+    }
+
+    // ---- On-rover ----
+    subgraph cluster_rover {
+        label=<<b>On the rover</b>>; labeljust="l";
+        style="rounded,filled"; color="#00838f"; fillcolor="#004d40"; fontcolor="#b2ebf2";
+
+        ap_lr   [label="U7 Long Range AP\n(omnidirectional)", shape=octagon, fillcolor="#00838f", fontcolor="white"];
+        poe     [label="On-board PoE switch", fillcolor="#00695c", fontcolor="white"];
+        nuc     [label="Compute (NUC / SBC)", shape=component, fillcolor="#00695c", fontcolor="white"];
+        sensors [label="Sensors\n(camera, lidar, …)", shape=component, fillcolor="#00695c", fontcolor="white"];
+    }
+
+    phone  -> ucg    [label="WAN"];
+    ucg    -> sw     [label="LAN"];
+    sw     -> laptop [label="ethernet"];
+    sw     -> ap_out [label="PoE+"];
+    laptop -> ucg    [label="Wi-Fi / LAN", style=dashed];
+
+    ap_out -> rf     [label="↑ uplink", color="#ec407a"];
+    rf     -> ap_lr  [label="↓ downlink", color="#ec407a", penwidth=2.0];
+
+    ap_lr  -> poe    [label="PoE"];
+    poe    -> nuc    [label="ethernet"];
+    poe    -> sensors [label="ethernet / PoE"];
+}
+```
+
 ## Devices
 
 All networking devices used are Unifi (with the exception of the small PoE switch on Perseus itself).

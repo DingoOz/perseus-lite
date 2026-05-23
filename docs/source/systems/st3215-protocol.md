@@ -6,7 +6,78 @@ The ST3215 servo uses a serial communication protocol that allows control and mo
 
 **Reference:** For complete protocol details, refer to the [Feetech STS3215 Servo User Manual](https://www.feetechrc.com/service-programmable-servo.html).
 
+## Bus topology
+
+Every wheel servo lives on a single half-duplex serial bus, distinguished only by its hardware ID.
+The host writes a packet, then the addressed servo writes its reply back on the same wires.
+
+```{graphviz}
+:caption: Single serial bus, four servos
+:align: center
+
+digraph st3215_bus {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto", nodesep=0.3, ranksep=0.6];
+    node  [fontname="Roboto", fontsize=11, style="filled,rounded", penwidth=1.1];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    host [label="Host\n(perseus_lite_hardware)", shape=box, fillcolor="#1a237e", fontcolor="white"];
+    bus  [label="/dev/ttyACM0\nhalf-duplex serial @ 1 Mbit", shape=cylinder, fillcolor="#37474f", fontcolor="white"];
+    s1 [label="ID 1\nFL", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
+    s2 [label="ID 2\nFR", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
+    s3 [label="ID 3\nRL", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
+    s4 [label="ID 4\nRR", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
+
+    host -> bus  [dir=both, label="TX / RX", penwidth=2.0, color="#ec407a"];
+    bus  -> s1;
+    bus  -> s2;
+    bus  -> s3;
+    bus  -> s4;
+}
+```
+
 ## Memory Map
+
+Each servo exposes two register banks — non-volatile EPROM for configuration and volatile SRAM for live command/status data.
+The figure below visualises the layout; the tables that follow give the exact addresses.
+
+```{graphviz}
+:caption: Logical layout of the servo register file
+:align: center
+
+digraph st3215_mem {
+    graph [rankdir=TB, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.25, ranksep=0.4, compound=true];
+    node  [shape=box, style="filled,rounded", fontname="Roboto",
+           fontsize=10, margin="0.15,0.06"];
+    edge  [color="transparent"];
+
+    subgraph cluster_eprom {
+        label=<<b>EPROM</b><br/><font point-size="9">non-volatile, write-rare</font>>;
+        labeljust="l"; style="rounded,filled"; fillcolor="#1a237e";
+        fontcolor="#d6c8ff"; fontsize=11; color="#3949ab";
+
+        ep_ro [label="0–4   read-only\nfirmware + hardware version", fillcolor="#311b92", fontcolor="white"];
+        ep_id [label="5–8   bus identity\nID, baud, return-delay, status-level", fillcolor="#311b92", fontcolor="white"];
+        ep_lim [label="9–17  motion limits\nposition / torque ceilings", fillcolor="#311b92", fontcolor="white"];
+        ep_env [label="13–15 environment limits\ntemperature, voltage range", fillcolor="#311b92", fontcolor="white"];
+        ep_cal [label="26–33 calibration\ndead-band, offset, operating mode", fillcolor="#311b92", fontcolor="white"];
+    }
+
+    subgraph cluster_sram {
+        label=<<b>SRAM</b><br/><font point-size="9">volatile, every-tick traffic</font>>;
+        labeljust="l"; style="rounded,filled"; fillcolor="#4a148c";
+        fontcolor="#ffd6ea"; fontsize=11; color="#6a1b9a";
+
+        sr_cmd  [label="40–55 commands\ntorque, goal, speed, accel", fillcolor="#880e4f", fontcolor="white"];
+        sr_stat [label="56–66 live status\nposition, speed, load, moving", fillcolor="#880e4f", fontcolor="white"];
+        sr_envt [label="62–63 environment\nvoltage, temperature", fillcolor="#880e4f", fontcolor="white"];
+        sr_cur  [label="69–70 current draw\n(mA)", fillcolor="#880e4f", fontcolor="white"];
+    }
+
+    ep_ro -> ep_id -> ep_lim -> ep_env -> ep_cal [style=invis];
+    sr_cmd -> sr_stat -> sr_envt -> sr_cur     [style=invis];
+}
+```
 
 ### EPROM Memory Tables
 
@@ -68,21 +139,71 @@ The ST3215 servo uses a serial communication protocol that allows control and mo
 
 ### Packet Structure
 
-1. Header: 0xFF 0xFF
-2. ID: Single byte (0-253, 0xFE for broadcast)
-3. Length: Number of parameters + 2
-4. Instruction: Command byte
-5. Parameters: Variable length
-6. Checksum: ~(ID + Length + Instruction + Parameters)
+Every packet — host-to-servo and servo-to-host — uses the same byte layout.
+A read of the current position therefore looks like this on the wire:
+
+```{graphviz}
+:caption: Packet anatomy (example: READ position from ID 3)
+:align: center
+
+digraph packet {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto",
+           nodesep=0.05, ranksep=0.4];
+    node  [shape=record, fontname="Roboto", fontsize=10,
+           style="filled", fillcolor="#1a237e", fontcolor="white",
+           penwidth=1.0, color="#5e35b1"];
+
+    pkt [label=<{
+        <font color="#d6c8ff">0xFF</font>|<font color="#d6c8ff">0xFF</font>|<b>ID</b>|<b>Len</b>|<b>Inst</b>|<b>Params&hellip;</b>|<b>Sum</b>
+    }>];
+
+    annot [shape=plaintext, fillcolor="transparent", fontcolor="#5e35b1", label=<
+        <table border="0" cellspacing="0" cellpadding="3">
+        <tr>
+            <td align="center" width="55"><font point-size="9">header</font></td>
+            <td align="center" width="55"><font point-size="9">header</font></td>
+            <td align="center" width="42"><font point-size="9">target<br/>id</font></td>
+            <td align="center" width="42"><font point-size="9">N&nbsp;params<br/>+&nbsp;2</font></td>
+            <td align="center" width="44"><font point-size="9">opcode</font></td>
+            <td align="center" width="80"><font point-size="9">addr / length<br/>or payload</font></td>
+            <td align="center" width="60"><font point-size="9">~&Sigma; bytes</font></td>
+        </tr></table>
+    >];
+
+    pkt -> annot [style=invis];
+}
+```
 
 ### Instructions
 
-- PING (0x01): Check if servo exists
-- READ (0x02): Read from memory
-- WRITE (0x03): Write to memory
-- REG_WRITE (0x04): Write to register (pending)
-- ACTION (0x05): Execute pending REG_WRITE
-- SYNC_WRITE (0x83): Write to multiple servos
+```{graphviz}
+:caption: Instruction set — opcodes, direction and intent
+:align: center
+
+digraph instr_set {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto", nodesep=0.4, ranksep=0.4];
+    node  [shape=box, style="filled,rounded", fontname="Roboto",
+           fontsize=10, margin="0.18,0.10", penwidth=1.1];
+    edge  [color="#7a6cad", fontname="Roboto", fontsize=9];
+
+    host  [label="Host", fillcolor="#1a237e", fontcolor="white"];
+    one   [label="Single servo", fillcolor="#ec407a", fontcolor="white"];
+    many  [label="Many servos", fillcolor="#ad1457", fontcolor="white"];
+
+    host -> one  [label="PING (0x01)\nexists?"];
+    one  -> host [label="ACK", style=dashed];
+
+    host -> one  [label="READ (0x02)\naddr, len"];
+    one  -> host [label="bytes", style=dashed];
+
+    host -> one  [label="WRITE (0x03)\ncommit now"];
+    host -> one  [label="REG_WRITE (0x04)\nstage"];
+    host -> many [label="ACTION (0x05)\ncommit all staged", color="#ec407a"];
+    host -> many [label="SYNC_WRITE (0x83)\nfan-out", color="#ec407a", penwidth=2.0];
+}
+```
+
+`SYNC_WRITE` is the path the diff-drive controller actually uses every tick — one packet on the wire sets goal speeds for all four wheels.
 
 ## Operation Modes
 
@@ -135,6 +256,45 @@ The ST3215 servo uses a serial communication protocol that allows control and mo
 - Voltage operating range: 8-14V
 
 ## Protocol Examples
+
+The two flows below trace single transactions byte-by-byte.
+The first reads `Present Position` from one servo; the second writes a new goal speed to another.
+
+```{graphviz}
+:caption: Two complete request / reply transactions on the bus
+:align: center
+
+digraph proto_examples {
+    graph [rankdir=LR, bgcolor="transparent", fontname="Roboto", ranksep=0.5];
+    node  [fontname="Roboto", fontsize=10, style="filled,rounded",
+           shape=box, penwidth=1.1];
+    edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
+
+    subgraph cluster_a {
+        label=<<b>READ position</b>  <font point-size="9">addr 0x38, 2 bytes</font>>;
+        labeljust="l"; style="rounded,filled"; color="#3949ab";
+        fillcolor="#1a237e"; fontcolor="#d6c8ff";
+
+        host_a  [label="Host", fillcolor="#311b92", fontcolor="white"];
+        servo_a [label="Servo ID 3", fillcolor="#ec407a", fontcolor="white"];
+
+        host_a  -> servo_a [label="FF FF 03 04 02 38 02 B8\n(8 bytes)", color="#ec407a"];
+        servo_a -> host_a  [label="FF FF 03 04 00 E8 03 0E\n0x03E8 = 1000 steps", color="#00bcd4", style=dashed];
+    }
+
+    subgraph cluster_b {
+        label=<<b>WRITE goal speed</b>  <font point-size="9">addr 0x2E, 2 bytes, value 50</font>>;
+        labeljust="l"; style="rounded,filled"; color="#6a1b9a";
+        fillcolor="#4a148c"; fontcolor="#ffd6ea";
+
+        host_b  [label="Host", fillcolor="#311b92", fontcolor="white"];
+        servo_b [label="Servo ID 4", fillcolor="#ec407a", fontcolor="white"];
+
+        host_b  -> servo_b [label="FF FF 04 05 03 2E 32 00 8E\n(9 bytes)", color="#ec407a"];
+        servo_b -> host_b  [label="FF FF 04 02 00 F9\nerror = 0 (OK)", color="#00bcd4", style=dashed];
+    }
+}
+```
 
 ### Reading Position (ID #3)
 
