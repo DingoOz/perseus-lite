@@ -197,6 +197,13 @@ html_css_files = [
 ]
 html_js_files = [
     "js/dark-opt-images.js",
+    (
+        "https://cloud.umami.is/script.js",
+        {
+            "data-website-id": "89eafd9b-18bf-4999-8d28-b93db5e13e4e",
+            "defer": "defer",
+        },
+    ),
 ]
 
 html_logo = "_static/Rover-Logo.svg"
