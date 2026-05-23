@@ -1,7 +1,5 @@
 /.github/ @RandomSpaceship @OMEN44 @UltraFishy
 /docs/ @RandomSpaceship @UltraFishy @OMEN44 @TheFriendlyGoat @DingoOz
-/firmware/ @RandomSpaceship @GR3Y-SCALE
-/hardware/ @RandomSpaceship @GR3Y-SCALE
 /packages/ @RandomSpaceship @UltraFishy @DingoOz
 *.nix @RandomSpaceship @UltraFishy @DingoOz
 

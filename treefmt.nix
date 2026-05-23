@@ -69,8 +69,6 @@
         "*.3mf"
         # ML models
         "*.onnx"
-        # PCBs (KiCAD)
-        "hardware/**"
       ];
     };
     formatter = {
