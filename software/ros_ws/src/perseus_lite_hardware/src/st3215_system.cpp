@@ -1,5 +1,7 @@
 #include "st3215_system.hpp"
 
+#include "st3215_protocol.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <hardware_interface/system_interface.hpp>
@@ -411,79 +413,21 @@ namespace perseus_lite_hardware
         {
             for (size_t i = 0; i < _servo_ids.size(); ++i)
             {
-                // Log input command speed
                 RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
                              "Servo %d - Input command speed (rad/s): %f",
                              _servo_ids[i], _command_speeds[i]);
 
-                // Use command speed directly - URDF axis definitions handle direction
-                double corrected_speed = _command_speeds[i];
+                double corrected_speed = protocol::apply_motor_direction(
+                    _servo_ids[i], _command_speeds[i]);
 
-                // Invert direction for motors 2 and 3 (left side motors)
-                // Motor 2 is rear_left_wheel, Motor 3 is front_left_wheel
-                // This is needed because the URDF defines all wheels with the same axis direction
-                // but physically the left motors need to rotate opposite to the right motors
-                if (_servo_ids[i] == 2 || _servo_ids[i] == 3)
-                {
-                    corrected_speed = -corrected_speed;
-                    RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                                 "Servo %d - Inverted direction for left side motor", _servo_ids[i]);
-                }
+                uint16_t servo_speed = protocol::encode_servo_velocity(corrected_speed);
 
-                // Convert velocity command to servo units
-                // ST3215 expects -1000 to 1000 for velocity
-                const double normalized_velocity = corrected_speed * _RAD_S_TO_RPM;  // to RPM
-
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Servo %d - Converted to RPM: %f",
-                             _servo_ids[i], normalized_velocity);
-
-                // Debug print the _RPM_SCALE_FACTOR value being used
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Servo %d - Using _RPM_SCALE_FACTOR value: %f",
-                             _servo_ids[i], _RPM_SCALE_FACTOR);
-
-                // Safe conversion with overflow protection
-                double scaled_velocity = normalized_velocity * (_MAX_VELOCITY_RPM / _RPM_SCALE_FACTOR);
-                double clamped_velocity = std::clamp(scaled_velocity,
-                                                     static_cast<double>(_MIN_VELOCITY_RPM),
-                                                     static_cast<double>(_MAX_VELOCITY_RPM));
-
-                // Ensure value is within int16_t range before conversion
-                if (clamped_velocity > std::numeric_limits<int16_t>::max())
-                {
-                    clamped_velocity = std::numeric_limits<int16_t>::max();
-                }
-                else if (clamped_velocity < std::numeric_limits<int16_t>::min())
-                {
-                    clamped_velocity = std::numeric_limits<int16_t>::min();
-                }
-
-                int16_t servo_speed = static_cast<int16_t>(clamped_velocity);
-
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Servo %d - Calculated servo speed (before direction): %d",
-                             _servo_ids[i], servo_speed);
-
-                // Convert to protocol format (handle negative values per SMS/STS protocol)
-                if (servo_speed < 0)
-                {
-                    servo_speed = -servo_speed;
-                    servo_speed |= _SIGN_BIT_MASK;  // Set direction bit
-                    RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                                 "Servo %d - Negative speed detected, after direction bit: %d",
-                                 _servo_ids[i], servo_speed);
-                }
-
-                // Build write command for velocity - format matches SMS_STS::write_speed
-                // Using the enum class for the goal speed register
                 const uint8_t goal_speed_register = static_cast<uint8_t>(ServoSramRegister::GOAL_SPEED_L);
                 const std::array<uint8_t, 3> vel_data{
                     goal_speed_register,
                     static_cast<uint8_t>(servo_speed & 0xFF),
                     static_cast<uint8_t>((servo_speed >> 8) & 0xFF)};
 
-                // Debug print the final bytes being sent
                 RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
                              "Servo %d - Final velocity bytes: 0x%02X 0x%02X",
                              _servo_ids[i], vel_data[1], vel_data[2]);
@@ -510,21 +454,8 @@ namespace perseus_lite_hardware
         const uint8_t id, const ServoCommand command,
         const std::span<const uint8_t> data) noexcept
     {
-        std::vector<uint8_t> packet;
-        packet.reserve(data.size() + 6);  // Header(2) + ID(1) + Length(1) + CMD(1) + Data(n) + Checksum(1)
-
-        // Build packet
-        const std::array<uint8_t, _PACKET_HEADER_SIZE> header{_PACKET_HEADER_BYTE, _PACKET_HEADER_BYTE};
-        packet.insert(packet.end(), header.begin(), header.end());
-        packet.push_back(id);
-        packet.push_back(static_cast<uint8_t>(data.size() + 2));  // Length = data size + command(1) + checksum(1)
-        packet.push_back(static_cast<uint8_t>(command));          // Convert enum class to uint8_t
-        packet.insert(packet.end(), data.begin(), data.end());
-
-        // Calculate checksum - XOR of all bytes from ID to the end of data
-        const uint8_t checksum = ~std::accumulate(
-            packet.begin() + _PACKET_ID_INDEX, packet.end(), uint8_t{0});
-        packet.push_back(checksum);
+        auto packet = protocol::build_packet(
+            id, static_cast<protocol::Command>(static_cast<uint8_t>(command)), data);
 
         // Debug output - convert to hex string for readable output
         std::stringstream debug_ss;
@@ -593,13 +524,8 @@ namespace perseus_lite_hardware
                 continue;
             }
 
-            // Validate checksum
-            uint8_t checksum = 0;
-            for (size_t j = i + _PACKET_ID_INDEX; j < i + _PACKET_MIN_SIZE + length - 1; ++j)
-            {
-                checksum += response[j];
-            }
-            checksum = ~checksum;
+            const uint8_t checksum = protocol::calculate_checksum(
+                std::span{response.data() + i + _PACKET_ID_INDEX, static_cast<size_t>(_PACKET_MIN_SIZE + length - 1 - _PACKET_ID_INDEX)});
 
             if (checksum != response[i + _PACKET_MIN_SIZE + length - 1])
             {
@@ -681,38 +607,16 @@ namespace perseus_lite_hardware
                     {
                         uint16_t raw_pos_unsigned = static_cast<uint16_t>(
                             packet[_POSITION_LOW_BYTE_INDEX] | (static_cast<uint16_t>(packet[_POSITION_HIGH_BYTE_INDEX]) << 8));
-
-                        // Safe conversion to signed integer
-                        int16_t raw_pos = static_cast<int16_t>(raw_pos_unsigned);
-
-                        // Handle position according to protocol (12-bit resolution)
-                        if (raw_pos & _SIGN_BIT_MASK)
-                        {  // Check sign bit
-                            raw_pos = -(raw_pos & ~_SIGN_BIT_MASK);
-                        }
-                        // Convert to radians (4096 counts per revolution)
-                        state.position = raw_pos * (_RADIANS_PER_REVOLUTION / _ENCODER_TICKS_PER_REVOLUTION);
+                        int16_t raw_pos = protocol::parse_signed_value(raw_pos_unsigned);
+                        state.position = protocol::ticks_to_radians(raw_pos);
                     }
 
-                    // Extract velocity (2 bytes, little endian) with safe conversion
                     if (_VELOCITY_LOW_BYTE_INDEX < packet.size() && _VELOCITY_HIGH_BYTE_INDEX < packet.size())
                     {
                         uint16_t raw_vel_unsigned = static_cast<uint16_t>(
                             packet[_VELOCITY_LOW_BYTE_INDEX] | (static_cast<uint16_t>(packet[_VELOCITY_HIGH_BYTE_INDEX]) << 8));
-
-                        // Safe conversion to signed integer
-                        int16_t raw_vel = static_cast<int16_t>(raw_vel_unsigned);
-
-                        // Handle velocity according to protocol (-1000 to 1000)
-                        if (raw_vel & _SIGN_BIT_MASK)
-                        {  // Check sign bit
-                            raw_vel = -(raw_vel & ~_SIGN_BIT_MASK);
-                        }
-                        // Convert to rad/s (protocol units are roughly RPM/1000)
-                        const double rpm = raw_vel * (_RPM_SCALE_FACTOR / _MAX_VELOCITY_RPM);
-                        double velocity_rad_s = rpm * _RPM_TO_RAD_S;
-
-                        state.velocity = velocity_rad_s;
+                        int16_t raw_vel = protocol::parse_signed_value(raw_vel_unsigned);
+                        state.velocity = protocol::raw_velocity_to_rad_s(raw_vel);
                     }
 
                     // Extract temperature (1 byte)

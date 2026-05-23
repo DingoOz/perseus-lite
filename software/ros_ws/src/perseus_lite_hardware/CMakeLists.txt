@@ -116,6 +116,25 @@ install(
   FILE ${PROJECT_NAME}-config.cmake
   DESTINATION lib/cmake/${PROJECT_NAME})
 
+# TESTING
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  find_package(GTest REQUIRED)
+
+  enable_testing()
+
+  add_executable(st3215_protocol_test tests/st3215_protocol_test.cpp)
+  target_include_directories(
+    st3215_protocol_test
+    PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_link_libraries(st3215_protocol_test GTest::gtest_main)
+
+  include(GoogleTest)
+  gtest_discover_tests(st3215_protocol_test)
+
+  ament_lint_auto_find_test_dependencies()
+endif()
+
 # Set library properties including version information
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PROJECT_VERSION}
                                                  SOVERSION 1)

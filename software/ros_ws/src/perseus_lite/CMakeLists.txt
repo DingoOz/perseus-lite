@@ -53,6 +53,28 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
+# TESTING
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  find_package(GTest REQUIRED)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
+
+  enable_testing()
+
+  add_executable(controller_config_test tests/controller_config_test.cpp)
+  target_link_libraries(controller_config_test GTest::gtest_main
+                        ${YAML_CPP_LIBRARIES})
+  target_include_directories(controller_config_test
+                             PUBLIC ${YAML_CPP_INCLUDE_DIRS})
+  target_compile_options(controller_config_test PUBLIC ${YAML_CPP_CFLAGS_OTHER})
+
+  include(GoogleTest)
+  gtest_discover_tests(controller_config_test)
+
+  ament_lint_auto_find_test_dependencies()
+endif()
+
 # INSTALL (ROS)
 install(
   DIRECTORY config launch maps rviz urdf worlds

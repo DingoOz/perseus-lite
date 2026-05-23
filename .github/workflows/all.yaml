@@ -226,6 +226,8 @@ jobs:
       - name: Upload dev shell to Cachix
         if: ${{ needs.global-vars.outputs.has-cachix-secret == 'true' }}
         run: nix run -L .#scripts.cachix.shell
+      - name: Run unit tests
+        run: nix develop -L -c bash -c 'cd software/ros_ws && colcon build --cmake-args -DBUILD_TESTING=ON && colcon test --return-code-on-test-failure && colcon test-result --verbose'
       - name: Run flake checks
         run: nix flake check -L
     env:
