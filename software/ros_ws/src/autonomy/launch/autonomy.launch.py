@@ -33,7 +33,7 @@ def generate_launch_description():
 
     declare_imu_topic = DeclareLaunchArgument(
         "imu_topic",
-        default_value="/livox/imu/corrected",
+        default_value="/livox/imu",
         description="IMU topic for robot_localization ekf (imu0)",
     )
     declare_autostart_cmd = DeclareLaunchArgument(
@@ -57,7 +57,7 @@ def generate_launch_description():
 
     declare_ekf_config_file_cmd = DeclareLaunchArgument(
         "ekf_config_file",
-        default_value=os.path.join(autonomy_dir, "config", "ekf_config_fast_lio.yaml"),
+        default_value=os.path.join(autonomy_dir, "config", "ekf_config.yaml"),
         description="Full path to the ROS2 parameters file for EKF",
     )
 
