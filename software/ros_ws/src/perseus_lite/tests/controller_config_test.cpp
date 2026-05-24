@@ -11,7 +11,7 @@ class ControllerConfigTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        config_path = "../../src/perseus_lite/config/perseus_lite_controllers.yaml";
+        config_path = std::string(TEST_CONFIG_DIR) + "/perseus_lite_controllers.yaml";
     }
 
     std::string config_path;

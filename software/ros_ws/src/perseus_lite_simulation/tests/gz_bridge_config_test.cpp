@@ -12,7 +12,7 @@ class GzBridgeConfigTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        config_file_path = "../../src/perseus_lite_simulation/config/gz_bridge.yaml";
+        config_file_path = std::string(TEST_CONFIG_DIR) + "/gz_bridge.yaml";
     }
 
     std::string config_file_path;
@@ -143,7 +143,7 @@ TEST_F(GzBridgeConfigTest, ExpectedCoreTopics)
 {
     auto mappings = load_bridge_mappings();
     std::unordered_set<std::string> required_topics = {
-        "clock", "tf", "odom", "joint_states"};
+        "clock", "tf", "gazebo_odom", "joint_states"};
 
     std::unordered_set<std::string> found_topics;
     for (const auto& mapping : mappings)
