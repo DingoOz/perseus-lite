@@ -3,6 +3,16 @@
 Defects found and fixed in this codebase, recorded per the error-tracking
 workflow. Review the **Prevention rules** before modifying the listed files.
 
+### Sphinx doctree cache published to Pages after switching to plain-builder invocation — 2026-07-07
+
+- **Severity:** Low
+- **Category:** Configuration
+- **File(s):** `pixi.toml`
+- **Pattern:** The Pixi `docs` task invoked Sphinx as `sphinx-build -b html source build/html` (plain builder mode) instead of the `-M html source build` "make mode" the old Nix build effectively used. In plain-builder mode, without an explicit `-d`, Sphinx writes its doctree cache to `<outdir>/.doctrees` — i.e. *inside* `build/html` — so the Pages deploy step (`cp -RL docs/build/html/. _site/`) swept ~14 MB of build cache (incl. a ~6 MB `environment.pickle`) into the published site on every deploy. Harmless to page rendering but bloats the artifact and leaks internal build state.
+- **Root cause:** Porting the docs build to a hand-written `sphinx-build` command line dropped make-mode's implicit doctree/output separation, and no one checked the contents of the published output tree.
+- **Fix applied:** Added `-d build/doctrees` to the `docs` task command so the doctree cache lands in a sibling directory outside `build/html`. Verified: a clean `pixi run -e docs docs` produces `build/html` with no `.doctrees`/`*.pickle` and the cache in `build/doctrees` (14 MB) instead.
+- **Prevention rule:** When a build product is published/deployed by copying an output directory wholesale (`cp -RL <dir>`), verify the contents of that directory — build tools frequently drop caches/intermediates (`.doctrees`, `.cache`, sourcemaps) alongside the real output. Prefer the tool's mode that separates intermediates (Sphinx `-M`/`-d`) over a bare builder invocation.
+
 ### cppcheck static-analysis findings went unnoticed because the job was advisory-only — 2026-07-06
 
 - **Severity:** Low

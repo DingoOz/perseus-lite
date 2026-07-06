@@ -293,7 +293,9 @@ graphviz = "*"    # `dot` binary for the {graphviz} directives sphinx_immaterial
 
 [feature.docs.tasks]
 # uv reads docs/pyproject/{pyproject.toml,uv.lock}; sphinx source is docs/source.
-docs = { cmd = "uv run --project pyproject sphinx-build -b html source build/html", cwd = "docs" }
+# `-d build/doctrees` keeps Sphinx's doctree cache (incl. the ~6 MB
+# environment.pickle) out of build/html so it isn't published to Pages.
+docs = { cmd = "uv run --project pyproject sphinx-build -b html -d build/doctrees source build/html", cwd = "docs" }
 
 # ---------------------------------------------------------------------------
 # Feature: format (treefmt + formatters) — replaces `nix fmt`
