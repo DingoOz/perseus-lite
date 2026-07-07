@@ -301,6 +301,10 @@ git cherry-pick <sha>                                  # pull individual commits
 If a desired commit touches deleted paths, expect conflicts and resolve by
 keeping the deletions (`git rm` the paths during conflict resolution).
 
+For the full step-by-step (branching, conflict handling, post-pick verify), use
+the `cherry-pick-upstream` skill. This rule stays here because it must always be
+in context — a reflexive `git merge upstream/main` would undo the divergence.
+
 ## 7. Conventions specific to this repo
 
 - ROS 2 distribution: **Jazzy**. `diff_drive_controller` requires

@@ -369,5 +369,9 @@ Temporary Items
 # Ignore generated models, which are too large
 /software/ros_ws/src/perseus_vision/models/
 
-# pixi/agent session data
-.claude/
+# pixi/agent session data — ignore everything under .claude EXCEPT shared,
+# committed team tooling (skills / slash-commands). Local session data,
+# worktrees, and settings.local.json stay ignored.
+.claude/*
+!.claude/skills/
+!.claude/commands/
