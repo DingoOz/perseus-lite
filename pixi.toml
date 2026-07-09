@@ -440,6 +440,10 @@ demo-ogl-speed = { cmd = "bash run_demo_ogl_speed.sh", cwd = "software/isaac-ros
 # message-passing pitfall by design.
 demo-yolov8-speed = { cmd = "bash run_demo_yolov8_speed.sh", cwd = "software/isaac-ros-native" }
 
+# Demo 4 (plan.md): U-Net segmentation TensorRT (GPU) vs ONNX Runtime
+# (CPU), same direct-Python-API structure as Demo 3.
+demo-unet-speed = { cmd = "bash run_demo_unet_speed.sh", cwd = "software/isaac-ros-native" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ network-connected laptop over the same ROS domain, per the existing
 | 1 | Live AprilTag: GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags), side by side | **Done** |
 | 2 | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | **Done** |
 | 3 | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay | **Done** |
-| 4 | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks | Not started |
+| 4 | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks | **Done** |
 | 5 | Quantitative throughput benchmark: TensorRT vs ONNX Runtime CPU, latency/throughput chart | Not started |
 
 ## 1. Live AprilTag: GPU vs CPU, side by side — DONE
@@ -156,12 +156,31 @@ find, because there was no message passing to hide one in. Result chart
 saved to `demo3_result.png`/`.json` and published to
 `/demo3_yolov8_comparison` for viewing via RViz2/`rqt_image_view`.
 
-## 4. U-Net segmentation: GPU vs CPU
+## 4. U-Net segmentation: GPU vs CPU — DONE
 
-Same structure as #3 but for Stage 7's dense per-pixel segmentation
-model, which does far more FLOPs/pixel than detection — expect the
-largest GPU speedup ratio of any of the five. Visual payoff: the
-colorized mask updates fast (GPU) vs. visibly crawling (CPU).
+Run via `pixi run -e isaac-nitros demo-unet-speed`.
+
+Same direct-Python-API structure as #3 (no ROS in the timing loop at
+all), applied to Stage 7's `model.dummy.onnx` segmentation fixture
+instead of YOLOv8's detector. Segmentation does far more FLOPs/pixel
+than detection, so this was expected to show the largest GPU speedup
+ratio of the series — confirmed.
+
+One real structural difference from #3: `model.dummy.onnx` has a
+**dynamic batch dimension** (`(-1,3,544,960)` input /
+`(-1,544,960,20)` output), unlike YOLOv8's fixed batch of 1. This
+needed an explicit TensorRT optimization profile
+(`profile.set_shape(INPUT_NAME, INPUT_SHAPE, INPUT_SHAPE,
+INPUT_SHAPE)`, min=opt=max=1) at engine-build time, plus a
+per-context `context.set_input_shape(...)` call before inference —
+neither was needed for #3's fixed-shape model.
+
+**Result:** TensorRT GPU **114.4ms/frame (8.7 fps)** vs ONNX Runtime
+CPU **2830.5ms/frame (0.4 fps)** — a **24.7x speedup**, by far the
+largest of the four demos so far, exactly as the FLOPs/pixel argument
+predicted. Result chart saved to `demo4_result.png`/`.json` and
+published to `/demo4_unet_comparison` for viewing via
+RViz2/`rqt_image_view`.
 
 ## 5. Quantitative throughput benchmark
 

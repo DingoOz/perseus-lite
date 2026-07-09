@@ -851,6 +851,26 @@ this time: no message-passing pitfall to find, because there was no
 message passing to hide one in. Chart published to
 `/demo3_yolov8_comparison`. Full write-up in `plan.md`.
 
+## Demo 4 — U-Net segmentation TensorRT vs ONNX Runtime CPU
+
+```console
+pixi run -e isaac-nitros demo-unet-speed
+```
+
+Same direct-Python-API structure as Demo 3, applied to Stage 7's
+`model.dummy.onnx` segmentation fixture instead of YOLOv8's detector.
+Segmentation does far more FLOPs/pixel than detection, so this was
+expected to be the largest speedup of the series. The model's dynamic
+batch dimension (`(-1,3,544,960)` input) needed an explicit TensorRT
+optimization profile at build time plus a per-context
+`set_input_shape()` call before inference — a real structural
+difference from Demo 3's fixed-shape model.
+
+Result: TensorRT GPU **114.4ms/frame (8.7 fps)** vs ONNX Runtime CPU
+**2830.5ms/frame (0.4 fps)** — a **24.7x speedup**, by far the largest
+of the four demos so far. Chart published to `/demo4_unet_comparison`.
+Full write-up in `plan.md`.
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this
