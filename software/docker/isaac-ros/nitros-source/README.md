@@ -8,7 +8,10 @@ Stage 4 follow-up added a live-camera pipeline (`pixi run test-apriltags`).
 Stage 5 added real GPU DNN inference (`isaac_ros_tensor_rt` +
 `isaac_ros_dnn_image_encoder`, TensorRT 10.16.2/CUDA 13.2) — a full
 image→resize/normalize→mobilenetv2 classification round trip, verified
-end to end. This is a separate track from the working
+end to end, then a Stage 5 follow-up added `isaac_ros_yolov8` as the
+object-detector-level proof (real yolov8s architecture, NVIDIA's own
+random-weight test fixture — full chain confirmed, detection content
+not meaningful by design). This is a separate track from the working
 `software/docker/isaac-ros/` scaffold (which targets JetPack 6.x via
 NVIDIA's prebuilt image) — it exists because NVIDIA hasn't shipped Isaac
 ROS binaries for Orin+JetPack7 yet, and we're building our own from
@@ -412,7 +415,49 @@ real TensorRT engine (~40s); later runs reuse the cached
 encoder→tensor_rt chain, and the CCCL/CUDA-arch build issues:
 `isaac-ros-nitros-source-build.md`'s "Stage 5" section.
 
-**Not yet done:** a real object detector (e.g. `isaac_ros_yolov8`) as the
-perception-level proof-of-life — this stage stopped at classification,
-which was enough to prove the plumbing. Also not wired into the live
-camera or `perseus_isaac_relay`.
+## Stage 5 follow-up — `isaac_ros_yolov8`: object-detector proof-of-life
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection
+ln -sfn ../../isaac_ros_object_detection ws/src/isaac_ros_object_detection
+```
+
+`vision_msgs` (for `Detection2DArray`) isn't in the default Jazzy
+RoboStack channel — added as `ros-jazzy-vision-msgs` to
+`[feature.isaac-nitros.dependencies]` in `pixi.toml`; run `pixi install -e
+isaac-nitros` after pulling that change.
+
+```console
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_ros_yolov8 \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+cp isaac_ros_object_detection/isaac_ros_yolov8/test/dummy_model/yolov8/dummy_yolov8s.onnx models/
+
+pixi run -e isaac-nitros test-yolov8
+```
+
+Only `isaac_ros_yolov8` built (the repo also has `isaac_ros_detectnet`,
+`isaac_ros_rtdetr`, `isaac_ros_grounding_dino` — not needed here).
+`YoloV8DecoderNode` built clean first try, no new CMake issues beyond the
+`vision_msgs` dependency gap. `test-yolov8` runs the full `image →
+dnn_image_encoder → tensor_rt → yolov8_decoder` chain against NVIDIA's own
+`dummy_yolov8s.onnx` (real yolov8s architecture/IO names, **random
+weights**) and `people_cycles.jpg` test image — checks that a structurally
+valid `Detection2DArray` comes back, not detection accuracy (meaningless
+with random weights — see `isaac-ros-nitros-source-build.md`'s "Stage 5
+follow-up" section for why, and for the two over-strict-validation
+findings from getting this check right).
+
+**Not yet done:** a real trained YOLOv8 model for actually-meaningful
+detections — this stopped at proving the plumbing, same scope as the
+mobilenetv2 classification check. Also not wired into the live camera or
+`perseus_isaac_relay`.

@@ -777,9 +777,43 @@ version hunting needed.
   launch-wrapper parameter's naming. Fixed by remapping `('tensors',
   'tensor_pub')` instead.
 
-**Not yet done**: a real object detector (e.g. `isaac_ros_yolov8` from the
-separate `isaac_ros_object_detection` repo) as the perception-level
-proof-of-life, analogous to Stage 4's AprilTag — this stage stopped at
-the classification round-trip (mobilenetv2), which was enough to prove
-the TensorRT/encoder plumbing works end to end. Also not done: wiring any
-of this into `perseus_isaac_relay` or the live camera.
+### Stage 5 follow-up — `isaac_ros_yolov8`: perception-level proof-of-life, done
+
+Extended Stage 5 with `isaac_ros_yolov8` (from the separate
+`isaac_ros_object_detection` repo, alongside `isaac_ros_detectnet`,
+`isaac_ros_rtdetr`, `isaac_ros_grounding_dino` — only `isaac_ros_yolov8`
+cloned/built), the object-detector-level proof analogous to Stage 4's
+AprilTag. `YoloV8DecoderNode` is pure C++ (no CUDA kernels of its own) —
+built clean on the first try with the same toolchain/flags as the rest of
+Stage 5, no new CMake issues, once one missing RoboStack package was
+added: `vision_msgs` (for `Detection2DArray`) isn't in the default Jazzy
+RoboStack channel, added as `ros-jazzy-vision-msgs` to
+`[feature.isaac-nitros.dependencies]`.
+
+**Verification** (`yolov8_launch.py` + `yolov8_check.py`, wired as
+`pixi run -e isaac-nitros test-yolov8`): the full `image →
+dnn_image_encoder → tensor_rt → yolov8_decoder` chain, using NVIDIA's own
+`isaac_ros_yolov8` test fixtures — `dummy_yolov8s.onnx` (real yolov8s
+architecture/IO names, but **randomly initialized weights**, same fixture
+NVIDIA's own `isaac_ros_yolov8_decoder_node_pol.py` uses) and
+`test_cases/single_detection/people_cycles.jpg` (640×640, exactly the
+network's input size). TensorRT engine build for this model took **5.9
+seconds** (smaller/simpler graph than mobilenetv2's 41.8s). Result: **10
+detections** came back through NMS/box decoding on the very first
+publish — full chain confirmed working end to end.
+
+Because the model's weights are random, detection *content* is
+meaningless by design — NVIDIA's own POL test explicitly only checks that
+a message arrives, not the values in it ("the data is not verified
+because the model is initialized with random weights"). First pass of
+`yolov8_check.py` over-validated this (asserted `score ∈ [0,1]` and
+positive bbox dimensions) and failed on scores like `1.222` and boxes like
+`-1.0×-1.0` — genuinely produced by an untrained network's raw regression
+output, not a bug in the chain. Relaxed the check to match NVIDIA's own
+scope: a structurally valid `Detection2DArray` (any content) is success.
+
+**Not yet done**: swapping in a real trained YOLOv8 model (from Ultralytics
+or NGC) for actually-meaningful detections — this stage stopped at
+proving the plumbing, same scope boundary as the mobilenetv2 check. Also
+not done: wiring any of Stage 5 into `perseus_isaac_relay` or the live
+camera.
