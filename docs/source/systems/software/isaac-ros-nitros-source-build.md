@@ -1093,3 +1093,75 @@ reasons: encoder by absent hardware, decoder by an unsupported
 CUDA-interop path in a closed-source NVIDIA library. Unlike Stage 6
 (cuVSLAM), there's no fallback binary variant to try here — this is the
 actual hardware in front of us. Full detail logged in `ERRORS.md`.
+
+## Stage 10 — combined pipeline: result: SUCCESS, four capabilities running together for the first time
+
+Every capability from Stages 4, 5-follow-up, 7, and 8 had only ever been
+proven running **alone** in its own `component_container_mt`. With two
+stages in a row blocked on hardware limits rather than software gaps,
+extending to more untried GEMs looked like diminishing returns — the
+more useful open question was whether anything already built could
+actually coexist: four TensorRT engines (or VPI/cuAprilTag plus three
+TensorRT chains) sharing one GPU, one CUDA context, one process, without
+resource contention or topic collisions. That's a real prerequisite
+before any of this could plausibly run together on the robot, and it had
+never been tested.
+
+`combined_pipeline_launch.py` loads AprilTag, YOLOv8 (encoder + tensor_rt
++ decoder), U-Net (encoder + tensor_rt + decoder), and CenterPose
+(encoder + tensor_rt + decoder) — ten composable nodes total — into one
+container, each pipeline in its own ROS namespace (`/apriltag`,
+`/yolov8`, `/unet`, `/centerpose`). This matters specifically because of
+the Stage 5 topic-name bug documented earlier in this file: every
+encoder publishes to the literal hardcoded topic `"tensors"`, every
+`TensorRTNode` subscribes to `"tensor_pub"` and publishes `"tensor_sub"`
+— relative names that would collide directly if three encoder/tensor_rt
+pairs ran unnamespaced in the same container (each `TensorRTNode` would
+receive whichever pipeline's tensor arrived last, silently producing
+wrong results, not a crash). ROS namespace resolution prepends each
+node's namespace to these relative names, isolating them.
+`combined_pipeline_check.py` publishes each pipeline's own Stage
+4/5-follow-up/7/8 test fixture into its namespace concurrently and waits
+for all four outputs.
+
+**First attempt found a real bug** (in our test harness, not in Isaac
+ROS): the check script's `simple_camera_info()` helper left `K` as all
+zeros. That's harmless for YOLOv8/U-Net (no calibration-dependent code
+in that path), but `CenterPoseDecoderNode` performs a PnP solve using
+`K` to recover 3D pose — an all-zero (degenerate) camera matrix crashed
+the **entire container**, not just the CenterPose node:
+
+```
+terminate called after throwing an instance of 'cv::Exception'
+what():  OpenCV(4.12.0) .../calibration_base.cpp:1384: error: (-215:Assertion
+  failed) fabs(sc) > DBL_EPSILON in function 'findExtrinsicCameraParams2'
+process has died [pid ..., exit code -6, ...]
+```
+
+This is worth flagging as a real operational risk independent of this
+experiment: an uncaught C++ exception in one composable node running
+inside a shared multi-node container brings down every other node in
+that container, including ones that had nothing to do with the fault
+(AprilTag and the just-loaded U-Net/YOLOv8 pipelines all died with it,
+mid-run, having previously produced valid output). A production
+deployment combining multiple Isaac ROS nodes in one container should
+budget for this — either validate all inputs before they reach nodes
+with unguarded assertions, or accept that one bad `CameraInfo` message
+can take down an entire perception stack, not just the node it was
+meant for.
+
+Fixed by supplying the real intrinsics (same K matrix as Stage 8) for
+CenterPose's `CameraInfo`, matching every prior stage's practice of
+using real/matching calibration data rather than placeholders.
+
+Result: **`COMBINED OK`** — all four fired concurrently: AprilTag 1
+detection, YOLOv8 10 detections, U-Net 960×544 mask, CenterPose 2
+detections (matching Stage 8's ground-truth count exactly, run inside a
+shared container this time). No resource contention, no topic
+cross-talk, no GPU memory exhaustion observed across four simultaneous
+TensorRT/VPI workloads on this Orin Nano.
+
+This is the first result in the series that says something about the
+whole system rather than one capability in isolation — a meaningful
+step toward "could this run on the robot," even without a reconnected
+live camera to close that last gap.

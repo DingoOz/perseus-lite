@@ -1,7 +1,7 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5, 7, and 8 all succeeded; Stages 6 and 9 blocked on
-hardware/upstream limitations.** Real AprilTag detection (`isaac_ros_apriltag`,
+**Status: Stages 0–5, 7, 8, and 10 all succeeded; Stages 6 and 9 blocked
+on hardware/upstream limitations.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
 NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
@@ -642,6 +642,31 @@ Neither half is fixable from our side. See
 for full diagnosis. `h264_decode_launch.py`/`h264_decode_check.py` are
 left in place as a decode-only repro of the failure (no pixi task wired
 — it can't pass).
+
+## Stage 10 — combined pipeline: four capabilities running together, SUCCESS
+
+```console
+cd software/docker/isaac-ros/nitros-source
+pixi run -e isaac-nitros test-combined
+```
+
+No new clones needed — this composes AprilTag + YOLOv8 + U-Net +
+CenterPose (Stages 4/5-follow-up/7/8) into **one** container, each in
+its own ROS namespace so their identically-named relative topics
+(`image`, `tensors`, `tensor_pub`, `tensor_sub`, ...) don't collide.
+Every capability above had only ever been proven running alone; this is
+the first test of whether they coexist — four TensorRT engines (plus
+VPI/cuAprilTag) sharing one GPU/CUDA context/process.
+
+First attempt found a real bug in the *test harness* (not Isaac ROS): an
+all-zero camera matrix crashed the entire container via an uncaught
+`cv::Exception` inside CenterPose's PnP solve — worth noting as a
+general risk for multi-node containers (one node's unguarded assertion
+takes down every other node sharing the process, not just itself).
+Fixed by supplying real intrinsics. Result: `COMBINED OK` — AprilTag 1
+detection, YOLOv8 10 detections, U-Net 960×544 mask, CenterPose 2
+detections (matching Stage 8's ground truth). Full detail:
+`isaac-ros-nitros-source-build.md`'s "Stage 10" section.
 
 ## Full Isaac ROS map
 

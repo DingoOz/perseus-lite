@@ -394,6 +394,12 @@ test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/docker/isaac-ros/ni
 # message structure.
 test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/docker/isaac-ros/nitros-source" }
 
+# Stage 10 composability proof-of-life: AprilTag + YOLOv8 + U-Net +
+# CenterPose all running together in one container/one GPU context
+# (namespaced to avoid topic collisions) — every capability above had
+# previously only been proven running alone.
+test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------
