@@ -356,6 +356,12 @@ magic_enum = "*" # isaac_ros_gxf/isaac_ros_nitros build dep, not in RoboStack
 ros-jazzy-usb-cam = "*" # Stage 4 live-camera test (test-apriltags task)
 ros-jazzy-vision-msgs = "*" # Stage 5 isaac_ros_yolov8 (Detection2DArray), not in RoboStack by default
 
+[feature.isaac-nitros.pypi-dependencies]
+# CPU-only AprilTag detector for demo-apriltag-speed's GPU-vs-CPU comparison.
+# No prebuilt aarch64 wheel on PyPI -- builds from source via this feature's
+# own c-compiler/cxx-compiler, confirmed working.
+pupil-apriltags = "*"
+
 [feature.isaac-nitros.tasks]
 # NOTE: isaac-ros-cli is NOT pip-installable — it ships as a .deb
 # (`sudo apt-get install isaac-ros-cli`) and `isaac-ros init` itself requires
@@ -405,6 +411,12 @@ test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/isaac-ros-n
 # fixtures — the first capability in this experiment matched to the
 # robot's lidar rather than its camera.
 test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 1 (plan.md): live GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags)
+# AprilTag detection speed comparison on the real camera. Runs until
+# Ctrl-C; view from a laptop on the same ROS domain (RViz2 or
+# rqt_image_view on /image_comparison) -- see README.md.
+demo-apriltag-speed = { cmd = "bash run_demo_apriltag_speed.sh", cwd = "software/isaac-ros-native" }
 
 # ---------------------------------------------------------------------------
 # Environment composition

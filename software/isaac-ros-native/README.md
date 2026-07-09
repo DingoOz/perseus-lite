@@ -767,6 +767,45 @@ matching within NVIDIA's own tolerances. Full detail:
 **Not yet done:** wiring against this robot's actual lidar and a map of
 its actual environment (this used NVIDIA's own fixtures).
 
+## Demo 1 — live AprilTag GPU vs CPU speed comparison
+
+```console
+pixi run -e isaac-nitros demo-apriltag-speed
+```
+
+Separate from the Stage 0-12 build effort above: a live demo comparing
+`isaac_ros_apriltag` (GPU, cuAprilTag/VPI) against a new CPU baseline
+(`pupil-apriltags`, the official AprilTag C library's Python binding —
+no prebuilt aarch64 wheel, builds from source via this env's own
+`c-compiler`/`cxx-compiler`) on the real camera. Runs until Ctrl-C; view
+from a laptop on the same ROS domain — `ros2 run rviz2 rviz2 -d
+demo1_apriltag_speed.rviz` or `ros2 run rqt_image_view rqt_image_view
+/image_comparison`.
+
+Getting a *meaningful* comparison took real iteration — the camera's
+fixed 10 fps would trivially cap both detectors at the same rate and
+hide any real difference, so a frame-pump node republishes the latest
+frame at a much higher rate to decouple detector throughput from camera
+rate. Chasing that pump's own throughput surfaced several real findings
+along the way (full history in `demo1_frame_pump_node.py`'s docstring
+and `ERRORS.md`): `cuAprilTags` rejects `mono8` input outright (crashes
+the whole container); a genuine bug where the pump was re-serializing
+the same cached image on every timer tick instead of once per real
+frame; and, after fixing that, a consistent finding across three very
+different resolutions and two different contention conditions that the
+ROS2/DDS message-passing pipeline's own throughput — not either
+detector's compute time — was the binding constraint every time neither
+detector's compute time ever became the limiting factor.
+
+Since a closed compiled GPU binary can't be instrumented internally,
+the CPU node additionally times its own `detector.detect()` call
+directly (zero ROS overhead) — logged every 3s. Stable result over
+multiple phase cycles at 640×480: **5.4-5.9 ms/frame → ~170-185 fps
+max, pure CPU compute, 2 threads.** A genuinely fast number for a
+CPU-only implementation, and a more interesting result than a simple
+"GPU wins" headline — see `plan.md` for the full write-up and the other
+four demos it covers.
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this
