@@ -1,7 +1,9 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5, 7, 8, and 10 all succeeded; Stages 6 and 9 blocked
-on hardware/upstream limitations.** Real AprilTag detection (`isaac_ros_apriltag`,
+**Status: Stages 0–5, 7, 8, and 10 all succeeded; Stage 6 and 9 blocked
+on hardware/upstream limitations; Stage 11 builds clean (real CUDA
+kernels included) but is runtime-blocked on a Tegra memory-carveout
+limit pending a system config decision.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
 NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
@@ -667,6 +669,48 @@ Fixed by supplying real intrinsics. Result: `COMBINED OK` — AprilTag 1
 detection, YOLOv8 10 detections, U-Net 960×544 mask, CenterPose 2
 detections (matching Stage 8's ground truth). Full detail:
 `isaac-ros-nitros-source-build.md`'s "Stage 10" section.
+
+## Stage 11 — `isaac_ros_dnn_stereo_depth` (ESS): builds clean, runtime PARTIAL (Tegra CMA limit)
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_stereo_depth
+ln -sfn ../../isaac_ros_nitros/isaac_ros_nitros_type/isaac_ros_nitros_disparity_image_type ws/src/isaac_ros_nitros_disparity_image_type
+ln -sfn ../../isaac_ros_dnn_stereo_depth/isaac_ros_dnn_stereo_decoder ws/src/isaac_ros_dnn_stereo_decoder
+ln -sfn ../../isaac_ros_nitros/isaac_ros_gxf_extensions/gxf_isaac_ros_messages ws/src/gxf_isaac_ros_messages
+ln -sfn ../../isaac_ros_nitros/isaac_ros_nitros_type/isaac_ros_nitros_point_cloud_type ws/src/isaac_ros_nitros_point_cloud_type
+ln -sfn ../../isaac_ros_image_pipeline/isaac_ros_stereo_image_proc ws/src/isaac_ros_stereo_image_proc
+
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select gxf_isaac_ros_messages isaac_ros_nitros_point_cloud_type isaac_ros_stereo_image_proc isaac_ros_dnn_stereo_decoder isaac_ros_nitros_disparity_image_type \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+cp isaac_ros_dnn_stereo_depth/isaac_ros_ess/test/dummy_model.onnx models/ess_dummy_model.onnx
+
+pixi run -e isaac-nitros bash -c './run_test_ess_stereo.sh'
+```
+
+All five packages build clean, including a real `.cu.cpp` CUDA kernel
+(`filter_disparity.cu.cpp`, unlike Stage 5's pure-TensorRT-API node).
+**Runtime crashes on the first frame** with `NvMapMemAllocInternalTagged
+failed: error 12` → `Failed to create CUDA memory pool ... out of
+memory` — despite gigabytes of general system RAM free. Root cause:
+Tegra's CMA carveout (`/proc/meminfo`'s `CmaTotal`/`CmaFree`, 256MB
+total, separate from ordinary RAM) is nearly exhausted by the desktop
+GUI alone (~34MB free at rest), and this 15-node pipeline's six
+VPI/`NvBufSurface`-backed image nodes need more contiguous headroom than
+that. Two possible fixes — raising the boot-time `cma=` size, or freeing
+the carveout by stopping the desktop compositor — both require a system
+config decision, so this is left as build-verified/runtime-blocked
+rather than force-fixed. Full diagnosis: `isaac-ros-nitros-source-build.md`'s
+"Stage 11" section and `ERRORS.md`.
 
 ## Full Isaac ROS map
 

@@ -388,6 +388,7 @@ Temporary Items
 /software/docker/isaac-ros/nitros-source/isaac_ros_image_segmentation/
 /software/docker/isaac-ros/nitros-source/isaac_ros_pose_estimation/
 /software/docker/isaac-ros/nitros-source/isaac_ros_compression/
+/software/docker/isaac-ros/nitros-source/isaac_ros_dnn_stereo_depth/
 /software/docker/isaac-ros/nitros-source/models/
 /software/docker/isaac-ros/nitros-source/__pycache__/
 /software/docker/isaac-ros/nitros-source/build/

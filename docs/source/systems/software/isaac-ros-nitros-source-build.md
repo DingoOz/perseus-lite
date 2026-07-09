@@ -1165,3 +1165,74 @@ This is the first result in the series that says something about the
 whole system rather than one capability in isolation — a meaningful
 step toward "could this run on the robot," even without a reconnected
 live camera to close that last gap.
+
+## Stage 11 — `isaac_ros_dnn_stereo_depth` (ESS): result: PARTIAL — build succeeds (real CUDA kernels included), runtime blocked on Tegra CMA exhaustion
+
+Extended into genuinely new CUDA territory: deep stereo disparity
+estimation (the ESS network) rather than another classify/detect/segment
+TensorRT chain. Unlike Stage 5-8's single encoder→tensor_rt→decoder
+shape, this is a 15-composable-node graph straight-ported from NVIDIA's
+own `isaac_ros_ess_test.py`: two parallel per-side chains (format
+convert → resize → normalize → to-tensor → planar → reshape, one per
+stereo camera) synced by a `TensorPairSyncNode`, feeding one two-input/
+two-output `TensorRTNode`, decoded by `DNNStereoDecoderNode` — which,
+notably, has its own real `.cu.cpp` CUDA kernel
+(`filter_disparity.cu.cpp`, confidence-thresholding the raw disparity
+map), unlike Stage 5's `TensorRTNode` which is pure TensorRT-API C++
+with no CUDA kernels of its own.
+
+**Build: fully successful, no new fix classes needed.** Four new
+packages built clean: `isaac_ros_nitros_disparity_image_type`,
+`gxf_isaac_ros_messages`, `isaac_ros_nitros_point_cloud_type`,
+`isaac_ros_stereo_image_proc`, and `isaac_ros_dnn_stereo_decoder` (the
+one with the CUDA kernel) — all already-known dependency-resolution
+patterns from earlier stages (packages present in already-cloned repos,
+just not yet symlinked into the workspace). The six per-side image
+processing node types (`ImageFormatConverterNode`, `ResizeNode`,
+`ImageNormalizeNode`, `ImageToTensorNode`, `InterleavedToPlanarNode`,
+`ReshapeNode`) all already existed in `isaac_ros_image_proc`/
+`isaac_ros_tensor_proc`, built back in Stage 4/5 — this stage just
+exercises plugin classes within those libraries we hadn't used yet.
+
+**Runtime: blocked, but on a real, diagnosed platform resource limit,
+not a build or code defect.** The container crashed on the very first
+published frame:
+
+```
+NvMapMemAllocInternalTagged failed: error 12
+Failed ioctlCmd: 1075858947
+NvMapMemHandleAlloc failed: error 12
+terminate called after throwing an instance of 'std::runtime_error'
+what():  Failed to create CUDA memory pool, cuda_error: cudaErrorMemoryAllocation,
+  error_str: out of memory
+```
+
+`free -h`/`tegrastats` showed 5.4GB of general system RAM free at the
+time — this is not ordinary memory pressure. `NvMapMemAllocInternalTagged`
+allocates from Tegra's **CMA (Contiguous Memory Allocator) carveout**, a
+small physically-contiguous region reserved at boot
+(`cat /proc/meminfo | grep -i cma` → `CmaTotal: 262144 kB`, 256MB total),
+completely separate from the general RAM pool `free`/`tegrastats` report.
+`CmaFree` measured only ~34MB even at rest with no test running — the
+desktop GUI/display compositor already holds the bulk of the 256MB
+carveout on this dev-kit configuration. A 15-node pipeline with six
+VPI/`NvBufSurface`-backed image-processing nodes (each drawing from this
+same small pool) exceeded the ~34MB of remaining headroom on the very
+first real frame.
+
+Considered and rejected shrinking the test's input resolution as a
+workaround: the memory-heavy intermediate buffers are fixed at the ESS
+model's 960×576 output resolution regardless of input image size (only
+the pre-resize raw-image buffers would shrink), so this likely wouldn't
+meaningfully reduce the structural pressure of many simultaneous
+NvBufSurface-backed nodes.
+
+**Not fixed — the two real remediations both need explicit user
+sign-off, not autonomous action**: (1) increase the boot-time `cma=`
+carveout size in `/boot/extlinux/extlinux.conf` (a persistent system
+config change requiring a reboot), or (2) free up the existing carveout
+by stopping the desktop GUI/compositor (disruptive to the active
+session). Full diagnosis logged in `ERRORS.md`. Unlike Stage 6 (upstream
+binary defect) and Stage 9 (absent hardware), this one is plausibly
+fixable — it just needs a decision about system configuration that isn't
+this experiment's call to make alone.
