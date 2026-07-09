@@ -375,36 +375,36 @@ Temporary Items
 # NITROS/GXF from-source build experiment: cloned NVIDIA repos + build output.
 # Source-available/proprietary-licensed, not ours to redistribute — see
 # docs/source/systems/software/isaac-ros-nitros-source-build.md. Everything
-# else under nitros-source/ (our own README/scripts) IS committed.
-/software/docker/isaac-ros/nitros-source/isaac_ros_common/
-/software/docker/isaac-ros/nitros-source/isaac_ros_nitros/
-/software/docker/isaac-ros/nitros-source/gxf/
-/software/docker/isaac-ros/nitros-source/negotiated/
-/software/docker/isaac-ros/nitros-source/isaac_ros_apriltag/
-/software/docker/isaac-ros/nitros-source/isaac_ros_image_pipeline/
-/software/docker/isaac-ros/nitros-source/isaac_ros_dnn_inference/
-/software/docker/isaac-ros/nitros-source/isaac_ros_object_detection/
-/software/docker/isaac-ros/nitros-source/isaac_ros_visual_slam/
-/software/docker/isaac-ros/nitros-source/isaac_ros_image_segmentation/
-/software/docker/isaac-ros/nitros-source/isaac_ros_pose_estimation/
-/software/docker/isaac-ros/nitros-source/isaac_ros_compression/
-/software/docker/isaac-ros/nitros-source/isaac_ros_dnn_stereo_depth/
-/software/docker/isaac-ros/nitros-source/isaac_ros_mapping_and_localization/
+# else under isaac-ros-native/ (our own README/scripts) IS committed.
+/software/isaac-ros-native/isaac_ros_common/
+/software/isaac-ros-native/isaac_ros_nitros/
+/software/isaac-ros-native/gxf/
+/software/isaac-ros-native/negotiated/
+/software/isaac-ros-native/isaac_ros_apriltag/
+/software/isaac-ros-native/isaac_ros_image_pipeline/
+/software/isaac-ros-native/isaac_ros_dnn_inference/
+/software/isaac-ros-native/isaac_ros_object_detection/
+/software/isaac-ros-native/isaac_ros_visual_slam/
+/software/isaac-ros-native/isaac_ros_image_segmentation/
+/software/isaac-ros-native/isaac_ros_pose_estimation/
+/software/isaac-ros-native/isaac_ros_compression/
+/software/isaac-ros-native/isaac_ros_dnn_stereo_depth/
+/software/isaac-ros-native/isaac_ros_mapping_and_localization/
 
 # LaTeX build artifacts + regenerable chart PDFs for the report under
-# nitros-source/report/ -- only the .tex source, make_charts.py, and the
+# isaac-ros-native/report/ -- only the .tex source, make_charts.py, and the
 # final isaac_ros_report.pdf are tracked (see report/README.md).
-/software/docker/isaac-ros/nitros-source/report/*.aux
-/software/docker/isaac-ros/nitros-source/report/*.log
-/software/docker/isaac-ros/nitros-source/report/*.out
-/software/docker/isaac-ros/nitros-source/report/*.toc
-/software/docker/isaac-ros/nitros-source/report/stage_status.pdf
-/software/docker/isaac-ros/nitros-source/report/map_breakdown.pdf
-/software/docker/isaac-ros/nitros-source/report/engine_build_times.pdf
-/software/docker/isaac-ros/nitros-source/models/
-/software/docker/isaac-ros/nitros-source/__pycache__/
-/software/docker/isaac-ros/nitros-source/build/
-/software/docker/isaac-ros/nitros-source/install/
-/software/docker/isaac-ros/nitros-source/log/
-/software/docker/isaac-ros/nitros-source/ws/
-/software/docker/isaac-ros/nitros-source/gxf_smoke_test
+/software/isaac-ros-native/report/*.aux
+/software/isaac-ros-native/report/*.log
+/software/isaac-ros-native/report/*.out
+/software/isaac-ros-native/report/*.toc
+/software/isaac-ros-native/report/stage_status.pdf
+/software/isaac-ros-native/report/map_breakdown.pdf
+/software/isaac-ros-native/report/engine_build_times.pdf
+/software/isaac-ros-native/models/
+/software/isaac-ros-native/__pycache__/
+/software/isaac-ros-native/build/
+/software/isaac-ros-native/install/
+/software/isaac-ros-native/log/
+/software/isaac-ros-native/ws/
+/software/isaac-ros-native/gxf_smoke_test

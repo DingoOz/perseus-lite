@@ -9,7 +9,7 @@ JetPack 7 (confirmed 2026-07-08: L4T R39.2.0, CUDA 13.2, Ubuntu 24.04). Rather
 than wait, this track attempts to build NITROS (`isaac_ros_nitros`) and its
 GXF dependency from source, targeting Orin/JetPack7/CUDA13 directly.
 
-Working files live in `software/docker/isaac-ros/nitros-source/` — see that
+Working files live in `software/isaac-ros-native/` — see that
 directory's README for the actual commands. This page is the "why" and the
 staged plan; the README is the "how."
 

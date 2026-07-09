@@ -39,7 +39,7 @@ scripts we write ourselves live in version control.
 ## Stage 0 — clone + environment stand-up
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros
 git clone https://github.com/NVIDIA-ISAAC-ROS/gxf
@@ -381,7 +381,7 @@ graph:
 ## Stage 5 — `isaac_ros_dnn_inference`: real GPU DNN inference (TensorRT)
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference
 ln -sfn ../../isaac_ros_dnn_inference ws/src/isaac_ros_dnn_inference
 
@@ -426,7 +426,7 @@ encoder→tensor_rt chain, and the CCCL/CUDA-arch build issues:
 ## Stage 5 follow-up — `isaac_ros_yolov8`: object-detector proof-of-life
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection
 ln -sfn ../../isaac_ros_object_detection ws/src/isaac_ros_object_detection
 ```
@@ -473,7 +473,7 @@ mobilenetv2 classification check. Also not wired into the live camera or
 ## Stage 6 — `isaac_ros_visual_slam` (cuVSLAM): BLOCKED, upstream binary bug
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_visual_slam
 ln -sfn ../../isaac_ros_visual_slam ws/src/isaac_ros_visual_slam
 
@@ -526,7 +526,7 @@ currently non-functional pending the binary fix.
 ## Stage 7 — `isaac_ros_unet`: semantic segmentation, SUCCESS
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation
 ln -sfn ../../isaac_ros_image_segmentation/isaac_ros_unet ws/src/isaac_ros_unet
 ln -sfn ../../isaac_ros_image_segmentation/isaac_ros_unet_kernels ws/src/isaac_ros_unet_kernels
@@ -570,7 +570,7 @@ camera or `perseus_isaac_relay`.
 ## Stage 8 — `isaac_ros_centerpose`: monocular 3D pose estimation, SUCCESS
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_pose_estimation
 ln -sfn ../../isaac_ros_pose_estimation/isaac_ros_centerpose ws/src/isaac_ros_centerpose
 ln -sfn ../../isaac_ros_nitros/isaac_ros_gxf_extensions/gxf_isaac_messages ws/src/gxf_isaac_messages
@@ -612,7 +612,7 @@ a robot-relevant trained model instead of NVIDIA's demo shoe.
 ## Stage 9 — `isaac_ros_compression`: BLOCKED, no hardware encoder on this Orin Nano SKU
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_compression
 ln -sfn ../../isaac_ros_compression/isaac_ros_h264_encoder ws/src/isaac_ros_h264_encoder
 ln -sfn ../../isaac_ros_compression/isaac_ros_h264_decoder ws/src/isaac_ros_h264_decoder
@@ -648,7 +648,7 @@ left in place as a decode-only repro of the failure (no pixi task wired
 ## Stage 10 — combined pipeline: four capabilities running together, SUCCESS
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 pixi run -e isaac-nitros test-combined
 ```
 
@@ -673,7 +673,7 @@ detections (matching Stage 8's ground truth). Full detail:
 ## Stage 11 — `isaac_ros_dnn_stereo_depth` (ESS): builds clean, runtime PARTIAL (Tegra CMA limit)
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_stereo_depth
 ln -sfn ../../isaac_ros_nitros/isaac_ros_nitros_type/isaac_ros_nitros_disparity_image_type ws/src/isaac_ros_nitros_disparity_image_type
 ln -sfn ../../isaac_ros_dnn_stereo_depth/isaac_ros_dnn_stereo_decoder ws/src/isaac_ros_dnn_stereo_decoder
@@ -715,7 +715,7 @@ rather than force-fixed. Full diagnosis: `isaac-ros-nitros-source-build.md`'s
 ## Stage 12 — `isaac_ros_occupancy_grid_localizer`: lidar-matched capability, SUCCESS
 
 ```console
-cd software/docker/isaac-ros/nitros-source
+cd software/isaac-ros-native
 git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_mapping_and_localization
 ln -sfn ../../isaac_ros_mapping_and_localization/isaac_ros_pointcloud_utils ws/src/isaac_ros_pointcloud_utils
 ln -sfn ../../isaac_ros_mapping_and_localization/isaac_ros_occupancy_grid_localizer ws/src/isaac_ros_occupancy_grid_localizer

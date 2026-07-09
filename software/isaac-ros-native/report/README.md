@@ -10,7 +10,7 @@ treat it as a snapshot as of the date on its title page, not something
 that auto-updates. Regenerate it after future stages land:
 
 ```console
-cd software/docker/isaac-ros/nitros-source/report
+cd software/isaac-ros-native/report
 python3 make_charts.py                              # regenerates the 3 chart PDFs
 pdflatex -interaction=nonstopmode isaac_ros_report.tex
 pdflatex -interaction=nonstopmode isaac_ros_report.tex   # twice, to settle cross-references

@@ -326,7 +326,7 @@ fmt-check = "treefmt --allow-missing-formatter --ci"
 
 # ---------------------------------------------------------------------------
 # Feature: isaac-nitros (NITROS/GXF from-source build experiment) — Jetson
-# (linux-aarch64) only. See software/docker/isaac-ros/nitros-source/README.md
+# (linux-aarch64) only. See software/isaac-ros-native/README.md
 # and docs/source/systems/software/isaac-ros-nitros-source-build.md for the
 # staged plan. Provides a self-contained Python/build toolchain without
 # touching system apt packages: this host has no system pip/venv installed,
@@ -360,51 +360,51 @@ ros-jazzy-vision-msgs = "*" # Stage 5 isaac_ros_yolov8 (Detection2DArray), not i
 # NOTE: isaac-ros-cli is NOT pip-installable — it ships as a .deb
 # (`sudo apt-get install isaac-ros-cli`) and `isaac-ros init` itself requires
 # sudo. That's a system-level install this feature deliberately does NOT
-# attempt (see nitros-source/README.md for why) — this env only provides the
+# attempt (see isaac-ros-native/README.md for why) — this env only provides the
 # plain colcon/cmake toolchain for a manual, non-CLI build attempt.
 #
 # Live-camera AprilTag test: usb_cam -> rectify -> apriltag (NVIDIA's own
 # isaac_ros_apriltag_usb_cam.launch.py, installed into ws/install already —
-# not copied/modified). See nitros-source/README.md "Live camera test" for
+# not copied/modified). See isaac-ros-native/README.md "Live camera test" for
 # the RViz setup (their bundled usb_cam.rviz already points at the right
 # topics: /image_rect + TF).
-test-apriltags = { cmd = "bash run_test_apriltags.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-apriltags = { cmd = "bash run_test_apriltags.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 5 DNN inference smoke test: static test image -> dnn_image_encoder
 # -> tensor_rt (mobilenetv2-1.0), our own minimal launch/check pair (not
 # NVIDIA's isaac_ros_test-based test suite). First run builds a real
 # TensorRT engine (~40s); later runs reuse the cached /tmp/trt_engine.plan.
-test-dnn-classify = { cmd = "bash run_test_dnn_classify.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-dnn-classify = { cmd = "bash run_test_dnn_classify.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 5 perception-level proof-of-life (parallel to Stage 4's AprilTag):
 # image -> dnn_image_encoder -> tensor_rt -> yolov8_decoder, using NVIDIA's
 # own dummy_yolov8s.onnx fixture (real yolov8s architecture, random
 # weights — proves the chain runs, not detection accuracy).
-test-yolov8 = { cmd = "bash run_test_yolov8.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-yolov8 = { cmd = "bash run_test_yolov8.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 7 perception-level proof-of-life: image -> dnn_image_encoder ->
 # tensor_rt -> unet_decoder, using NVIDIA's own model.dummy.onnx fixture
 # (random weights — proves the chain runs, not segmentation accuracy).
-test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 8 perception-level proof-of-life: image -> dnn_image_encoder ->
 # tensor_rt -> centerpose_decoder, using NVIDIA's own REAL TRAINED
 # centerpose_shoe.onnx model — the first stage in this series validated
 # against ground-truth content (detection count + depth), not just
 # message structure.
-test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 10 composability proof-of-life: AprilTag + YOLOv8 + U-Net +
 # CenterPose all running together in one container/one GPU context
 # (namespaced to avoid topic collisions) — every capability above had
 # previously only been proven running alone.
-test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/isaac-ros-native" }
 
 # Stage 12 occupancy-grid global localization: GPU scan-matching (2D
 # lidar via NitrosFlatScan) against NVIDIA's own real map + rosbag
 # fixtures — the first capability in this experiment matched to the
 # robot's lidar rather than its camera.
-test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/isaac-ros-native" }
 
 # ---------------------------------------------------------------------------
 # Environment composition
