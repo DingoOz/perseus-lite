@@ -109,6 +109,11 @@ runtime by causes outside the scope of a source rebuild: a CPU instruction-set
 mismatch in a closed-source vendor binary, absent encoder silicon on this
 particular Jetson SKU, and a small, boot-configured GPU memory carveout.
 Each blocker is root-caused in full rather than left as an unexplained failure.
+Following the twelve build stages, five further demos
+(Section~\ref{sec:demos}) turned the GPU speedup claim into visible,
+reproducible results --- from a 24.7$\times$ segmentation speedup down to
+a null result showing this GPU gains nothing from batching, both reported
+with equal weight.
 
 \begin{figure}[h]
 \centering
@@ -443,6 +448,115 @@ The other six verified capabilities (Table~\ref{tab:stages}) were also
 re-run in full after the rebuild and reproduced their original results
 exactly, though against NVIDIA's bundled test fixtures rather than live
 hardware, matching how each was originally verified.
+
+% ---------------------------------------------------------------------
+\section{CUDA-Acceleration Demo Series}
+\label{sec:demos}
+
+Once the core capabilities above were verified, five follow-on demos were
+built to make the GPU/CUDA speedup concrete and visible rather than only
+numeric. Each is a single \texttt{pixi run} command on the (headless)
+Jetson; results are viewed on a network-connected laptop over the same
+ROS domain via RViz2 or \texttt{rqt\_image\_view}, matching the pattern
+already established by Stage~4's live-camera pipeline. Table~\ref{tab:demos}
+summarizes all five; full narrative detail, including two cases where the
+measured result did not match the original hypothesis, is in the
+project's \texttt{plan.md}.
+
+\begin{longtable}{@{}p{0.7cm}p{4.4cm}p{7.3cm}p{2.3cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Comparison} & \textbf{Result} & \textbf{Speedup} \\
+\midrule
+\endhead
+1 & Live AprilTag: GPU (cuAprilTag/VPI) vs CPU (\texttt{pupil-apriltags}), same camera feed &
+  The ROS/DDS message-passing pipeline itself was the binding constraint at every resolution and contention condition tried, not either detector's compute time. Timed directly, the CPU detector alone ran 5.4--5.9\,ms/frame ($\sim$170--185\,fps, 2 threads). & N/A --- pipeline-bound \\
+\addlinespace
+2 & Occupancy-grid localizer (Stage~12): GPU parallel scan-matching vs CPU brute-force fallback, same compiled binary, \texttt{CUDA\_VISIBLE\_DEVICES} toggled &
+  GPU completed the full three-level coarse$\to$medium$\to$fine search in \textbf{20.58\,s}, recovering the pose Stage~12 already verified. The CPU fallback path did not complete even the coarse level within 900\,s. & $>$44$\times$ (CPU DNF) \\
+\addlinespace
+3 & YOLOv8 object detection: TensorRT (GPU) vs ONNX Runtime (CPU), direct Python API, no ROS in the timing path &
+  \textbf{4.28\,ms/frame} (234\,fps) GPU vs \textbf{8.49\,ms/frame} (118\,fps) CPU, reproduced across two separate runs (4.1--4.3\,ms GPU, 8.5--9.2\,ms CPU). & 1.98$\times$ \\
+\addlinespace
+4 & U-Net semantic segmentation (Stage~7): same direct-API structure as \#3, dense per-pixel masks instead of sparse detections &
+  \textbf{114.4\,ms/frame} (8.7\,fps) GPU vs \textbf{2830.5\,ms/frame} (0.4\,fps) CPU --- the largest speedup of the series, matching the expectation that dense per-pixel segmentation does far more FLOPs/pixel than detection. & 24.7$\times$ \\
+\addlinespace
+5 & U-Net batch-size scaling: throughput vs batch size $\{1,2,4,8\}$, TensorRT vs ONNX Runtime CPU &
+  Did \emph{not} confirm the "GPU throughput climbs with batch" hypothesis: TensorRT stayed essentially flat at 8.7\,img/s across every batch size (per-image latency scaled almost perfectly linearly, 115\,ms$\to$915\,ms at batch 1$\to$8). CPU showed no gain either. & 1.01$\times$ (flat) \\
+\bottomrule
+\caption{Outcome of all five CUDA-acceleration demos.}
+\label{tab:demos}
+\end{longtable}
+
+\subsection{Demo 2 --- occupancy-grid localizer, GPU vs CPU}
+
+Figure~\ref{fig:demo2} reuses Stage~12's real compiled CUDA kernel and its
+genuine CPU fallback path (not a reimplementation) to search the entire
+bundled 38.7\,m~$\times$~22.25\,m map at 0.05\,m/cell resolution
+($\sim$265k candidate poses). This is the most technically substantive of
+the five demos, since both numbers come from NVIDIA's own code, run
+identically except for GPU visibility.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{../demo2_result.png}
+\caption{Occupancy-grid localizer result: the map, GPU-recovered pose, and
+  the GPU-vs-CPU timing banner. CPU did not complete the coarse search
+  level within the 900\,s budget.}
+\label{fig:demo2}
+\end{figure}
+
+\subsection{Demos 3 and 4 --- TensorRT vs ONNX Runtime CPU}
+
+Figures~\ref{fig:demo3} and \ref{fig:demo4} share the same measurement
+method: TensorRT and ONNX Runtime's \texttt{CPUExecutionProvider} called
+directly in a tight Python loop in the same process, with GPU device
+buffers managed via \texttt{cuda-python}'s \texttt{cuda.bindings.runtime}
+API --- no ROS, no serialization, no DDS in the timed path, avoiding the
+message-passing pitfall Demo~1 surfaced.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{../demo3_result.png}
+\caption{YOLOv8 object detection: a moderate, believable 2.0$\times$
+  speedup --- not a blowout, not a wash.}
+\label{fig:demo3}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{../demo4_result.png}
+\caption{U-Net semantic segmentation: a 24.7$\times$ speedup, the largest
+  of the series, consistent with segmentation's far higher FLOPs/pixel
+  relative to detection.}
+\label{fig:demo4}
+\end{figure}
+
+\subsection{Demo 5 --- does batching help this hardware?}
+
+Demo~5 (Figure~\ref{fig:demo5}) reused Demo~4's U-Net model but required
+its own TensorRT engine, built with an optimization profile spanning the
+full batch range (\texttt{min=1, opt=4, max=8}) rather than Demo~4's
+fixed \texttt{batch=1} profile; this dynamic-batch-range build took
+867\,s, against Demo~4's fast fixed-batch build, and was cached to disk
+afterward.
+
+The result is the more interesting outcome for being a null result: this
+Jetson Orin Nano's iGPU is already compute-bound per image at
+\texttt{batch=1}, not launch/dispatch-overhead-bound, so there is no idle
+throughput for batching to reclaim. This differs from a datacenter GPU,
+where \texttt{batch=1} typically leaves most streaming multiprocessors
+idle and batching yields large throughput gains. A batching optimization
+that would help on a datacenter card does not help here --- a genuinely
+useful, hardware-specific finding for future work on this platform.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{../demo5_result.png}
+\caption{U-Net throughput vs batch size: TensorRT (GPU) throughput stays
+  flat across every batch size tested (1.01$\times$ scaling), and so does
+  ONNX Runtime (CPU) --- batching unlocks nothing on this hardware.}
+\label{fig:demo5}
+\end{figure}
 
 % ---------------------------------------------------------------------
 \section{Conclusion and Recommendations}
