@@ -400,6 +400,12 @@ test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/docker/
 # previously only been proven running alone.
 test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/docker/isaac-ros/nitros-source" }
 
+# Stage 12 occupancy-grid global localization: GPU scan-matching (2D
+# lidar via NitrosFlatScan) against NVIDIA's own real map + rosbag
+# fixtures — the first capability in this experiment matched to the
+# robot's lidar rather than its camera.
+test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------

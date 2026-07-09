@@ -1,8 +1,8 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5, 7, 8, and 10 all succeeded; Stage 6 and 9 blocked
-on hardware/upstream limitations; Stage 11 builds clean (real CUDA
-kernels included) but is runtime-blocked on a Tegra memory-carveout
+**Status: Stages 0–5, 7, 8, 10, and 12 all succeeded; Stage 6 and 9
+blocked on hardware/upstream limitations; Stage 11 builds clean (real
+CUDA kernels included) but is runtime-blocked on a Tegra memory-carveout
 limit pending a system config decision.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
@@ -712,18 +712,73 @@ config decision, so this is left as build-verified/runtime-blocked
 rather than force-fixed. Full diagnosis: `isaac-ros-nitros-source-build.md`'s
 "Stage 11" section and `ERRORS.md`.
 
+## Stage 12 — `isaac_ros_occupancy_grid_localizer`: lidar-matched capability, SUCCESS
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_mapping_and_localization
+ln -sfn ../../isaac_ros_mapping_and_localization/isaac_ros_pointcloud_utils ws/src/isaac_ros_pointcloud_utils
+ln -sfn ../../isaac_ros_mapping_and_localization/isaac_ros_occupancy_grid_localizer ws/src/isaac_ros_occupancy_grid_localizer
+ln -sfn ../../isaac_ros_nitros/isaac_ros_nitros_type/isaac_ros_nitros_flat_scan_type ws/src/isaac_ros_nitros_flat_scan_type
+ln -sfn ../../isaac_ros_common/isaac_ros_pointcloud_interfaces ws/src/isaac_ros_pointcloud_interfaces
+
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_ros_pointcloud_interfaces isaac_ros_nitros_flat_scan_type isaac_ros_pointcloud_utils isaac_ros_occupancy_grid_localizer \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+pixi run -e isaac-nitros test-ogl
+```
+
+First capability in this whole experiment matched to the robot's **2D
+lidar** (via `NitrosFlatScan`) rather than its camera — GPU-accelerated
+global relocalization against an occupancy grid map, complementary to
+(not redundant with) the existing `slam_toolbox`-based mapping stack.
+Also new CUDA territory: `occupancy_grid_localizer_gpu.cu` does
+GPU-parallel batch scan-matching, a different shape than every prior
+TensorRT-based stage.
+
+Ruled out the other two `isaac_ros_mapping_and_localization` sub-packages
+first: `isaac_ros_visual_global_localization` `exec_depend`s on
+`isaac_ros_visual_slam` (Stage 6's blocked cuVSLAM); `isaac_mapping_ros`
+needs `nvblox_ros` (depth camera). `isaac_ros_occupancy_grid_localizer`
+had a clean dependency chain.
+
+Build was clean. Found one real bug in our own launch file (not Isaac
+ROS): the map image path only resolves correctly if the `.yaml` file is
+*also* passed as a raw `parameters=[...]` list entry (ROS 2 launch loads
+a bare `.yaml` string as a parameters file), not just as a dict value —
+first attempt left the `image` param empty and failed with a truncated
+path. Fixed to match NVIDIA's own test exactly.
+
+NVIDIA ships **real** test data here (unlike several earlier
+dummy-weight stages): an actual occupancy grid map and a rosbag of 12
+genuine recorded lidar scans. Result: `OGL OK` — recovered pose
+`(33.60, 7.70)` against a ground truth of `(33.5, 7.75)`, orientation
+matching within NVIDIA's own tolerances. Full detail:
+`isaac-ros-nitros-source-build.md`'s "Stage 12" section.
+
+**Not yet done:** wiring against this robot's actual lidar and a map of
+its actual environment (this used NVIDIA's own fixtures).
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this
-experiment's progress (pulled live via the GitHub API). As of Stage 9:
-**six GEM repos verified working from source** (AprilTag, DNN inference,
-image_pipeline, object detection, image segmentation, pose estimation),
-**two built but blocked at runtime** (visual SLAM/cuVSLAM — Stage 6, an
-upstream NVIDIA binary defect; compression — Stage 9, this Orin Nano's
-missing hardware encoder plus an unsupported decode CUDA-interop path),
-**four need a depth/stereo camera** this robot doesn't currently have,
-**seven are architecturally inapplicable** to this robot (Nova-platform
-hardware, CSI camera drivers, ROS1 bridge, Unitree G1-specific
-packages), and roughly a dozen more are relevant but untried
-(mapping/localization, cuMotion, manipulation, jetson-stats, teleop,
-etc.).
+experiment's progress (pulled live via the GitHub API). As of Stage 12:
+**seven GEM repos verified working from source** (AprilTag, DNN inference,
+image_pipeline, object detection, image segmentation, pose estimation,
+mapping_and_localization), **three built but blocked at runtime** (visual
+SLAM/cuVSLAM — Stage 6, an upstream NVIDIA binary defect; compression —
+Stage 9, this Orin Nano's missing hardware encoder plus an unsupported
+decode CUDA-interop path; dnn_stereo_depth — Stage 11, a Tegra CMA
+memory-carveout limit), **three need a depth/stereo camera** this robot
+doesn't currently have, **seven are architecturally inapplicable** to
+this robot (Nova-platform hardware, CSI camera drivers, ROS1 bridge,
+Unitree G1-specific packages), and roughly nine more are relevant but
+untried (cuMotion, manipulation, jetson-stats, teleop, etc.).

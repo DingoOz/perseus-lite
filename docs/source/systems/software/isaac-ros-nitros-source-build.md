@@ -1236,3 +1236,77 @@ session). Full diagnosis logged in `ERRORS.md`. Unlike Stage 6 (upstream
 binary defect) and Stage 9 (absent hardware), this one is plausibly
 fixable — it just needs a decision about system configuration that isn't
 this experiment's call to make alone.
+
+## Stage 12 — `isaac_ros_occupancy_grid_localizer`: result: SUCCESS, first capability matched to the robot's lidar rather than its camera
+
+Every capability through Stage 11 targeted the robot's camera. This robot
+also carries a 2D lidar, already used by the existing (non-Isaac-ROS)
+`slam_toolbox`-based SLAM stack — so the natural next question was
+whether anything in Isaac ROS complements that sensor. Surveyed
+`isaac_ros_mapping_and_localization`'s three sub-packages first:
+`isaac_ros_visual_global_localization` (camera-based) `exec_depend`s on
+`isaac_ros_visual_slam`, i.e. Stage 6's blocked cuVSLAM — transitively
+blocked. `isaac_mapping_ros` depends on `nvblox_ros`, which needs a
+depth camera this robot doesn't have. `isaac_ros_occupancy_grid_localizer`
+(+ its `isaac_ros_pointcloud_utils` dependency) was the one clean fit:
+it consumes `NitrosFlatScan` (a NITROS 2D-LaserScan-equivalent type) and
+an occupancy grid map, with no cuVSLAM, no depth camera, no video codec
+hardware anywhere in its dependency chain.
+
+Conceptually this doesn't duplicate `slam_toolbox`: `slam_toolbox`
+*builds* the map (SLAM); this node does *relocalization* — finding the
+robot's pose within an already-built map, conceptually similar to
+`amcl`/Nav2's localization stack but GPU-accelerated grid-search instead
+of a particle filter. It also introduces genuinely new CUDA code in this
+experiment: `occupancy_grid_localizer_gpu.cu` does GPU-parallel batch
+scan-matching (scoring many candidate poses against the map
+concurrently), a different computational shape than every prior
+TensorRT-inference-based stage.
+
+**Build**: clean, no dependency-resolution surprises. Four packages —
+`isaac_ros_pointcloud_interfaces` (already present from an earlier
+clone, just not yet symlinked/built), `isaac_ros_nitros_flat_scan_type`,
+`isaac_ros_pointcloud_utils`, `isaac_ros_occupancy_grid_localizer` (the
+one with the `.cu` kernel) — all built without any of the
+`isaac_ros_triton`-style dependency edits earlier stages needed.
+
+**One real bug in our own launch file, not Isaac ROS**: the node's map
+image path resolves as `dirname(map_yaml_path) + "/" + image_param`,
+where `image_param` is a ROS parameter the node expects to be populated
+*separately* from `map_yaml_path` — normally satisfied by ROS 2 launch's
+special handling of a bare `.yaml` string in a `parameters=[...]` list
+(it's loaded as a **parameters file**, not just a value; nav2-format
+map.yaml files happen to use the same top-level keys — `image`,
+`resolution`, `origin`, ... — that this node declares as parameters).
+Our first launch attempt only passed `map_yaml_path` as a dict value,
+never as a parameters-file list entry, so `image` stayed empty and the
+node failed with `Could not load occupancy grid map image:
+.../maps/` (path truncated, no filename). Fixed by adding the
+`map.yaml` path as its own list entry in `parameters=[...]`, matching
+NVIDIA's own `test_occupancy_grid_localizer_pol_test.py` exactly, which
+does the same thing.
+
+**Real test data, real result**: NVIDIA ships an actual occupancy grid
+map (`maps/map.yaml` + `map.png`) and a real recorded rosbag
+(`data/rosbags/flatscan`, 12 genuine `FlatScan` messages from
+2023-02-25) with their own POL test — not dummy/random fixtures like
+several earlier stages. `ogl_check.py` plays the bag, calls the
+`trigger_grid_search_localization` service, and checks the resulting
+pose against NVIDIA's own recorded ground truth. Also confirmed the
+node's TF fallback behavior directly: with no TF data in the bag and
+none published by our launch, `LookupBaseLinkToLidarTransform` logs
+`Could not transform base_link to lidar_frame: ... does not exist. Using
+identity transform.` and proceeds correctly rather than failing — matches
+NVIDIA's own test setup (no TF publisher there either).
+
+Result: **`OGL OK`** — position `(33.60, 7.70, 0.00)` against a ground
+truth of `(33.5, 7.75, 0.0)` (0.15 m tolerance), orientation quaternion
+`(0, 0, -0.5628, 0.8266)` against `(0, 0, -0.56573, 0.824589)` (0.013
+tolerance) — both comfortably inside NVIDIA's own test tolerances. The
+GPU scan-matching kernel produces a numerically correct pose from real
+lidar data on this from-source Orin/JetPack7 build.
+
+**Not yet done**: wiring against the live robot's actual lidar and a map
+of its actual environment (this used NVIDIA's own map/scan fixtures, not
+anything from this robot); comparing accuracy/performance against the
+existing Nav2/`amcl` localization approach if one is in use.
