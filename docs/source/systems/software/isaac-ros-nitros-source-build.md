@@ -610,3 +610,55 @@ node-loading log lines (that delay is what made the first gdb attempt look
 hung), or use `rr` (record-and-replay) if available, which is specifically
 built for pinning down non-deterministic race conditions like this one
 without perturbing timing on replay.
+
+### Follow-up after a reboot: the crash did not reproduce in an extended soak test
+
+`rr` turned out not to be installed, and isn't a solid option here anyway —
+it doesn't officially support aarch64. Instead, re-attempted a live `gdb`
+backtrace with `catch throw` (rather than `catch throw nvcv::Exception`,
+since that type-filtered form wasn't reliably matching) on the **full**
+`usb_cam → rectify → apriltag` graph, attached *after* all three nodes had
+already loaded and frames were flowing (to minimize how much ptrace
+overhead could shift timing, versus attaching from process start as
+before). `gdb -p <pid>` needed `sudo` — the host's default
+`kernel.yama.ptrace_scope=1` blocks a non-parent process from attaching
+even as the same user; root bypasses that check without needing a
+persistent `sysctl` change.
+
+The catchpoint never fired. More notably: **after detaching gdb entirely,
+the identical graph — the exact one that reproducibly crashed within ~1s
+of `apriltag` finishing load in every previous test — ran clean for over
+33 minutes**, `/tag_detections` publishing a steady 10 Hz throughout, valid
+(non-empty, non-NaN) detections once a tag was back in frame, no memory
+growth or thermal issues (`tegrastats`: ~1.8/7.5 GB RAM, ~53°C). This is
+the same build, same launch graph, same camera, same physical setup as the
+run that crashed reliably pre-reboot — the only variable that changed is
+the reboot itself.
+
+**Revised assessment:** this doesn't rule out a genuine race in the
+`TypeAdapter`/`NitrosBuffer` cross-stream handoff (the code-level
+reasoning above still stands as a plausible mechanism), but the crash is
+evidently not purely a function of the code path — it depends on some
+piece of runtime state that a reboot resets. Plausible candidates:
+GPU/CUDA context fragmentation or a stale `CudaStreamPool` left behind by
+one of the many crashed/killed `component_container_mt` processes from the
+earlier debugging session (each crash was `nvcv::Exception` — an
+unhandled C++ exception during active CUDA work, which is exactly the
+kind of abnormal termination that can leave device memory or driver-level
+state inconsistent for subsequent processes on the same boot), or a
+Jetson clock/power-state artifact from extended debugging. A single clean
+reboot plus one long soak isn't enough to fully retract the "genuine race
+condition" conclusion — it needs another crash (or another long
+crash-free run under harder conditions, e.g. deliberately induced GPU
+memory pressure) to be confident either way.
+
+**Practical consequence:** `apriltag_camera_launch.py` now uses the full
+`rectify → apriltag` graph again (lens distortion corrected) instead of
+skipping `RectifyNode`, given the extended clean run. If the crash
+recurs, the previous workaround (drop `RectifyNode`, remap `apriltag`
+directly to `usb_cam`'s `image_raw`) is still valid and trivial to
+restore — see git history for `apriltag_camera_launch.py` pre-dating this
+change. Anyone hitting the crash again should note whether it happened
+fresh after a reboot or after other `component_container_mt` processes had
+already crashed earlier in the same boot session — that would help
+confirm or rule out the stale-CUDA-context hypothesis above.

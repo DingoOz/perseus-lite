@@ -74,7 +74,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /image_raw
+        Value: /image_rect
       Value: true
   Enabled: true
   Global Options:
