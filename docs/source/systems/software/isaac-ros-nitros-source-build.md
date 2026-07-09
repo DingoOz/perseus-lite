@@ -904,3 +904,58 @@ via the Isaac ROS GitHub issues or forum) — this reads like a genuine
 build-config bug in their `aarch64_jetpack70` cuVSLAM release, not
 something specific to this from-source experiment; it would presumably
 reproduce for anyone on real Orin hardware pulling this artifact.
+
+## Stage 7 — `isaac_ros_unet`: result: SUCCESS, semantic segmentation from source on Orin/JetPack7
+
+Extended the DNN inference infrastructure built in Stage 5 (TensorRT +
+`isaac_ros_dnn_image_encoder`) to semantic segmentation, cloning
+`isaac_ros_image_segmentation` and building two packages:
+`isaac_ros_unet_kernels` (CUDA `.cu.cpp` postprocessing/colorization
+kernels — same `CUDACXX`/`-DCMAKE_CUDA_ARCHITECTURES=87` build recipe as
+Stage 5's `isaac_ros_tensor_proc`) and `isaac_ros_unet` (the
+`UNetDecoderNode`, pure C++). Chosen over the remaining `isaac_ros_image_proc`
+utility nodes as the next capability because it's directly relevant to
+this robot's sandy-terrain autonomy mission (traversability masks) and
+reuses already-proven infra rather than opening a new dependency
+surface — unlike Stage 6, which needed a closed-source binary.
+
+**Build fix**: `isaac_ros_unet`'s `package.xml` lists
+`<exec_depend>isaac_ros_triton</exec_depend>` (an alternate inference
+backend we don't use — everything in this experiment goes through
+`isaac_ros_tensor_rt`, same as Stage 5/5-follow-up). Since `isaac_ros_triton`
+isn't cloned into the workspace, `colcon build` failed with "Failed to
+find package.sh for isaac_ros_triton" (same class of issue as Stage 6's
+`isaac_ros_launch_utils` transitive-dependency gap). Fixed by removing
+that one `exec_depend` line from the local (gitignored) checkout — Triton
+was never going to be built here regardless.
+
+Both packages built clean (`isaac_ros_unet_kernels` in 13.3s,
+`isaac_ros_unet` in 54.8s). Wrote `unet_launch.py`/`unet_check.py`
+following the same shape as `dnn_classify_launch.py`/`yolov8_launch.py`:
+grepped `DnnImageEncoderNode`'s hardcoded topic names again (`image`/
+`camera_info` in, `tensors` out — confirmed once more, no repeat of the
+Stage 5 topic-name bug) and `UNetDecoderNode`'s (`tensor_sub` in,
+`unet/raw_segmentation_mask` + `unet/colored_segmentation_mask` out) —
+`TensorRTNode`'s own hardcoded `tensor_pub`/`tensor_sub` already line up
+with both ends, so only the encoder→tensor_rt link needs a remap.
+
+Test used NVIDIA's own `model.dummy.onnx` fixture from
+`isaac_ros_unet/test/dummy_model/` (124 MB, random weights, 20-class
+output) and its companion `test_cases/unet_sample/image.jpg` (1200×632),
+with the exact input/output binding names and 960×544 network resolution
+from NVIDIA's own `isaac_ros_unet_pol_test.py` (not chosen by us). The
+larger model took noticeably longer to build a TensorRT engine than
+Stage 5's classifiers — 182s vs. mobilenetv2's 41.8s or yolov8's 5.9s —
+so the check script's engine-ready timeout was raised from the initial
+60s (which timed out on the first run) to 300s.
+
+Result: **`UNET OK`** — both `unet/raw_segmentation_mask` (960×544,
+`mono8`) and `unet/colored_segmentation_mask` (960×544, `rgb8`) arrived
+with correct shapes/encodings; the raw mask contained 15 distinct class
+IDs (structurally valid, not semantically meaningful given random
+weights — same scope caveat as Stage 5 follow-up's YOLOv8 detections).
+
+**Not yet done**: a real trained segmentation model for meaningful
+terrain/traversability masks (same "proved the plumbing, not the
+weights" scope as Stage 5/5-follow-up); wiring into the live camera or
+`perseus_isaac_relay`.

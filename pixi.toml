@@ -382,6 +382,11 @@ test-dnn-classify = { cmd = "bash run_test_dnn_classify.sh", cwd = "software/doc
 # weights — proves the chain runs, not detection accuracy).
 test-yolov8 = { cmd = "bash run_test_yolov8.sh", cwd = "software/docker/isaac-ros/nitros-source" }
 
+# Stage 7 perception-level proof-of-life: image -> dnn_image_encoder ->
+# tensor_rt -> unet_decoder, using NVIDIA's own model.dummy.onnx fixture
+# (random weights — proves the chain runs, not segmentation accuracy).
+test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------

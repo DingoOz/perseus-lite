@@ -1,7 +1,7 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5 all succeeded; Stage 6 blocked on an upstream NVIDIA
-binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
+**Status: Stages 0–5 and 7 all succeeded; Stage 6 blocked on an upstream
+NVIDIA binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
 NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
@@ -520,3 +520,47 @@ adding a depth or stereo camera. The proof-of-life scripts written for
 this stage (`visual_slam_launch.py`/`visual_slam_check.py`, RGBD mode
 against NVIDIA's own bundled RealSense test rosbag) are left in place,
 currently non-functional pending the binary fix.
+
+## Stage 7 — `isaac_ros_unet`: semantic segmentation, SUCCESS
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation
+ln -sfn ../../isaac_ros_image_segmentation/isaac_ros_unet ws/src/isaac_ros_unet
+ln -sfn ../../isaac_ros_image_segmentation/isaac_ros_unet_kernels ws/src/isaac_ros_unet_kernels
+```
+
+`isaac_ros_unet/package.xml` lists `<exec_depend>isaac_ros_triton</exec_depend>`
+(an alternate inference backend, unused here — everything goes through
+`isaac_ros_tensor_rt` same as Stage 5). Remove that line from the local
+checkout or `colcon build` fails looking for a package that was never
+cloned:
+
+```console
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_ros_unet_kernels isaac_ros_unet \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+cp isaac_ros_image_segmentation/isaac_ros_unet/test/dummy_model/model.dummy.onnx models/
+
+pixi run -e isaac-nitros test-unet
+```
+
+Both packages built clean. `test-unet` runs the full `image ->
+dnn_image_encoder -> tensor_rt -> unet_decoder` chain against NVIDIA's own
+`model.dummy.onnx` (random weights) — checks that structurally valid raw
+(`mono8`) and colorized (`rgb8`) segmentation masks come back at the
+expected 960×544 network resolution, not mask accuracy (meaningless with
+random weights, same scope as Stage 5 follow-up). See
+`isaac-ros-nitros-source-build.md`'s "Stage 7" section for the
+`isaac_ros_triton` exec_depend fix and full result detail.
+
+**Not yet done:** a real trained segmentation model; wiring into the live
+camera or `perseus_isaac_relay`.
