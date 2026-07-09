@@ -1,7 +1,7 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5, 7, and 8 all succeeded; Stage 6 blocked on an
-upstream NVIDIA binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
+**Status: Stages 0–5, 7, and 8 all succeeded; Stages 6 and 9 blocked on
+hardware/upstream limitations.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
 NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
@@ -607,16 +607,54 @@ truth, depths within ~0.5 m of the measured values. Full detail:
 **Not yet done:** wiring into the live camera or `perseus_isaac_relay`;
 a robot-relevant trained model instead of NVIDIA's demo shoe.
 
+## Stage 9 — `isaac_ros_compression`: BLOCKED, no hardware encoder on this Orin Nano SKU
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_compression
+ln -sfn ../../isaac_ros_compression/isaac_ros_h264_encoder ws/src/isaac_ros_h264_encoder
+ln -sfn ../../isaac_ros_compression/isaac_ros_h264_decoder ws/src/isaac_ros_h264_decoder
+ln -sfn ../../isaac_ros_nitros/isaac_ros_nitros_type/isaac_ros_nitros_compressed_image_type ws/src/isaac_ros_nitros_compressed_image_type
+
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_ros_nitros_compressed_image_type isaac_ros_h264_encoder isaac_ros_h264_decoder \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+```
+
+Both packages build clean (no CUDA code, no `isaac_ros_triton`-style
+dependency issue). **Blocked at runtime, both directions**: `EncoderNode`
+can't open `/dev/v4l2-nvenc` — this Jetson **Orin Nano** SKU has no
+hardware video encoder block at all (`ls /dev` shows `v4l2-nvdec` but no
+`v4l2-nvenc`; only Orin NX/AGX have NVENC). `DecoderNode` (the hardware
+this SoC *does* have) gets further — it parses NVIDIA's own test
+`.h264` fixture and detects resolution (`Decoded video: 460x460`) — but
+then fails inside NVIDIA's closed-source `libnvbufsurface`:
+`NvBufSurfaceMapCudaBufferImpl: API is not supported on this platform`.
+Neither half is fixable from our side. See
+`isaac-ros-nitros-source-build.md`'s "Stage 9" section and `ERRORS.md`
+for full diagnosis. `h264_decode_launch.py`/`h264_decode_check.py` are
+left in place as a decode-only repro of the failure (no pixi task wired
+— it can't pass).
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this
-experiment's progress (pulled live via the GitHub API). As of Stage 8:
+experiment's progress (pulled live via the GitHub API). As of Stage 9:
 **six GEM repos verified working from source** (AprilTag, DNN inference,
 image_pipeline, object detection, image segmentation, pose estimation),
-**one built but blocked at runtime** (visual SLAM/cuVSLAM, Stage 6, an
-upstream NVIDIA binary defect), **four need a depth/stereo camera** this
-robot doesn't currently have, **seven are architecturally inapplicable**
-to this robot (Nova-platform hardware, CSI camera drivers, ROS1 bridge,
-Unitree G1-specific packages), and roughly a dozen more are relevant but
-untried (mapping/localization, cuMotion, manipulation, compression,
-jetson-stats, teleop, etc.).
+**two built but blocked at runtime** (visual SLAM/cuVSLAM — Stage 6, an
+upstream NVIDIA binary defect; compression — Stage 9, this Orin Nano's
+missing hardware encoder plus an unsupported decode CUDA-interop path),
+**four need a depth/stereo camera** this robot doesn't currently have,
+**seven are architecturally inapplicable** to this robot (Nova-platform
+hardware, CSI camera drivers, ROS1 bridge, Unitree G1-specific
+packages), and roughly a dozen more are relevant but untried
+(mapping/localization, cuMotion, manipulation, jetson-stats, teleop,
+etc.).

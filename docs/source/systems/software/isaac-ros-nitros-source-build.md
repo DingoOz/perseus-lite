@@ -1030,3 +1030,66 @@ compression, jetson-stats, teleop, etc.) are relevant but untried.
 **Not yet done**: wiring into the live camera or `perseus_isaac_relay`;
 a robot-relevant trained model (a real object this robot's arm might
 need to pick up, rather than NVIDIA's demo shoe).
+
+## Stage 9 — `isaac_ros_compression`: result: BLOCKED, this Orin Nano SKU has no hardware video encoder, and hardware decode fails downstream of NVDEC itself
+
+Attempted hardware H.264 encode/decode next, from the "relevant, not yet
+attempted" list surfaced by the Stage 8 map — useful for streaming video
+off-robot without burning CPU/GPU compute cycles the perception stack
+needs. Unlike Stages 5–8, this doesn't touch TensorRT/CUDA inference at
+all: `isaac_ros_h264_encoder`/`isaac_ros_h264_decoder` wrap Orin's
+dedicated hardware video codec block via the V4L2 M2M kernel driver
+(vendored in-repo as `codec/libv4l2`). Both packages built clean —
+no `isaac_ros_triton`-style dependency issue this time, and no CUDA
+architecture flags needed since there's no `.cu` code in this path.
+
+**Encoder: genuinely blocked, no fix possible.** `EncoderNode` failed
+every attempt with `[V4L2Encoder] Failed to open encoder device`.
+Traced to `encoder_v4l2_impl.cpp` hardcoding `/dev/v4l2-nvenc` — and
+`ls /dev` on this hardware shows `v4l2-nvdec` but no `v4l2-nvenc`
+counterpart at all. This Jetson is a **Jetson Orin Nano Engineering
+Reference Developer Kit Super** (confirmed via
+`/proc/device-tree/model`); the Orin **Nano** SKU (unlike Orin NX/AGX)
+has no NVENC hardware block in silico — this is a real hardware
+omission on this specific module, not a missing driver, permission, or
+JetPack7 support gap. No amount of build or config work on our side can
+open a device node that doesn't exist.
+
+**Decoder: gets further, but also blocked, one layer deeper.**
+`DecoderNode` (hardware NVDEC, which this SoC does have) initializes
+cleanly against NVIDIA's own `compressed.h264` test fixture (a
+single-keyframe clip from `isaac_ros_h264_decoder`'s own test suite) and
+successfully parses the bitstream far enough to detect resolution:
+
+```
+[V4L2Decoder]: Got event type=5 (RESOLUTION_CHANGE=5)
+[V4L2Decoder]: Decoded video: 460x460
+[V4L2Decoder]: NvBufSurfaceMapCudaBuffer for destination buffer failed
+NvBufSurfaceMapCudaBufferImpl: API is not supported on this platform
+```
+
+The V4L2 M2M decode itself works; the subsequent step — mapping the
+decoded surface into a CUDA buffer, needed for the ROS node to hand the
+frame off as a `NitrosImage` — fails inside NVIDIA's proprietary
+`libnvbufsurface`, a closed-source library with no available source to
+patch. Ruled out a test-harness bug first: the fixture is a single
+keyframe (3 NAL units: SPS/PPS/IDR, confirmed by scanning for Annex-B
+start codes), and re-publishing it in a tight loop (as every other check
+script in this series does) could plausibly desync a stateful decode
+thread — retried with real 1-second gaps between publishes and got the
+identical failure on the very first attempt, ruling that out. This
+reads as a genuine platform/BSP gap in the CUDA-interop path for decoded
+buffers on this unsupported Orin-Nano+JetPack7 pairing, not a bug in the
+Isaac ROS wrapper code itself.
+
+Removed the originally-planned encoder→decoder round-trip test (it can
+never pass — no encoder engine exists to feed the decoder from), and
+replaced it with a decode-only proof (`h264_decode_launch.py`/
+`h264_decode_check.py`) that documents the `NvBufSurfaceMapCudaBuffer`
+failure directly rather than silently skipping the stage.
+
+**Not fixed — genuinely blocked on both halves**, for different
+reasons: encoder by absent hardware, decoder by an unsupported
+CUDA-interop path in a closed-source NVIDIA library. Unlike Stage 6
+(cuVSLAM), there's no fallback binary variant to try here — this is the
+actual hardware in front of us. Full detail logged in `ERRORS.md`.
