@@ -782,3 +782,8 @@ doesn't currently have, **seven are architecturally inapplicable** to
 this robot (Nova-platform hardware, CSI camera drivers, ROS1 bridge,
 Unitree G1-specific packages), and roughly nine more are relevant but
 untried (cuMotion, manipulation, jetson-stats, teleop, etc.).
+
+A standalone LaTeX/PDF summary of this whole effort — architecture
+diagram, stage-outcome table, root-cause table for every blocked stage,
+and the full GEM-repository map as charts — is in `report/`; see
+`report/README.md` to rebuild it after future stages.

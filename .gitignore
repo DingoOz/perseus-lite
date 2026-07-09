@@ -390,6 +390,17 @@ Temporary Items
 /software/docker/isaac-ros/nitros-source/isaac_ros_compression/
 /software/docker/isaac-ros/nitros-source/isaac_ros_dnn_stereo_depth/
 /software/docker/isaac-ros/nitros-source/isaac_ros_mapping_and_localization/
+
+# LaTeX build artifacts + regenerable chart PDFs for the report under
+# nitros-source/report/ -- only the .tex source, make_charts.py, and the
+# final isaac_ros_report.pdf are tracked (see report/README.md).
+/software/docker/isaac-ros/nitros-source/report/*.aux
+/software/docker/isaac-ros/nitros-source/report/*.log
+/software/docker/isaac-ros/nitros-source/report/*.out
+/software/docker/isaac-ros/nitros-source/report/*.toc
+/software/docker/isaac-ros/nitros-source/report/stage_status.pdf
+/software/docker/isaac-ros/nitros-source/report/map_breakdown.pdf
+/software/docker/isaac-ros/nitros-source/report/engine_build_times.pdf
 /software/docker/isaac-ros/nitros-source/models/
 /software/docker/isaac-ros/nitros-source/__pycache__/
 /software/docker/isaac-ros/nitros-source/build/
