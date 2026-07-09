@@ -418,6 +418,12 @@ test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/isaac-ros-native" }
 # rqt_image_view on /image_comparison) -- see README.md.
 demo-apriltag-speed = { cmd = "bash run_demo_apriltag_speed.sh", cwd = "software/isaac-ros-native" }
 
+# Demo 2 (plan.md): occupancy-grid localizer GPU vs CPU, forcing NVIDIA's
+# own compiled node down its real CPU fallback path (CUDA_VISIBLE_DEVICES="")
+# rather than reimplementing the algorithm. Can take a while -- the CPU
+# pass is real compute over ~250k candidate poses.
+demo-ogl-speed = { cmd = "bash run_demo_ogl_speed.sh", cwd = "software/isaac-ros-native" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------

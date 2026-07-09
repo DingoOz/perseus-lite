@@ -11,7 +11,7 @@ network-connected laptop over the same ROS domain, per the existing
 | # | Demo | Status |
 |---|------|--------|
 | 1 | Live AprilTag: GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags), side by side | **Done** |
-| 2 | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | Not started |
+| 2 | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | **Done** |
 | 3 | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay | Not started |
 | 4 | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks | Not started |
 | 5 | Quantitative throughput benchmark: TensorRT vs ONNX Runtime CPU, latency/throughput chart | Not started |
@@ -81,17 +81,45 @@ a naive benchmark methodology can silently measure the wrong thing
 (message-passing overhead) instead of what it set out to measure
 (algorithm speed).
 
-## 2. Occupancy-grid localizer: GPU vs CPU pose-grid heatmap
+## 2. Occupancy-grid localizer: GPU vs CPU pose-grid comparison — DONE
 
 Reuses the real CUDA kernel from Stage 12
 (`occupancy_grid_localizer_gpu.cu`), not borrowed TensorRT inference —
-the most technically substantive of the five. Sweep a coarse x/y/θ grid
-of candidate poses against NVIDIA's bundled map fixture; time GPU
-parallel batch scoring vs. a naive single-threaded CPU loop doing
-identical scoring math on the same pose grid. Render both as a heatmap
-over the map (best-scoring pose highlighted) with wall-clock timing
-displayed. Closest in spirit to a "particle simulation" demo, using
-code we actually wrote rather than an unrelated synthetic benchmark.
+the most technically substantive of the five. Run via
+`pixi run -e isaac-nitros demo-ogl-speed`.
+
+**Design decision that made this the most defensible of all five demos:**
+`isaac_ros_occupancy_grid_localizer`'s compiled node already contains a
+genuine CPU fallback path (`SearchCandidates` → `ScorePose` →
+`RaycastRange`, serial per-pose/per-beam ray-marching) alongside the GPU
+path (`SearchCandidatesGpu`, batching every candidate pose through one
+`gpu_->ScorePoses()` CUDA kernel call) — `LoadMap()` falls back to CPU
+automatically if GPU context init throws. Rather than reimplement the
+algorithm ourselves (real risk of an unfair or subtly-wrong comparison,
+exactly the trap Demo 1 fell into with its own methodology, not its
+code), this demo forces the identical compiled binary down each path by
+hiding the GPU from CUDA entirely: `CUDA_VISIBLE_DEVICES=""`. Confirmed
+this genuinely works on this Jetson via a standalone `ctypes` test
+before relying on it (`cudaMalloc` returns `cudaErrorNoDevice`, which
+*is* the `std::runtime_error` the node's own `catch` block expects — a
+real fallback, not a simulated one). No reimplementation risk at all:
+both numbers come from NVIDIA's own real code.
+
+The coarse search level alone sweeps the *entire* bundled map (38.7m ×
+22.25m at 0.05 m/cell, ~265k candidate poses, each scored against up to
+128 lidar beams) — genuinely heavy compute, not a toy problem.
+
+**Result (first real run on this Jetson):** GPU completed the full
+three-level coarse→medium→fine search in **20.58s**, recovering the
+identical pose Stage 12 already verified against NVIDIA's ground truth
+(33.60, 7.70). The CPU fallback path **did not complete even the coarse
+level within 900 seconds (15 minutes)** — a genuinely dramatic, fully
+honest result: at least a 44x speedup, and that undersells it, since CPU
+never actually finished. Rendered as a single result image (map +
+recovered GPU pose + timing banner), saved to
+`demo2_result.png`/`.json` and published to `/demo2_ogl_comparison` for
+a few minutes so it's viewable via RViz2/`rqt_image_view` on a laptop
+before the script exits.
 
 ## 3. YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU)
 

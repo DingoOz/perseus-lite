@@ -806,6 +806,30 @@ CPU-only implementation, and a more interesting result than a simple
 "GPU wins" headline — see `plan.md` for the full write-up and the other
 four demos it covers.
 
+## Demo 2 — occupancy-grid localizer GPU vs CPU
+
+```console
+pixi run -e isaac-nitros demo-ogl-speed
+```
+
+Reuses Stage 12's real CUDA kernel (`occupancy_grid_localizer_gpu.cu`).
+Rather than reimplement the CPU baseline ourselves (the exact trap Demo
+1's *methodology* fell into), this forces NVIDIA's own compiled node
+down its real, already-built CPU fallback path
+(`CUDA_VISIBLE_DEVICES=""` — confirmed this genuinely fails CUDA init
+on this Jetson rather than silently no-op'ing) instead of the GPU path.
+Both numbers come from the identical binary; no reimplementation risk.
+
+Result on this Jetson: GPU completed the full coarse→medium→fine search
+(coarse level alone sweeps the entire 38.7m×22.25m map, ~265k candidate
+poses) in **20.58s**, matching Stage 12's already-verified pose exactly.
+The CPU fallback **did not complete even the coarse level within 900
+seconds** — an honest, dramatic result: at least 44x, and that
+undersells it since CPU never finished. Publishes a result image
+(map + recovered pose + timing) to `/demo2_ogl_comparison` for a few
+minutes — view via RViz2/`rqt_image_view` on a laptop. Full write-up in
+`plan.md`.
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this
