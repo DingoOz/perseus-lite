@@ -361,6 +361,17 @@ ros-jazzy-vision-msgs = "*" # Stage 5 isaac_ros_yolov8 (Detection2DArray), not i
 # No prebuilt aarch64 wheel on PyPI -- builds from source via this feature's
 # own c-compiler/cxx-compiler, confirmed working.
 pupil-apriltags = "*"
+# CPU inference backend for demo-yolov8-speed's GPU-vs-CPU comparison
+# (Demo 3, plan.md).
+onnxruntime = "*"
+# NVIDIA's official CUDA Python bindings -- device buffer alloc/copy for
+# calling TensorRT directly via python3-libnvinfer (system apt package,
+# NOT pip -- see demo3's docstring for why it's on PYTHONPATH instead of
+# a pixi dependency here).
+cuda-python = "*"
+# Result charts for demo-yolov8-speed / demo-unet-speed / demo-benchmark
+# (Demos 3-5, plan.md).
+matplotlib = "*"
 
 [feature.isaac-nitros.tasks]
 # NOTE: isaac-ros-cli is NOT pip-installable — it ships as a .deb
@@ -423,6 +434,11 @@ demo-apriltag-speed = { cmd = "bash run_demo_apriltag_speed.sh", cwd = "software
 # rather than reimplementing the algorithm. Can take a while -- the CPU
 # pass is real compute over ~250k candidate poses.
 demo-ogl-speed = { cmd = "bash run_demo_ogl_speed.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 3 (plan.md): YOLOv8 TensorRT (GPU) vs ONNX Runtime (CPU), direct
+# Python API on both sides -- no ROS in the timing loop, avoiding Demo 1's
+# message-passing pitfall by design.
+demo-yolov8-speed = { cmd = "bash run_demo_yolov8_speed.sh", cwd = "software/isaac-ros-native" }
 
 # ---------------------------------------------------------------------------
 # Environment composition

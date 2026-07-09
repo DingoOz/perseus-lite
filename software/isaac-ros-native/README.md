@@ -830,6 +830,27 @@ undersells it since CPU never finished. Publishes a result image
 minutes — view via RViz2/`rqt_image_view` on a laptop. Full write-up in
 `plan.md`.
 
+## Demo 3 — YOLOv8 TensorRT vs ONNX Runtime CPU
+
+```console
+pixi run -e isaac-nitros demo-yolov8-speed
+```
+
+Deliberately sidesteps ROS entirely for the timed portion — the exact
+shape of the problem Demo 1 spent its effort on. Calls TensorRT
+(`python3-libnvinfer`, system apt, matching the installed
+`tensorrt-dev`) and `onnxruntime`'s `CPUExecutionProvider` directly in a
+tight Python loop on the same `dummy_yolov8s.onnx` model Stage 5
+follow-up already validated — no publish/subscribe, no DDS, in the
+timing path at all.
+
+Result, reproduced across two runs: TensorRT GPU **4.1-4.3ms/frame
+(234-241 fps)** vs ONNX Runtime CPU **8.5-9.2ms/frame (109-118 fps)** —
+a consistent **~2.0-2.2x speedup**. Believable and moderate, and clean
+this time: no message-passing pitfall to find, because there was no
+message passing to hide one in. Chart published to
+`/demo3_yolov8_comparison`. Full write-up in `plan.md`.
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this

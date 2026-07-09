@@ -12,7 +12,7 @@ network-connected laptop over the same ROS domain, per the existing
 |---|------|--------|
 | 1 | Live AprilTag: GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags), side by side | **Done** |
 | 2 | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | **Done** |
-| 3 | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay | Not started |
+| 3 | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay | **Done** |
 | 4 | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks | Not started |
 | 5 | Quantitative throughput benchmark: TensorRT vs ONNX Runtime CPU, latency/throughput chart | Not started |
 
@@ -121,14 +121,40 @@ recovered GPU pose + timing banner), saved to
 a few minutes so it's viewable via RViz2/`rqt_image_view` on a laptop
 before the script exits.
 
-## 3. YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU)
+## 3. YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) — DONE
 
-Same model (`dummy_yolov8s.onnx`), two backends, on a recorded video —
-TensorRT (Stage 5f's existing pipeline) vs ONNX Runtime's CPU execution
-provider on identical frames. Detections are meaningless (random
-weights) but FPS is real; overlay an FPS counter on each and play back
-side by side. Needs a new CPU-inference launch/check pair; no new model
-work.
+Run via `pixi run -e isaac-nitros demo-yolov8-speed`.
+
+**Design changed from the original plan, deliberately.** The original
+idea (a ROS launch/check pair, FPS overlay via message rate) is exactly
+the shape that turned out to be the entire problem in Demo 1 — so this
+demo sidesteps ROS completely for the timed portion instead of risking
+a repeat. TensorRT (`python3-libnvinfer`, the system apt package
+matching the already-installed `tensorrt-dev` — not on PyPI for Jetson,
+reached via `PYTHONPATH` rather than a pixi dependency) builds and runs
+the same `dummy_yolov8s.onnx` model Stage 5 follow-up already validated
+through the ROS pipeline; `onnxruntime`'s `CPUExecutionProvider` runs
+the identical model. Both are called directly in a tight Python loop in
+the same process — no publish/subscribe, no serialization, no DDS in
+the timing path at all. GPU device buffers use `cuda-python`'s
+`cuda.bindings.runtime` API (confirmed working with a standalone
+`cudaMalloc`/`cudaMemcpy` round trip first — `cuda-python` 13.x moved
+off the older `cuda.cuda`/`cuda.cudart` names most sample code online
+still uses).
+
+No recorded video exists on this headless robot, so the same single
+640×640 test image Stage 5 follow-up already uses (`people_cycles.jpg`)
+is reused as every "frame" — the network does identical work regardless
+of pixel content, so this doesn't affect a throughput measurement.
+
+**Result, reproduced across two separate runs:** TensorRT GPU
+**4.1-4.3ms/frame (234-241 fps)** vs ONNX Runtime CPU **8.5-9.2ms/frame
+(109-118 fps)** — a consistent **~2.0-2.2x speedup**. A believable,
+moderate, real-world number (not a blowout, not a wash), and a
+genuinely clean measurement this time: no message-passing pitfall to
+find, because there was no message passing to hide one in. Result chart
+saved to `demo3_result.png`/`.json` and published to
+`/demo3_yolov8_comparison` for viewing via RViz2/`rqt_image_view`.
 
 ## 4. U-Net segmentation: GPU vs CPU
 
