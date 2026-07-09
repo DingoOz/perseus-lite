@@ -871,6 +871,31 @@ Result: TensorRT GPU **114.4ms/frame (8.7 fps)** vs ONNX Runtime CPU
 of the four demos so far. Chart published to `/demo4_unet_comparison`.
 Full write-up in `plan.md`.
 
+## Demo 5 — U-Net batch-size scaling: does throughput climb with batch size?
+
+```console
+pixi run -e isaac-nitros demo-batch-scaling
+```
+
+Reshaped from plan.md's original "quantitative throughput benchmark" idea
+(largely redundant with what Demos 3/4 already compute) into a batch-size
+scaling study: sweep batch size [1, 2, 4, 8] on Demo 4's dynamic-batch
+U-Net model and plot throughput (images/sec) vs batch size for TensorRT
+(GPU) and ONNX Runtime (CPU). Needed its own TensorRT engine
+(`unet_dummy_demo5.plan`) built with an optimization profile spanning the
+whole batch range, since Demo 4's engine is fixed at batch=1.
+
+**Result did not confirm the hypothesis, and that's the actual finding:**
+TensorRT throughput stayed flat at **8.7 img/s across every batch size
+tested** (1.01x scaling from batch=1 to batch=8) — per-image latency
+scales essentially perfectly linearly with batch size, so batching buys
+nothing here. ONNX Runtime CPU showed no meaningful gain either (best
+throughput was at batch=1). The likely explanation: the Orin Nano's iGPU
+is already compute-bound per image at this model size, not
+launch/dispatch-overhead-bound — there's no idle throughput for batching
+to reclaim, unlike a datacenter GPU where batch=1 leaves most SMs idle.
+Chart published to `/demo5_batch_scaling`. Full write-up in `plan.md`.
+
 ## Full Isaac ROS map
 
 A separate pass mapped all ~29 Isaac ROS GEM repositories against this

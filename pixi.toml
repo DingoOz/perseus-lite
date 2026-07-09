@@ -444,6 +444,10 @@ demo-yolov8-speed = { cmd = "bash run_demo_yolov8_speed.sh", cwd = "software/isa
 # (CPU), same direct-Python-API structure as Demo 3.
 demo-unet-speed = { cmd = "bash run_demo_unet_speed.sh", cwd = "software/isaac-ros-native" }
 
+# Demo 5 (plan.md): U-Net batch-size scaling study -- throughput vs batch
+# size, TensorRT (GPU) vs ONNX Runtime (CPU).
+demo-batch-scaling = { cmd = "bash run_demo_batch_scaling.sh", cwd = "software/isaac-ros-native" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------
