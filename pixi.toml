@@ -387,6 +387,13 @@ test-yolov8 = { cmd = "bash run_test_yolov8.sh", cwd = "software/docker/isaac-ro
 # (random weights — proves the chain runs, not segmentation accuracy).
 test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/docker/isaac-ros/nitros-source" }
 
+# Stage 8 perception-level proof-of-life: image -> dnn_image_encoder ->
+# tensor_rt -> centerpose_decoder, using NVIDIA's own REAL TRAINED
+# centerpose_shoe.onnx model — the first stage in this series validated
+# against ground-truth content (detection count + depth), not just
+# message structure.
+test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------

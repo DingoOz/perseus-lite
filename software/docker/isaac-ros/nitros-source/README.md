@@ -1,7 +1,7 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5 and 7 all succeeded; Stage 6 blocked on an upstream
-NVIDIA binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
+**Status: Stages 0–5, 7, and 8 all succeeded; Stage 6 blocked on an
+upstream NVIDIA binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
 VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
 entirely self-built binaries, verified to a **pixel-exact match** against
 NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
@@ -564,3 +564,59 @@ random weights, same scope as Stage 5 follow-up). See
 
 **Not yet done:** a real trained segmentation model; wiring into the live
 camera or `perseus_isaac_relay`.
+
+## Stage 8 — `isaac_ros_centerpose`: monocular 3D pose estimation, SUCCESS
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_pose_estimation
+ln -sfn ../../isaac_ros_pose_estimation/isaac_ros_centerpose ws/src/isaac_ros_centerpose
+ln -sfn ../../isaac_ros_nitros/isaac_ros_gxf_extensions/gxf_isaac_messages ws/src/gxf_isaac_messages
+```
+
+`isaac_ros_centerpose/package.xml` has a hard `<depend>isaac_ros_triton</depend>`
+(unused inference backend — same class of issue as Stage 7's
+`isaac_ros_unet`, this time a `<depend>` not `exec_depend`). Remove that
+line from the local checkout first.
+
+```console
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select gxf_isaac_messages isaac_ros_nitros_detection3_d_array_type isaac_ros_centerpose \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+cp isaac_ros_pose_estimation/isaac_ros_centerpose/test/models/centerpose_shoe.onnx models/
+
+pixi run -e isaac-nitros test-centerpose
+```
+
+Unlike every prior DNN stage, `centerpose_shoe.onnx` is a **real trained
+model** (not random weights), and NVIDIA ships a matching
+`ground_truth.json` — so this is the first check in the series that
+validates actual content (detection count + depth), not just message
+structure. Result: `CENTERPOSE OK` — 2/2 detections matching ground
+truth, depths within ~0.5 m of the measured values. Full detail:
+`isaac-ros-nitros-source-build.md`'s "Stage 8" section.
+
+**Not yet done:** wiring into the live camera or `perseus_isaac_relay`;
+a robot-relevant trained model instead of NVIDIA's demo shoe.
+
+## Full Isaac ROS map
+
+A separate pass mapped all ~29 Isaac ROS GEM repositories against this
+experiment's progress (pulled live via the GitHub API). As of Stage 8:
+**six GEM repos verified working from source** (AprilTag, DNN inference,
+image_pipeline, object detection, image segmentation, pose estimation),
+**one built but blocked at runtime** (visual SLAM/cuVSLAM, Stage 6, an
+upstream NVIDIA binary defect), **four need a depth/stereo camera** this
+robot doesn't currently have, **seven are architecturally inapplicable**
+to this robot (Nova-platform hardware, CSI camera drivers, ROS1 bridge,
+Unitree G1-specific packages), and roughly a dozen more are relevant but
+untried (mapping/localization, cuMotion, manipulation, compression,
+jetson-stats, teleop, etc.).

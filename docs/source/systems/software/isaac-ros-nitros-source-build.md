@@ -959,3 +959,74 @@ weights — same scope caveat as Stage 5 follow-up's YOLOv8 detections).
 terrain/traversability masks (same "proved the plumbing, not the
 weights" scope as Stage 5/5-follow-up); wiring into the live camera or
 `perseus_isaac_relay`.
+
+## Stage 8 — `isaac_ros_centerpose`: result: SUCCESS, monocular 3D pose estimation with a real trained model
+
+Extended the DNN inference chain to 3D object pose estimation, cloning
+`isaac_ros_pose_estimation` and building `isaac_ros_centerpose`
+(`CenterPoseDecoderNode` — pure C++, no CUDA of its own) plus two
+dependencies not yet built in this experiment: `gxf_isaac_messages` (a
+GXF extension already present locally under `isaac_ros_nitros/isaac_ros_gxf_extensions/`,
+just never symlinked into the workspace before) and
+`isaac_ros_nitros_detection3_d_array_type` (likewise already present
+under `isaac_ros_nitros/isaac_ros_nitros_type/`). Chosen over the other
+untried GEMs surfaced by the full Isaac ROS map (see below) because it's
+monocular-compatible — unlike Stage 6's cuVSLAM — and directly useful to
+a robot with a manipulator arm (knowing an object's 3D pose is a
+prerequisite for grasping it).
+
+**Build fix (same pattern as Stage 7)**: `isaac_ros_centerpose`'s
+`package.xml` has a hard `<depend>isaac_ros_triton</depend>` (not even
+`exec_depend` this time) for an inference backend we don't use.
+`isaac_ros_centerpose`'s own `CMakeLists.txt` only references Triton in
+an optional test file (`test_centerpose_pol_triton.py`, gated behind
+`BUILD_TESTING`), so removing the `<depend>` line from the local
+checkout is safe — colcon's dependency resolution runs off `package.xml`
+independent of `BUILD_TESTING`, so leaving it in fails the build even
+though nothing in the actual compiled code needs it.
+
+Wrote `centerpose_launch.py`/`centerpose_check.py` following the same
+shape as Stage 5 onward, with one new wrinkle: `TensorRTNode` here has
+**seven** named outputs (`bboxes`, `scores`, `kps`, `clses`, `obj_scale`,
+`kps_displacement_mean`, `kps_heatmap_mean`) instead of one, since
+CenterPose's architecture predicts bounding box, keypoints, and object
+scale simultaneously — all copied verbatim from NVIDIA's own
+`test_centerpose_pol.py`, not derived by us.
+
+**What's different from every DNN stage before this one**:
+`centerpose_shoe.onnx` is a **real trained model** (PyTorch→ONNX,
+opset 16), not random weights — NVIDIA ships a matching
+`ground_truth.json` alongside its test image (two real shoes, with
+measured 3D location/quaternion/scale per object). This is the first
+check in the series that validates actual output content instead of
+just structural validity: `centerpose_check.py` compares detected
+object count and depth (Z) against the ground-truth values with a 1.0 m
+tolerance.
+
+Result: **`CENTERPOSE OK`** — 2 detections against a ground truth of 2,
+depths `[4.11 m, 5.02 m]` against ground-truth `[4.40 m, 5.50 m]`, both
+comfortably inside tolerance. The larger 7-output engine took longer to
+compile than prior stages (raised `centerpose_check.py`'s engine-ready
+timeout to 300 s after an initial 120 s run timed out mid-build, same
+"bigger model, longer first-run engine build" pattern as Stage 7).
+
+This is the strongest proof-of-life in the whole from-source experiment
+so far: not just "the NITROS/TensorRT/CUDA plumbing runs without
+crashing" but "a real trained model produces numerically correct
+real-world 3D measurements" — end to end, natively, on Orin/JetPack7.
+
+**Full Isaac ROS map, for context on what's next**: a separate pass
+enumerated all ~29 Isaac ROS GEM repositories (via the GitHub API, not
+from memory) against this experiment's progress. Five repos are now
+verified working from source (AprilTag, DNN inference, image_pipeline,
+object detection, image segmentation) plus this one makes six; one is
+built but blocked at runtime (visual SLAM, Stage 6); four need a
+depth/stereo camera this robot doesn't have; seven are architecturally
+inapplicable (Nova-platform hardware, CSI camera drivers, ROS1 bridge,
+Unitree G1-specific packages); the remaining dozen (pose estimation
+beyond CenterPose, mapping/localization, cuMotion, manipulation,
+compression, jetson-stats, teleop, etc.) are relevant but untried.
+
+**Not yet done**: wiring into the live camera or `perseus_isaac_relay`;
+a robot-relevant trained model (a real object this robot's arm might
+need to pick up, rather than NVIDIA's demo shoe).
