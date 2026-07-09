@@ -1,15 +1,18 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–4 all succeeded.** Real AprilTag detection
+**Status: Stages 0–5 all succeeded.** Real AprilTag detection
 (`isaac_ros_apriltag`, VPI/cuAprilTag) running on this Jetson Orin Nano
 under JetPack 7 using entirely self-built binaries, verified to a **pixel-exact
 match** against NVIDIA's own ground-truth test fixture — see Stage 4 below.
-This is a separate track from the working `software/docker/isaac-ros/`
-scaffold (which targets JetPack 6.x via NVIDIA's prebuilt image) — it exists
-because NVIDIA hasn't shipped Isaac ROS binaries for Orin+JetPack7 yet, and
-we're building our own from source as a stopgap. Not yet exercised: a live
-camera (Stage 4 used a static test image) and the rectify half of the real
-camera→rectify→apriltag pipeline.
+Stage 4 follow-up added a live-camera pipeline (`pixi run test-apriltags`).
+Stage 5 added real GPU DNN inference (`isaac_ros_tensor_rt` +
+`isaac_ros_dnn_image_encoder`, TensorRT 10.16.2/CUDA 13.2) — a full
+image→resize/normalize→mobilenetv2 classification round trip, verified
+end to end. This is a separate track from the working
+`software/docker/isaac-ros/` scaffold (which targets JetPack 6.x via
+NVIDIA's prebuilt image) — it exists because NVIDIA hasn't shipped Isaac
+ROS binaries for Orin+JetPack7 yet, and we're building our own from
+source as a stopgap.
 
 Full background, findings, and the staged plan: see
 `docs/source/systems/software/isaac-ros-nitros-source-build.md`. Read that
@@ -311,21 +314,22 @@ both, plus a real bug found in the rectify+apriltag combination.
 pixi run -e isaac-nitros test-apriltags
 ```
 
-Launches `usb_cam` (1280×720, 10 Hz, `/dev/video0`) → `apriltag` directly —
-publishes `/tag_detections` and a TF frame per detected tag
-(`tag36h11:<id>`) at a steady 10 Hz. Point the C920 at a printed AprilTag
-(`tag36h11` family) to see it.
+Launches `usb_cam` (1280×720, 10 Hz, `/dev/video0`) → `rectify` →
+`apriltag` — publishes `/tag_detections` and a TF frame per detected tag
+(`tag36h11:<id>`) at a steady 10 Hz on lens-corrected frames. Point the
+C920 at a printed AprilTag (`tag36h11` family) to see it.
 
-**Note: this graph skips `RectifyNode`.** `rectify` → `apriltag` on live
-camera frames reproducibly crashes
-(`nvcv::Exception: NVCV_ERROR_INVALID_OPERATION: The tensor handle is
-null.`) — root cause not yet identified, see
-`isaac-ros-nitros-source-build.md`'s "Stage 4 follow-up" section. Detection
-works fine without rectify; the C920's lens distortion just goes
-uncorrected, so trust tag presence/ID but not precise pose numbers (the
-bundled `camera_c920_info.yaml` is also NVIDIA's placeholder calibration,
-not a real one for this camera — see that file's header for how to
-generate a real one).
+**History: this graph used to skip `RectifyNode`.** An earlier debugging
+session found `rectify` → `apriltag` on live camera frames reproducibly
+crashing (`nvcv::Exception: NVCV_ERROR_INVALID_OPERATION: The tensor
+handle is null.`) and worked around it by dropping `RectifyNode`. After a
+reboot, the identical graph ran clean for 30+ minutes with no crash at
+all — the workaround was reverted and rectify is back in by default. See
+`isaac-ros-nitros-source-build.md`'s "Follow-up after a reboot" section
+for the full writeup; if the crash recurs, that section documents the
+one-line revert. The bundled `camera_c920_info.yaml` is still NVIDIA's
+placeholder calibration, not a real one for this camera — see that
+file's header for how to generate a real one.
 
 ### Viewing it in RViz from another machine (e.g. your laptop)
 
@@ -352,13 +356,63 @@ graph:
    both standard types).
 4. **Open RViz with the bundled config**, copied from this directory to
    your laptop: `apriltag_camera.rviz` (our own — adapted from NVIDIA's
-   `isaac_ros_apriltag/rviz/usb_cam.rviz`, which points at `/image_rect`;
-   ours points at `/image_raw` since this graph skips rectify):
+   `isaac_ros_apriltag/rviz/usb_cam.rviz`; both point at `/image_rect`,
+   the rectified/lens-corrected output):
    ```console
    rviz2 -d apriltag_camera.rviz
    ```
    Fixed Frame is `camera`; you should see the live image, and when a tag
    is in view, a `tag36h11:<id>` TF frame will appear (axes drawn relative
    to the camera). No config file handy? Just open RViz, set Fixed Frame to
-   `camera`, add an `Image` display on `/image_raw`, and add a `TF`
+   `camera`, add an `Image` display on `/image_rect`, and add a `TF`
    display — that's the whole config.
+
+## Stage 5 — `isaac_ros_dnn_inference`: real GPU DNN inference (TensorRT)
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_dnn_inference
+ln -sfn ../../isaac_ros_dnn_inference ws/src/isaac_ros_dnn_inference
+
+sudo apt-get install tensorrt-dev   # 10.16.2.10-1+cuda13.2, from the
+                                     # JetPack-7 L4T apt repo already
+                                     # configured on this host
+
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_ros_tensor_rt isaac_ros_tensor_proc isaac_ros_dnn_image_encoder \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+cd ..
+mkdir -p models
+cp isaac_ros_dnn_inference/isaac_ros_tensor_rt/test/models/mobilenetv2-1.0.onnx models/
+
+pixi run -e isaac-nitros test-dnn-classify
+```
+
+Deliberately skipped `isaac_ros_triton` (needs a separate Triton Inference
+Server; not needed for a direct-TensorRT path). `-DCMAKE_CUDA_ARCHITECTURES=87`
+is Orin's real SM (Ampere) — `isaac_ros_tensor_proc` compiles actual `.cu`
+kernels (unlike `isaac_ros_tensor_rt`, pure C++ against the TensorRT API)
+and CMake's own CUDA-arch auto-detection needs an explicit answer before
+`isaac_ros_common-extras.cmake`'s own fallback logic gets a chance to run.
+
+`test-dnn-classify` runs our own minimal launch/check pair (not NVIDIA's
+`isaac_ros_test`-based suite): a static test image → `dnn_image_encoder`
+(resize/normalize to 224×224) → `tensor_rt` (mobilenetv2-1.0), checking the
+output tensor's shape/dtype/name *and* that it's not degenerate (finite,
+non-constant — a real inference happened, not garbage). First run builds a
+real TensorRT engine (~40s); later runs reuse the cached
+`/tmp/trt_engine.plan`. Full findings, two real bugs hit while wiring the
+encoder→tensor_rt chain, and the CCCL/CUDA-arch build issues:
+`isaac-ros-nitros-source-build.md`'s "Stage 5" section.
+
+**Not yet done:** a real object detector (e.g. `isaac_ros_yolov8`) as the
+perception-level proof-of-life — this stage stopped at classification,
+which was enough to prove the plumbing. Also not wired into the live
+camera or `perseus_isaac_relay`.

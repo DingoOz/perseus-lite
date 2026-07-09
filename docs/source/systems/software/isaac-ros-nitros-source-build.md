@@ -662,3 +662,124 @@ change. Anyone hitting the crash again should note whether it happened
 fresh after a reboot or after other `component_container_mt` processes had
 already crashed earlier in the same boot session — that would help
 confirm or rule out the stale-CUDA-context hypothesis above.
+
+## Stage 5 — result: SUCCESS, real GPU DNN inference (TensorRT) from source on Orin/JetPack7
+
+Extended the from-source build to `isaac_ros_dnn_inference`
+(`isaac_ros_tensor_rt`, `isaac_ros_tensor_proc`, `isaac_ros_dnn_image_encoder`
+— skipped `isaac_ros_triton`, which needs the separate Triton Inference
+Server and wasn't needed for this). Motivation: `perseus_vision` (this
+repo's existing ONNX detector package) only builds in the x86
+`machine-learning` Pixi env and isn't built on the Jetson at all — there
+was no GPU-accelerated object detection running natively on the Orin. This
+closes that gap with a real, working TensorRT path.
+
+**TensorRT itself wasn't installed.** Unlike VPI/CV-CUDA (Stage 4, needed
+manual `.deb` downloads from GitHub releases), TensorRT ships directly in
+NVIDIA's JetPack-7 L4T apt repo (`repo.download.nvidia.com/jetson/common
+r39.2`), already configured on this host: `sudo apt-get install
+tensorrt-dev` pulled `libnvinfer-dev`/`libnvonnxparsers-dev`/plugins at
+**10.16.2.10-1+cuda13.2** — an exact match for this system's CUDA 13.2, no
+version hunting needed.
+
+### New build issues (beyond the Stage 3/4 magic_enum/VPI/CV-CUDA pattern)
+
+- **`CCCL::CCCL` target not found**, even though `isaac_ros_tensor_list_interfaces`
+  (built back in Stage 3) exports it as a link dependency. Root cause:
+  `isaac_ros_common-extras.cmake` does `find_package(CCCL CONFIG QUIET)`
+  and only links it `if(TARGET CCCL::CCCL)` — CCCL's actual CMake package
+  lives at `/usr/local/cuda-13.2/targets/sbsa-linux/lib/cmake/cccl/`, which
+  isn't on the Pixi env's `CMAKE_PREFIX_PATH`. It was apparently found
+  during whatever earlier build first compiled `isaac_ros_tensor_list_interfaces`
+  (baking `CCCL::CCCL` into its exported config), but a *fresh* configure
+  for a new package doesn't find it, so re-importing that dependency's
+  exported target fails. Fixed by prepending
+  `/usr/local/cuda-13.2/targets/sbsa-linux` to `CMAKE_PREFIX_PATH` for every
+  build in this stage. (Exactly why it was found once but not
+  reproducibly since — likely a `PATH`/env difference between an earlier
+  interactive `pixi shell` session and later `pixi run -e ... bash -c`
+  invocations — wasn't fully pinned down; the explicit `CMAKE_PREFIX_PATH`
+  addition sidesteps it either way.)
+- **`isaac_ros_tensor_proc` needs `project(... LANGUAGES ... CUDA)`** (it
+  compiles real `.cu` kernels, unlike `isaac_ros_tensor_rt` which is pure
+  C++ against the TensorRT API) — this requires `CUDACXX` to point at
+  `nvcc` (same fix as documented in Stage 0/3: `export
+  CUDACXX=/usr/local/cuda/bin/nvcc`) *and*, separately, an explicit
+  `-DCMAKE_CUDA_ARCHITECTURES=87` cmake arg. Without it, CMake's own CUDA
+  architecture auto-detection (which runs immediately at the `project()`
+  call, before `isaac_ros_common-extras.cmake`'s own
+  `CMAKE_CUDA_ARCHITECTURES` fallback logic gets a chance to execute) fails
+  with "CMAKE_CUDA_ARCHITECTURES must be non-empty if set." `87` is Orin's
+  real SM (Ampere) — picking it explicitly here sidesteps the SM75-vs-87
+  ambiguity flagged back in Stage 0 entirely, since TensorRT itself builds
+  its inference engine at runtime against whatever GPU is present (no
+  fixed-architecture kernels to get wrong), and `isaac_ros_tensor_proc`'s
+  own handful of `.cu` files just need *a* valid target, not a
+  contentious one.
+- Same magic_enum/VPI/CV-CUDA `CXXFLAGS`/`LDFLAGS` scoping as Stage 3/4
+  applied unchanged.
+
+### Verification: two round trips, both our own minimal scripts (no `isaac_ros_test`/torch)
+
+1. **`tensor_rt_launch.py` + `tensor_rt_check.py`**: loads NVIDIA's own
+   `isaac_ros_tensor_rt` test fixture (`mobilenetv2-1.0.onnx`, git-lfs,
+   copied out to `models/`), publishes a zero-filled `[1,3,224,224]` input
+   tensor directly on `tensor_pub`, and checks the response on `tensor_sub`
+   matches mobilenetv2's known output signature (`name=output,
+   dims=[1,1000], float32`) — same checks as NVIDIA's own
+   `isaac_ros_tensor_rt_test.py`, just without pulling in
+   `isaac_ros_test`/`IsaacROSBaseTest`. **First real TensorRT engine build
+   on this hardware**: ONNX parse → optimization pass → serialized a
+   14.5 MB engine in **41.8 seconds**, then ran inference and returned the
+   exact expected tensor shape/dtype/name on the very first published
+   message. Confirms TensorRT's builder and runtime both work natively
+   against this JetPack7/CUDA13.2/Orin stack.
+2. **`dnn_classify_launch.py` + `dnn_classify_check.py`**: the real
+   pipeline — `DnnImageEncoderNode` (resize/pad to 224×224, normalize) →
+   `TensorRTNode` (mobilenetv2), fed NVIDIA's own
+   `isaac_ros_dnn_image_encoder` test image
+   (`test_cases/pose_estimation_0/image.jpg`, 1920×1080). Checks the same
+   shape/dtype/name properties *plus* that the 1000-way output isn't
+   degenerate (finite, non-constant: `std≈3.67`, a real logit spread) —
+   catching the case where the shape happens to match but the
+   resize/normalize step fed TensorRT garbage. Passed on the first
+   publish once two bugs (below) were fixed.
+
+### Two real bugs found while wiring the encoder→tensor_rt chain (both ours, not NVIDIA's — fixed)
+
+- **`enable_padding: False` crashes**: `NVCV_ERROR_INVALID_ARGUMENT:
+  INVALID_DATA_SHAPE` — `terminate called after throwing an instance of
+  'nvcv::Exception'`, immediately on the first frame. The underlying
+  CV-CUDA resize path used when padding is disabled apparently requires
+  the input and output to already match some shape constraint (didn't
+  dig further into CV-CUDA's own resize op internals); NVIDIA's own
+  `DnnImageEncoderNode::declare_parameter` default for `enable_padding`
+  is `true` anyway — the crash only happened because the test launch file
+  explicitly overrode it to `false`. Fixed by not overriding it.
+- **Wrong output topic name → silent no-op, not a crash**: initially
+  remapped `('encoded_tensor', 'tensor_pub')`, guessing the topic name
+  from the *launch-wrapper* parameter (`tensor_output_topic`, used by
+  NVIDIA's own `dnn_image_encoder.launch.py` when composing nodes via
+  `LoadComposableNodes`). But `DnnImageEncoderNode`'s C++ constructor
+  hardcodes its actual publisher topic as `"tensors"`
+  (`create_publisher<NitrosTensorList>("tensors", ...)`) — the launch
+  wrapper's parameter name is unrelated to the wire topic name when
+  instantiating the `ComposableNode` directly (bypassing that wrapper, as
+  our minimal launch files do). Symptom was a hang with **zero errors**:
+  the encoder's own debug log showed it receiving images and building
+  `NitrosTensorList` objects correctly (`[DnnImageEncoderNode]: [Dnn Image
+  Encoder] Image received`, followed by a full `NitrosBuffer`
+  `WriteHandle`/`ReadHandle`/CUDA-event sequence), but `tensor_rt` never
+  saw anything on `tensor_pub` because the encoder was actually publishing
+  on `/tensors`, not `/tensor_pub`. Found by bumping the container to
+  `--log-level debug` and grepping for `Initializing publisher for topic
+  name` — confirmed the real topic name directly rather than trusting the
+  launch-wrapper parameter's naming. Fixed by remapping `('tensors',
+  'tensor_pub')` instead.
+
+**Not yet done**: a real object detector (e.g. `isaac_ros_yolov8` from the
+separate `isaac_ros_object_detection` repo) as the perception-level
+proof-of-life, analogous to Stage 4's AprilTag — this stage stopped at
+the classification round-trip (mobilenetv2), which was enough to prove
+the TensorRT/encoder plumbing works end to end. Also not done: wiring any
+of this into `perseus_isaac_relay` or the live camera.

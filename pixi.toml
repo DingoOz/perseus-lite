@@ -369,6 +369,12 @@ ros-jazzy-usb-cam = "*" # Stage 4 live-camera test (test-apriltags task)
 # topics: /image_rect + TF).
 test-apriltags = { cmd = "bash run_test_apriltags.sh", cwd = "software/docker/isaac-ros/nitros-source" }
 
+# Stage 5 DNN inference smoke test: static test image -> dnn_image_encoder
+# -> tensor_rt (mobilenetv2-1.0), our own minimal launch/check pair (not
+# NVIDIA's isaac_ros_test-based test suite). First run builds a real
+# TensorRT engine (~40s); later runs reuse the cached /tmp/trt_engine.plan.
+test-dnn-classify = { cmd = "bash run_test_dnn_classify.sh", cwd = "software/docker/isaac-ros/nitros-source" }
+
 # ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------
