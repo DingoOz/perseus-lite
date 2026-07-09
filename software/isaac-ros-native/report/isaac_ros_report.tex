@@ -386,6 +386,65 @@ single-output model.
 \end{figure}
 
 % ---------------------------------------------------------------------
+\section{Post-Build Verification}
+\label{sec:postbuild}
+
+Two events after the initial twelve stages were complete are worth
+recording, since both tested claims made earlier in this report rather
+than adding new capability.
+
+\subsection{Relocation and the colcon relocatability lesson}
+
+The working tree originally lived at
+\texttt{software/docker/isaac-ros/nitros-source/} --- nested under a
+directory named \texttt{docker} purely for co-location with a separate,
+genuinely Docker-based JetPack~6 scaffold at the parent
+\texttt{software/docker/isaac-ros/}. This read as confusing given the
+entire point of this project's track is that it does \emph{not} use a
+container, so the working tree was moved to
+\texttt{software/isaac-ros-native/}.
+
+The move exposed a real, general lesson: colcon workspaces are not
+relocatable by default. Every compiled \texttt{.so}'s RPATH, plus roughly
+150 generated CMake export files, environment hooks, and ament index
+resources, had the original absolute path baked in at build time. The
+symptom was immediate and specific --- \texttt{dlopen} failures citing a
+missing \texttt{.so} that in fact existed, just not on the search path
+the loader was given. Patching each of these mechanisms individually
+(ELF RPATHs, CMake package configs, shell environment hooks) was judged
+too fragile to trust; a full rebuild from the new location is the
+complete, correct fix, and was scoped with \texttt{colcon build
+--packages-up-to} against only the leaf packages each stage actually
+exercises, rather than every package colcon could discover (a blanket
+rebuild pulled in unrelated object-detection model-installer packages
+that were never part of this project and fail without an environment
+variable this project never had reason to set). All 47 required packages
+rebuilt cleanly, and \texttt{isaac\_ros\_centerpose} was re-run end to
+end, reproducing its original result exactly.
+
+\subsection{Live-camera re-confirmation}
+
+The robot's USB camera was physically disconnected for an extended
+period during this project and reconnected only after the relocation
+above. With it back, the Stage~4 \texttt{rectify}$\to$\texttt{AprilTag}
+live pipeline --- the one capability in this report tested against real
+hardware rather than a bundled NVIDIA fixture, and the same pipeline
+shape that had an earlier, since-reassessed crash history documented in
+this project's error log --- was re-run against the reconnected camera
+and observed for a continuous three-minute window with an automated
+crash-signature watch (fatal exceptions, segmentation faults, process
+termination). None occurred; frames were confirmed flowing at a steady
+rate throughout. This closes the loop on the one open item from the
+original report's Section~\ref{sec:blockers} discussion, and confirms
+the relocation in the previous subsection did not silently degrade
+anything at runtime.
+
+The other six verified capabilities (Table~\ref{tab:stages}) were also
+re-run in full after the rebuild and reproduced their original results
+exactly, though against NVIDIA's bundled test fixtures rather than live
+hardware, matching how each was originally verified.
+
+% ---------------------------------------------------------------------
 \section{Conclusion and Recommendations}
 
 Seven of twelve real perception and localization capabilities are now
@@ -396,13 +455,16 @@ blocked stages are each attributable to a specific, external, and fully
 documented cause: an ARM instruction-set mismatch in a vendor binary,
 absent hardware on this particular Jetson SKU, and a small GPU memory
 carveout that is a deliberate system-configuration trade-off rather than
-a defect.
+a defect. All seven were re-verified after a workspace relocation
+(Section~\ref{sec:postbuild}), including a live-hardware re-confirmation
+of the camera pipeline.
 
-Two directions stand out for continuation. First, wiring the verified
-capabilities --- particularly the occupancy-grid lidar localizer, which
-is the first result matched to hardware the robot actually carries in
-its primary sensor role --- against the robot's real camera and lidar
-data, rather than NVIDIA's bundled test fixtures. Second, reporting the
+Two directions stand out for continuation. First, wiring the remaining
+verified capabilities --- particularly the occupancy-grid lidar
+localizer, which is the first result matched to hardware the robot
+actually carries in its primary sensor role --- against the robot's real
+camera and lidar data, rather than NVIDIA's bundled test fixtures, the
+way the AprilTag pipeline already has been. Second, reporting the
 cuVSLAM SVE2 mismatch to NVIDIA, since it plausibly affects any Orin
 user attempting the same published binary, independent of this project.
 
