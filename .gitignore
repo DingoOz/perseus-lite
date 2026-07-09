@@ -384,6 +384,7 @@ Temporary Items
 /software/docker/isaac-ros/nitros-source/isaac_ros_image_pipeline/
 /software/docker/isaac-ros/nitros-source/isaac_ros_dnn_inference/
 /software/docker/isaac-ros/nitros-source/isaac_ros_object_detection/
+/software/docker/isaac-ros/nitros-source/isaac_ros_visual_slam/
 /software/docker/isaac-ros/nitros-source/models/
 /software/docker/isaac-ros/nitros-source/__pycache__/
 /software/docker/isaac-ros/nitros-source/build/

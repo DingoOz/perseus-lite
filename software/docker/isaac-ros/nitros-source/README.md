@@ -1,17 +1,23 @@
 # NITROS/GXF from-source build experiment (Orin + JetPack 7)
 
-**Status: Stages 0–5 all succeeded.** Real AprilTag detection
-(`isaac_ros_apriltag`, VPI/cuAprilTag) running on this Jetson Orin Nano
-under JetPack 7 using entirely self-built binaries, verified to a **pixel-exact
-match** against NVIDIA's own ground-truth test fixture — see Stage 4 below.
-Stage 4 follow-up added a live-camera pipeline (`pixi run test-apriltags`).
-Stage 5 added real GPU DNN inference (`isaac_ros_tensor_rt` +
+**Status: Stages 0–5 all succeeded; Stage 6 blocked on an upstream NVIDIA
+binary defect.** Real AprilTag detection (`isaac_ros_apriltag`,
+VPI/cuAprilTag) running on this Jetson Orin Nano under JetPack 7 using
+entirely self-built binaries, verified to a **pixel-exact match** against
+NVIDIA's own ground-truth test fixture — see Stage 4 below. Stage 4
+follow-up added a live-camera pipeline (`pixi run test-apriltags`). Stage
+5 added real GPU DNN inference (`isaac_ros_tensor_rt` +
 `isaac_ros_dnn_image_encoder`, TensorRT 10.16.2/CUDA 13.2) — a full
 image→resize/normalize→mobilenetv2 classification round trip, verified
 end to end, then a Stage 5 follow-up added `isaac_ros_yolov8` as the
 object-detector-level proof (real yolov8s architecture, NVIDIA's own
 random-weight test fixture — full chain confirmed, detection content
-not meaningful by design). This is a separate track from the working
+not meaningful by design). Stage 6 (`isaac_ros_visual_slam`/cuVSLAM)
+built clean but its published `aarch64_jetpack70` binary crashes with
+`SIGILL` on `dlopen` — it contains **SVE2** instructions the Orin's
+Cortex-A78AE CPU doesn't implement, a genuine upstream packaging bug, not
+something fixable here — see Stage 6 below. This is a separate track from
+the working
 `software/docker/isaac-ros/` scaffold (which targets JetPack 6.x via
 NVIDIA's prebuilt image) — it exists because NVIDIA hasn't shipped Isaac
 ROS binaries for Orin+JetPack7 yet, and we're building our own from
@@ -461,3 +467,56 @@ findings from getting this check right).
 detections — this stopped at proving the plumbing, same scope as the
 mobilenetv2 classification check. Also not wired into the live camera or
 `perseus_isaac_relay`.
+
+## Stage 6 — `isaac_ros_visual_slam` (cuVSLAM): BLOCKED, upstream binary bug
+
+```console
+cd software/docker/isaac-ros/nitros-source
+git clone https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_visual_slam
+ln -sfn ../../isaac_ros_visual_slam ws/src/isaac_ros_visual_slam
+
+cd ws
+pixi run -e isaac-nitros bash -c '
+  export CXX=/usr/bin/g++ CC=/usr/bin/gcc
+  export CUDACXX=/usr/local/cuda/bin/nvcc
+  export CMAKE_PREFIX_PATH="/usr/local/cuda-13.2/targets/sbsa-linux:${CMAKE_PREFIX_PATH}"
+  export CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum -I/opt/nvidia/vpi4/include -I/opt/nvidia/cvcuda0/include ${CXXFLAGS:-}"
+  export LDFLAGS="-L/opt/nvidia/cvcuda0/lib -Wl,-rpath,/opt/nvidia/cvcuda0/lib ${LDFLAGS:-}"
+  colcon build --packages-select isaac_common isaac_ros_launch_utils \
+    isaac_ros_visual_slam_interfaces isaac_ros_visual_slam \
+    --cmake-args -DBUILD_TESTING=OFF -DCMAKE_CUDA_ARCHITECTURES=87
+'
+```
+
+Builds clean — `isaac_ros_nitros` already ships a real
+`lib_aarch64_jetpack70/libcuvslam.so` (unlike GXF core, no sbsa-fallback
+needed; selected purely by `CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64"`).
+**But loading it crashes with `SIGILL`, immediately, before any node code
+runs**:
+
+```console
+$ python3 -c "import ctypes; ctypes.CDLL('.../lib_aarch64_jetpack70/libcuvslam.so')"
+Illegal instruction (core dumped)
+```
+
+Root cause (confirmed via `gdb -batch -ex run -ex bt -ex 'x/4i $pc'`): the
+binary's ELF constructor executes `whilewr` — an **SVE2** instruction —
+and Orin's Cortex-A78AE CPU doesn't implement SVE at all
+(`/proc/cpuinfo`'s `Features:` has `asimd`, no `sve`/`sve2`). Confirmed
+`jetpack70`-specific: the sibling `lib_aarch64_jetpack61` binary
+disassembles with zero SVE instructions, but *that* one wants
+`libcusolver.so.11`/`libcublas.so.12` (CUDA 11/12-era, not present on this
+CUDA-13.2-only host). Neither published aarch64 variant works here. Full
+diagnosis: `isaac-ros-nitros-source-build.md`'s "Stage 6" section.
+
+**Not fixed — genuinely blocked.** This isn't something a build flag on
+our end can work around (cuVSLAM's source isn't published, only the
+`.so`); recommend reporting to NVIDIA as a build-config bug in their
+`aarch64_jetpack70` cuVSLAM release. Also worth noting independent of the
+crash: cuVSLAM has no monocular-only tracking mode (stereo, stereo+IMU,
+or RGBD only), and this robot's only camera is a monocular C920 — even a
+fixed binary wouldn't be usable on the current robot hardware without
+adding a depth or stereo camera. The proof-of-life scripts written for
+this stage (`visual_slam_launch.py`/`visual_slam_check.py`, RGBD mode
+against NVIDIA's own bundled RealSense test rosbag) are left in place,
+currently non-functional pending the binary fix.

@@ -817,3 +817,90 @@ or NGC) for actually-meaningful detections — this stage stopped at
 proving the plumbing, same scope boundary as the mobilenetv2 check. Also
 not done: wiring any of Stage 5 into `perseus_isaac_relay` or the live
 camera.
+
+## Stage 6 — `isaac_ros_visual_slam` (cuVSLAM): result: BLOCKED, published aarch64_jetpack70 binary needs SVE2, Orin's CPU doesn't have it
+
+Attempted to extend the from-source build to GPU-accelerated visual SLAM
+(cuVSLAM), as a complement to the robot's existing lidar-based
+`slam_toolbox`. Unlike GXF core (Stage 0/1), this looked like the
+promising case going in: `isaac_ros_nitros/isaac_ros_nitros/lib/cuvslam/`
+ships a **genuine native `lib_aarch64_jetpack70/libcuvslam.so`** — real
+ELF ARM64 binary, not an LFS pointer — and `isaac_ros_nitros`'s own
+`CMakeLists.txt` selects it purely by `CMAKE_SYSTEM_PROCESSOR MATCHES
+"aarch64"`, no sbsa-vs-jetson fallback logic the way GXF core needed. The
+wrapper package (`isaac_ros_visual_slam`, cloned alongside
+`isaac_ros_visual_slam_interfaces`) is genuine Apache-2.0 C++ and built
+clean — needed `isaac_common` and `isaac_ros_launch_utils` built first
+(both already-cloned parts of `isaac_ros_common`, same "colcon needs
+transitive deps built even for exec_depend" pattern as before) plus
+`-Wno-dev`-worthy `CMP0167`/Boost warnings (harmless).
+
+**The crash**: loading the composable node (`ros2 launch` →
+`component_container_mt` → `dlopen(libvisual_slam_node.so)` → transitively
+`dlopen(libcuvslam.so)`) died instantly with `SIGILL` (exit code -4),
+before the node class was even instantiated — a `component_container_mt`
+log line reading "Load Library" then immediate death, no ROS error, no
+GXF/NITROS involvement at all. Isolated with a two-line reproduction,
+decoupled entirely from ROS:
+
+```console
+$ python3 -c "import ctypes; ctypes.CDLL('.../lib_aarch64_jetpack70/libcuvslam.so')"
+Illegal instruction (core dumped)
+```
+
+`gdb -batch -ex run -ex bt -ex 'x/4i $pc' --args python3 -c "..."` caught
+it in `libcuvslam.so`'s own ELF constructor (`call_init` → `_dl_init`,
+i.e. a global/static initializer running before any application code),
+crashing on:
+
+```
+=> 0xfffff6d44544:  whilewr p0.s, x6, x3
+```
+
+**`whilewr` is an SVE2 (Scalable Vector Extension 2) instruction.**
+`/proc/cpuinfo`'s `Features` line on this Orin (`CPU part: 0xd42` =
+Cortex-A78AE) lists `asimd` (NEON) but **no `sve`/`sve2` at all** — this
+CPU cannot execute that instruction, full stop; it's not a driver/runtime
+issue, it's the physical core lacking the ISA extension the binary was
+compiled to require. Confirmed this is specific to the `jetpack70` build,
+not a general cuVSLAM property: `objdump -d` on the sibling
+`lib_aarch64_jetpack61/libcuvslam.so` (NVIDIA's officially-supported
+JetPack 6.1/Orin target) contains **zero** SVE/SVE2 instructions
+(`whilewr`/`whilerw`/`ptrue`/`ld1w`/`st1w` all absent) — clean NEON-only
+code. The `jetpack70` binary looks like it was built with SVE2 codegen
+enabled for a newer ARM core (plausibly targeting Thor/Blackwell-class
+aarch64 silicon, which the repo's own `CUAPRILTAGS_LIB_PATH`/
+`CUMOTION_PATH` selection comments elsewhere hint may share the generic
+"aarch64" bucket with actual Orin targets) without accounting for Orin's
+older, non-SVE Cortex-A78AE cores — a genuine upstream packaging mismatch,
+not something fixable from our side (cuVSLAM's own source isn't
+published, only this compiled `.so`).
+
+**Is `lib_aarch64_jetpack61` a viable fallback?** Checked and ruled out:
+`ldd` on it reports `libcusolver.so.11 => not found` and `libcublas.so.12
+=> not found` — it wants CUDA 11/12-era sonames this host's CUDA-13.2-only
+install doesn't provide. So neither published aarch64 cuVSLAM variant
+works on this exact stack: `jetpack70` has the right CUDA ABI but the
+wrong CPU ISA; `jetpack61` has (plausibly) the right CPU ISA but the wrong
+CUDA ABI. Genuinely blocked both ways without either a corrected NVIDIA
+binary or building cuVSLAM from source (not available to us).
+
+**Also worth noting independent of the crash**: even if cuVSLAM loaded,
+it has no monocular-only tracking mode (`tracking_mode` is
+Multicamera/stereo, VIO/stereo+IMU, or RGBD only — see
+`visual_slam_node.cpp`), and this robot's only camera is the monocular
+Logitech C920. The proof-of-life launch/check pair written for this stage
+(`visual_slam_launch.py`/`visual_slam_check.py`, RGBD mode) plays back
+NVIDIA's own bundled test fixture — a real Intel RealSense 455 recording
+(`test_cases/rosbags/rgbd_static/rosbag2_rs455_rgbd.mcap`, 6s/92 frames) —
+rather than anything from this robot's hardware, since there's no
+depth/stereo source to feed it regardless of the SVE2 blocker. Left in
+place, currently non-functional pending the binary issue above; would
+also need a depth or stereo camera added to the robot to ever be useful
+here even if unblocked.
+
+**Not fixed. Recommend reporting the SVE2/ISA mismatch to NVIDIA** (e.g.
+via the Isaac ROS GitHub issues or forum) — this reads like a genuine
+build-config bug in their `aarch64_jetpack70` cuVSLAM release, not
+something specific to this from-source experiment; it would presumably
+reproduce for anyone on real Orin hardware pulling this artifact.
