@@ -325,6 +325,130 @@ fmt = "treefmt --allow-missing-formatter"
 fmt-check = "treefmt --allow-missing-formatter --ci"
 
 # ---------------------------------------------------------------------------
+# Feature: isaac-nitros (NITROS/GXF from-source build experiment) — Jetson
+# (linux-aarch64) only. See software/isaac-ros-native/README.md
+# and docs/source/systems/software/isaac-ros-nitros-source-build.md for the
+# staged plan. Provides a self-contained Python/build toolchain without
+# touching system apt packages: this host has no system pip/venv installed,
+# and CLAUDE.md already flags system-package contamination as a hazard
+# elsewhere (see "System-ROS contamination hazard") — same reasoning applies
+# here, so this stays inside the Pixi-managed prefix.
+# ---------------------------------------------------------------------------
+[feature.isaac-nitros]
+platforms = ["linux-aarch64"]
+
+[feature.isaac-nitros.dependencies]
+python = ">=3.11"
+pip = "*"
+c-compiler = "*"
+cxx-compiler = "*"
+# NOTE: several isaac_ros_nitros CMakeLists.txt files misuse $<INSTALL_PREFIX>
+# (a generator expression only valid inside install(EXPORT)) directly in
+# target properties, which CMake rejects ("should never be evaluated").
+# Confirmed NOT a CMake-version issue -- fails identically on 3.31.8 and 4.3.4
+# -- so this pin is NOT a fix; the actual fix is a local sed patch on the
+# cloned (gitignored) source. Kept <4 only because that's what was tested
+# alongside the patch. See isaac-ros-nitros-source-build.md Stage 1 notes.
+cmake = ">=3.22,<4"
+ninja = "*"
+colcon-common-extensions = "*"
+magic_enum = "*" # isaac_ros_gxf/isaac_ros_nitros build dep, not in RoboStack
+ros-jazzy-usb-cam = "*" # Stage 4 live-camera test (test-apriltags task)
+ros-jazzy-vision-msgs = "*" # Stage 5 isaac_ros_yolov8 (Detection2DArray), not in RoboStack by default
+
+[feature.isaac-nitros.pypi-dependencies]
+# CPU-only AprilTag detector for demo-apriltag-speed's GPU-vs-CPU comparison.
+# No prebuilt aarch64 wheel on PyPI -- builds from source via this feature's
+# own c-compiler/cxx-compiler, confirmed working.
+pupil-apriltags = "*"
+# CPU inference backend for demo-yolov8-speed's GPU-vs-CPU comparison
+# (Demo 3, plan.md).
+onnxruntime = "*"
+# NVIDIA's official CUDA Python bindings -- device buffer alloc/copy for
+# calling TensorRT directly via python3-libnvinfer (system apt package,
+# NOT pip -- see demo3's docstring for why it's on PYTHONPATH instead of
+# a pixi dependency here).
+cuda-python = "*"
+# Result charts for demo-yolov8-speed / demo-unet-speed / demo-benchmark
+# (Demos 3-5, plan.md).
+matplotlib = "*"
+
+[feature.isaac-nitros.tasks]
+# NOTE: isaac-ros-cli is NOT pip-installable — it ships as a .deb
+# (`sudo apt-get install isaac-ros-cli`) and `isaac-ros init` itself requires
+# sudo. That's a system-level install this feature deliberately does NOT
+# attempt (see isaac-ros-native/README.md for why) — this env only provides the
+# plain colcon/cmake toolchain for a manual, non-CLI build attempt.
+#
+# Live-camera AprilTag test: usb_cam -> rectify -> apriltag (NVIDIA's own
+# isaac_ros_apriltag_usb_cam.launch.py, installed into ws/install already —
+# not copied/modified). See isaac-ros-native/README.md "Live camera test" for
+# the RViz setup (their bundled usb_cam.rviz already points at the right
+# topics: /image_rect + TF).
+test-apriltags = { cmd = "bash run_test_apriltags.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 5 DNN inference smoke test: static test image -> dnn_image_encoder
+# -> tensor_rt (mobilenetv2-1.0), our own minimal launch/check pair (not
+# NVIDIA's isaac_ros_test-based test suite). First run builds a real
+# TensorRT engine (~40s); later runs reuse the cached /tmp/trt_engine.plan.
+test-dnn-classify = { cmd = "bash run_test_dnn_classify.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 5 perception-level proof-of-life (parallel to Stage 4's AprilTag):
+# image -> dnn_image_encoder -> tensor_rt -> yolov8_decoder, using NVIDIA's
+# own dummy_yolov8s.onnx fixture (real yolov8s architecture, random
+# weights — proves the chain runs, not detection accuracy).
+test-yolov8 = { cmd = "bash run_test_yolov8.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 7 perception-level proof-of-life: image -> dnn_image_encoder ->
+# tensor_rt -> unet_decoder, using NVIDIA's own model.dummy.onnx fixture
+# (random weights — proves the chain runs, not segmentation accuracy).
+test-unet = { cmd = "bash run_test_unet.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 8 perception-level proof-of-life: image -> dnn_image_encoder ->
+# tensor_rt -> centerpose_decoder, using NVIDIA's own REAL TRAINED
+# centerpose_shoe.onnx model — the first stage in this series validated
+# against ground-truth content (detection count + depth), not just
+# message structure.
+test-centerpose = { cmd = "bash run_test_centerpose.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 10 composability proof-of-life: AprilTag + YOLOv8 + U-Net +
+# CenterPose all running together in one container/one GPU context
+# (namespaced to avoid topic collisions) — every capability above had
+# previously only been proven running alone.
+test-combined = { cmd = "bash run_test_combined.sh", cwd = "software/isaac-ros-native" }
+
+# Stage 12 occupancy-grid global localization: GPU scan-matching (2D
+# lidar via NitrosFlatScan) against NVIDIA's own real map + rosbag
+# fixtures — the first capability in this experiment matched to the
+# robot's lidar rather than its camera.
+test-ogl = { cmd = "bash run_test_ogl.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 1 (plan.md): live GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags)
+# AprilTag detection speed comparison on the real camera. Runs until
+# Ctrl-C; view from a laptop on the same ROS domain (RViz2 or
+# rqt_image_view on /image_comparison) -- see README.md.
+demo-apriltag-speed = { cmd = "bash run_demo_apriltag_speed.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 2 (plan.md): occupancy-grid localizer GPU vs CPU, forcing NVIDIA's
+# own compiled node down its real CPU fallback path (CUDA_VISIBLE_DEVICES="")
+# rather than reimplementing the algorithm. Can take a while -- the CPU
+# pass is real compute over ~250k candidate poses.
+demo-ogl-speed = { cmd = "bash run_demo_ogl_speed.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 3 (plan.md): YOLOv8 TensorRT (GPU) vs ONNX Runtime (CPU), direct
+# Python API on both sides -- no ROS in the timing loop, avoiding Demo 1's
+# message-passing pitfall by design.
+demo-yolov8-speed = { cmd = "bash run_demo_yolov8_speed.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 4 (plan.md): U-Net segmentation TensorRT (GPU) vs ONNX Runtime
+# (CPU), same direct-Python-API structure as Demo 3.
+demo-unet-speed = { cmd = "bash run_demo_unet_speed.sh", cwd = "software/isaac-ros-native" }
+
+# Demo 5 (plan.md): U-Net batch-size scaling study -- throughput vs batch
+# size, TensorRT (GPU) vs ONNX Runtime (CPU).
+demo-batch-scaling = { cmd = "bash run_demo_batch_scaling.sh", cwd = "software/isaac-ros-native" }
+
+# ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------
 [environments]
@@ -336,3 +460,4 @@ simulation = { features = ["simulation"] }
 machine-learning = { features = ["machine-learning"] }
 docs = { features = ["docs"], no-default-feature = true }
 format = { features = ["format"], no-default-feature = true }
+isaac-nitros = { features = ["isaac-nitros"] }

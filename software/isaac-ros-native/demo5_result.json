@@ -1,0 +1,52 @@
+{
+  "tensorrt_gpu": [
+    {
+      "batch_size": 1,
+      "mean_ms_per_call": 115.24131080077495,
+      "images_per_sec": 8.677443818118002
+    },
+    {
+      "batch_size": 2,
+      "mean_ms_per_call": 230.0845939986175,
+      "images_per_sec": 8.692455088983564
+    },
+    {
+      "batch_size": 4,
+      "mean_ms_per_call": 459.6566556050675,
+      "images_per_sec": 8.70214746425158
+    },
+    {
+      "batch_size": 8,
+      "mean_ms_per_call": 915.184369799681,
+      "images_per_sec": 8.741408030986227
+    }
+  ],
+  "onnxruntime_cpu": [
+    {
+      "batch_size": 1,
+      "mean_ms_per_call": 2550.786972991773,
+      "images_per_sec": 0.39203587386488714
+    },
+    {
+      "batch_size": 2,
+      "mean_ms_per_call": 12985.873860001448,
+      "images_per_sec": 0.15401350895301066
+    },
+    {
+      "batch_size": 4,
+      "mean_ms_per_call": 14143.290696003533,
+      "images_per_sec": 0.2828196129158456
+    },
+    {
+      "batch_size": 8,
+      "mean_ms_per_call": 30679.981226501695,
+      "images_per_sec": 0.2607563525198482
+    }
+  ],
+  "batch_sizes": [
+    1,
+    2,
+    4,
+    8
+  ]
+}
