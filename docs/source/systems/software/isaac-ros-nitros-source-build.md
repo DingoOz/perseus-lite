@@ -13,6 +13,13 @@ Working files live in `software/isaac-ros-native/` — see that
 directory's README for the actual commands. This page is the "why" and the
 staged plan; the README is the "how."
 
+This track has been extracted into a standalone, generalized public repo
+for other Jetson/JetPack7 users:
+[DingoOz/isaac-nitros-jetpack7](https://github.com/DingoOz/isaac-nitros-jetpack7).
+The copy under `software/isaac-ros-native/` here remains the working copy
+for perseus-lite's own development and isn't automatically kept in sync
+with the extracted repo.
+
 ## Why this might work at all
 
 NVIDIA's official Isaac ROS 4.x line (JetPack 7 / Ubuntu 24.04 / ROS 2 Jazzy)
