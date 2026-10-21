@@ -8,7 +8,7 @@
 
 from pathlib import Path
 
-from perseus_lite_tui import config, pixi_env
+from perseus_lite_tui import config, pixi_env, registry
 
 
 def _repo_root():
@@ -53,3 +53,38 @@ def test_simulation_profiles_are_gated():
     sim = [p for p in config.PROFILES if p.env == 'simulation']
     assert sim, 'expected at least one simulation profile'
     assert all(p.linux64_only for p in sim)
+
+
+def _by_slug():
+    return {p.slug: p for p in config.PROFILES}
+
+
+def test_drive_owners_are_mutually_exclusive():
+    # Every profile that starts controller_manager + the ST3215 bus (or the
+    # simulated equivalent on the same ROS domain) must claim DRIVE, so the TUI
+    # refuses to run two at once.
+    profiles = _by_slug()
+    for slug in ('bringup', 'controllers', 'slam_nav2', 'nav2', 'mapping', 'sim'):
+        assert registry.DRIVE in profiles[slug].resources, slug
+    assert registry.DRIVE not in profiles['rsp'].resources
+    assert registry.DRIVE not in profiles['autonomy'].resources
+
+
+def test_no_profile_bypasses_twist_mux():
+    # cmd_vel_topic, when passed, must be the mux output the controller reads.
+    for prof in config.PROFILES:
+        for arg in prof.fixed_args:
+            key, _, value = arg.partition(':=')
+            if key == 'cmd_vel_topic':
+                assert value == '/cmd_vel', prof.slug
+        for option in prof.options:
+            assert option.key != 'cmd_vel_topic', prof.slug
+    profiles = _by_slug()
+    for slug in ('slam_nav2', 'nav2'):
+        assert 'cmd_vel_topic:=/cmd_vel' in profiles[slug].fixed_args, slug
+
+
+def test_resources_are_known():
+    for prof in config.PROFILES:
+        for resource in prof.resources:
+            assert resource in registry.RESOURCE_LABELS, (prof.slug, resource)

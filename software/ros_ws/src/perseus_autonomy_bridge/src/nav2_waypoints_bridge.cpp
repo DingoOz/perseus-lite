@@ -1,11 +1,13 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav2_msgs/action/navigate_through_poses.hpp"
+#include "perseus_autonomy_bridge/goal_tracker.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/serialization.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -16,6 +18,11 @@
 #include "perseus_interfaces/srv/run_waypoints.hpp"
 using NavigateThroughPoses = nav2_msgs::action::NavigateThroughPoses;
 using GoalHandleNav = rclcpp_action::ClientGoalHandle<NavigateThroughPoses>;
+using NavGoalTracker = perseus_autonomy_bridge::GoalTracker<GoalHandleNav::SharedPtr>;
+
+// navigation_active stays true only while our goal is pending/active AND we
+// have heard from it (send, accept or feedback) within this window.
+static constexpr double kActivityTimeoutSec = 2.0;
 
 static geometry_msgs::msg::Quaternion yaw_to_quat(double yaw)
 {
@@ -44,12 +51,12 @@ public:
 
         // Subscribe to the feedback topic using a generic subscription with a lambda
         // The feedback message contains the navigation data we need
+        // (any client's goal, e.g. RViz, so the widget shows its progress too).
         auto generic_callback = [this](std::shared_ptr<rclcpp::SerializedMessage> msg)
         {
+            std::lock_guard<std::mutex> lock(_data_mutex);
             // Store the serialized message for later deserialization
             this->_last_serialized_feedback = msg;
-            // Update the timestamp to track when we last received feedback
-            this->_last_feedback_time = this->now();
         };
 
         _feedback_sub = this->create_generic_subscription(
@@ -62,9 +69,6 @@ public:
         _nav_info_timer = this->create_wall_timer(
             std::chrono::milliseconds(100),
             std::bind(&Nav2WaypointsBridge::publish_nav_info, this));
-
-        // Initialize _last_feedback_time to now so we don't start in an inactive state
-        // _last_feedback_time = this->now();
 
         _srv_run = create_service<perseus_interfaces::srv::RunWaypoints>(
             "/autonomy/run_waypoints",
@@ -80,16 +84,20 @@ public:
 
 private:
     rclcpp_action::Client<NavigateThroughPoses>::SharedPtr _action_client;
-    GoalHandleNav::SharedPtr _active_goal;
+    // The goal this bridge owns. Callbacks only touch it via their own token.
+    NavGoalTracker _goal;
 
     rclcpp::Publisher<perseus_interfaces::msg::NavigationData>::SharedPtr _nav_info_pub;
     rclcpp::TimerBase::SharedPtr _nav_info_timer;
     std::shared_ptr<rclcpp::GenericSubscription> _feedback_sub;
     std::shared_ptr<rclcpp::SerializedMessage> _last_serialized_feedback;
 
+    // Guards the feedback data and activity time below.
+    std::mutex _data_mutex;
     // Current navigation feedback data
     nav2_msgs::action::NavigateThroughPoses::Feedback _current_feedback;
-    builtin_interfaces::msg::Time _last_feedback_time;
+    // Last time our own goal showed signs of life (sent, accepted, feedback).
+    rclcpp::Time _last_activity_time{0, 0, RCL_ROS_TIME};
 
     rclcpp::Service<perseus_interfaces::srv::RunWaypoints>::SharedPtr _srv_run;
     rclcpp::Service<perseus_interfaces::srv::RunWaypoints>::SharedPtr _srv_cancel;
@@ -109,21 +117,15 @@ private:
                 return;
             }
 
-            if (_active_goal)
-            {
-                _action_client->async_cancel_goal(_active_goal);
-                _active_goal.reset();
-            }
-
-            RCLCPP_INFO(this->get_logger(), "Loading %zu waypoints from request",
-                        req->waypoints.size());
-
             if (req->waypoints.empty())
             {
                 resp->success = false;
                 resp->message = "No waypoints provided";
                 return;
             }
+
+            RCLCPP_INFO(this->get_logger(), "Loading %zu waypoints from request",
+                        req->waypoints.size());
 
             NavigateThroughPoses::Goal goal;
             goal.poses.reserve(req->waypoints.size());
@@ -139,35 +141,57 @@ private:
                 goal.poses.push_back(ps);
             }
 
+            // Supersede whatever we were running. A previous *pending* goal is
+            // cancelled by its own response callback once Nav2 accepts it.
+            const auto begin = _goal.begin_request();
+            const auto token = begin.token;
+            if (begin.to_cancel)
+            {
+                _action_client->async_cancel_goal(begin.to_cancel);
+            }
+            touch_activity();
+
             rclcpp_action::Client<NavigateThroughPoses>::SendGoalOptions opts;
 
             opts.goal_response_callback =
-                [this](const GoalHandleNav::SharedPtr goal_handle)
+                [this, token](const GoalHandleNav::SharedPtr goal_handle)
             {
-                if (!goal_handle)
+                switch (this->_goal.on_goal_response(token, goal_handle))
                 {
+                case NavGoalTracker::ResponseAction::Rejected:
                     RCLCPP_ERROR(this->get_logger(), "Goal rejected by Nav2");
-                    return;
+                    break;
+                case NavGoalTracker::ResponseAction::Cancel:
+                    // Cancelled or superseded while the goal was in flight.
+                    RCLCPP_INFO(this->get_logger(), "Goal accepted after it was cancelled/superseded; cancelling it");
+                    this->_action_client->async_cancel_goal(goal_handle);
+                    break;
+                case NavGoalTracker::ResponseAction::Track:
+                    this->touch_activity();
+                    RCLCPP_INFO(this->get_logger(), "Goal accepted");
+                    break;
                 }
-                this->_active_goal = goal_handle;
-                RCLCPP_INFO(this->get_logger(), "Goal accepted");
             };
 
             opts.result_callback =
-                [this](const GoalHandleNav::WrappedResult& /*result*/)
+                [this, token](const GoalHandleNav::WrappedResult& result)
             {
-                RCLCPP_INFO(this->get_logger(), "Goal finished (result received)");
-                this->_active_goal.reset();
+                // A late result for an older goal must not clear the current one.
+                if (this->_goal.on_result(token))
+                {
+                    RCLCPP_INFO(this->get_logger(), "Goal finished (result code %d)",
+                                static_cast<int>(result.code));
+                }
             };
 
             opts.feedback_callback =
-                [this](GoalHandleNav::SharedPtr, const std::shared_ptr<const NavigateThroughPoses::Feedback> feedback)
+                [this, token](GoalHandleNav::SharedPtr, const std::shared_ptr<const NavigateThroughPoses::Feedback> feedback)
             {
-                if (!feedback)
+                if (!feedback || !this->_goal.is_current(token))
                     return;
-                // Store the feedback; the timer will publish it with proper navigation_active flag
+                std::lock_guard<std::mutex> lock(_data_mutex);
                 this->_current_feedback = *feedback;
-                this->_last_feedback_time = this->now();
+                this->_last_activity_time = this->now();
             };
 
             _action_client->async_send_goal(goal, opts);
@@ -186,21 +210,33 @@ private:
         const std::shared_ptr<perseus_interfaces::srv::RunWaypoints::Request> /*req*/,
         std::shared_ptr<perseus_interfaces::srv::RunWaypoints::Response> resp)
     {
-        if (!_active_goal)
-        {
-            resp->success = true;
-            resp->message = "No active goal";
-            return;
-        }
-
-        _action_client->async_cancel_goal(_active_goal);
-        _active_goal.reset();
+        const auto cancel = _goal.request_cancel();
         resp->success = true;
-        resp->message = "Cancel requested";
+        switch (cancel.was)
+        {
+        case NavGoalTracker::State::Idle:
+            resp->message = "No active goal";
+            break;
+        case NavGoalTracker::State::Pending:
+            // No handle yet; the goal-response callback cancels it on acceptance.
+            resp->message = "Cancel requested (goal will be cancelled as soon as Nav2 accepts it)";
+            break;
+        case NavGoalTracker::State::Active:
+            _action_client->async_cancel_goal(cancel.to_cancel);
+            resp->message = "Cancel requested";
+            break;
+        }
+    }
+
+    void touch_activity()
+    {
+        std::lock_guard<std::mutex> lock(_data_mutex);
+        _last_activity_time = this->now();
     }
 
     void publish_nav_info()
     {
+        std::lock_guard<std::mutex> lock(_data_mutex);
         // Try to deserialize the feedback if we have a serialized message
         if (_last_serialized_feedback)
         {
@@ -230,13 +266,13 @@ private:
         nav_info->distance_remaining = _current_feedback.distance_remaining;
         nav_info->number_of_poses_remaining = _current_feedback.number_of_poses_remaining;
 
-        // Check if navigation is active: we need both an active goal AND recent feedback
-        auto now = this->now();
-        auto time_since_feedback = (now - _last_feedback_time).seconds();
-        // Active only if we have an active goal AND received feedback within last 2 seconds
-        nav_info->navigation_active = (_active_goal != nullptr) || (time_since_feedback < 0.2);
-        RCLCPP_INFO(this->get_logger(), "Time since last feedback: %.2f seconds, active_goal: %s",
-                    time_since_feedback, (_active_goal != nullptr) ? "yes" : "no");
+        // Active only while our goal is pending/active AND we heard from it
+        // (sent, accepted or feedback) within the last kActivityTimeoutSec.
+        const bool busy = _goal.busy();
+        const double time_since_activity = (this->now() - _last_activity_time).seconds();
+        nav_info->navigation_active = busy && (time_since_activity < kActivityTimeoutSec);
+        RCLCPP_DEBUG(this->get_logger(), "Time since last goal activity: %.2f s, goal busy: %s",
+                     time_since_activity, busy ? "yes" : "no");
         _nav_info_pub->publish(std::move(nav_info));
     }
 };

@@ -1,141 +1,87 @@
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    EmitEvent,
-    LogInfo,
-    RegisterEventHandler,
-    GroupAction,
-)
-from launch.conditions import IfCondition
-from launch.events import matches_action
-from launch.substitutions import (
-    AndSubstitution,
-    LaunchConfiguration,
-    NotSubstitution,
-    PathJoinSubstitution,
-)
-from launch_ros.actions import LifecycleNode, Node
-from launch_ros.event_handlers import OnStateTransition
-from launch_ros.events.lifecycle import ChangeState
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
-from lifecycle_msgs.msg import Transition
 
 
 def generate_launch_description():
-    # ARGUMENTS
-    autostart = LaunchConfiguration("autostart")
-    use_lifecycle_manager = LaunchConfiguration("use_lifecycle_manager")
+    """
+    Map with a hand-held RPLidar C1 (no robot, no wheel odometry).
+
+    odom -> base_link is a fixed identity, so slam_toolbox's scan matcher does
+    all the motion estimation (walk slowly). base_link -> c1_lidar_frame is an
+    identity too: hold the lidar upright.
+    """
+    lidar_port = LaunchConfiguration("lidar_port")
+    scan_min_range = LaunchConfiguration("scan_min_range")
 
     arguments = [
         DeclareLaunchArgument(
-            "autostart",
-            default_value="true",
-            description="Automatically startup the slamtoolbox. "
-            "Ignored when use_lifecycle_manager is true.",
+            "lidar_port",
+            default_value="/dev/ttyUSB0",
+            description="Serial port for the RPLidar C1",
         ),
         DeclareLaunchArgument(
-            "use_lifecycle_manager",
-            default_value="false",
-            description="Enable bond connection during node activation",
+            "scan_min_range",
+            default_value="0.3",
+            description="Drop readings closer than this (m), e.g. the operator's body",
         ),
     ]
 
-    # NODES
-    start_lifelong_slam_toolbox_node = LifecycleNode(
-        parameters=[
-            PathJoinSubstitution(
-                [FindPackageShare("autonomy"), "config", "slam_toolbox_params.yaml"]
-            ),
-            {"use_lifecycle_manager": use_lifecycle_manager},
-        ],
-        package="slam_toolbox",
-        executable="async_slam_toolbox_node",
-        name="slam_toolbox",
+    static_transforms = [
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="handheld_odom_tf",
+            arguments=["--frame-id", "odom", "--child-frame-id", "base_link"],
+        ),
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="handheld_lidar_tf",
+            arguments=["--frame-id", "base_link", "--child-frame-id", "c1_lidar_frame"],
+        ),
+    ]
+
+    rplidar_node = Node(
+        package="rplidar_ros",
+        executable="rplidar_node",
+        name="rplidar_node",
         output="screen",
-        namespace="",
+        parameters=[
+            {
+                "channel_type": "serial",
+                "serial_port": lidar_port,
+                "serial_baudrate": 460800,
+                "frame_id": "c1_lidar_frame",
+                "inverted": False,
+                "angle_compensate": True,
+                "scan_mode": "Standard",
+            }
+        ],
+    )
+    scan_range_filter = Node(
+        package="perseus_lite",
+        executable="scan_range_filter.py",
+        name="scan_range_filter",
+        output="screen",
+        parameters=[{"min_range": ParameterValue(scan_min_range, value_type=float)}],
     )
 
-    # EVENTS
-    configure_event = EmitEvent(
-        event=ChangeState(
-            lifecycle_node_matcher=matches_action(start_lifelong_slam_toolbox_node),
-            transition_id=Transition.TRANSITION_CONFIGURE,
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [FindPackageShare("autonomy"), "launch", "online_async_launch.py"]
+                )
+            ]
         ),
-        condition=IfCondition(
-            AndSubstitution(autostart, NotSubstitution(use_lifecycle_manager))
-        ),
+        launch_arguments={"use_sim_time": "false"}.items(),
     )
 
-    activate_event = RegisterEventHandler(
-        OnStateTransition(
-            target_lifecycle_node=start_lifelong_slam_toolbox_node,
-            start_state="configuring",
-            goal_state="inactive",
-            entities=[
-                LogInfo(msg="[LifecycleLaunch] Slamtoolbox node is activating."),
-                EmitEvent(
-                    event=ChangeState(
-                        lifecycle_node_matcher=matches_action(
-                            start_lifelong_slam_toolbox_node
-                        ),
-                        transition_id=Transition.TRANSITION_ACTIVATE,
-                    )
-                ),
-            ],
-        ),
-        condition=IfCondition(
-            AndSubstitution(autostart, NotSubstitution(use_lifecycle_manager))
-        ),
+    return LaunchDescription(
+        arguments + static_transforms + [rplidar_node, scan_range_filter, slam_launch]
     )
-
-    # Define all static transforms for the robot
-    static_transform_nodes = [
-        # Base link to LIDAR transform
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="odom_tf_publisher",
-            arguments=["0", "0", "0.0", "0", "0", "0", "odom", "base_link"],
-        ),
-        # Base link to IMU transform
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="imu_tf_publisher",
-            arguments=["0", "0", "0.1", "0", "0", "0", "base_link", "laser_frame"],
-        ),
-        Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="imu_tf_publisher",
-            arguments=["0", "0", "0.4", "0", "0", "0", "base_link", "imu_frame"],
-        ),
-        # Add diagnostic node to check TF timing
-        Node(
-            package="tf2_ros",
-            executable="tf2_monitor",
-            name="tf_monitor",
-            output="screen",
-        ),
-    ]
-
-    # Group localization nodes together
-    localization_group = GroupAction(
-        [
-            # First add all static transforms
-            *static_transform_nodes,
-            # Then robot_localization to fuse with IMU
-            # start_robot_localization_node,
-        ]
-    )
-
-    # Combine all launch elements
-    launch_elements = [
-        *arguments,
-        localization_group,
-        start_lifelong_slam_toolbox_node,
-        configure_event,
-        activate_event,
-    ]
-
-    return LaunchDescription(launch_elements)

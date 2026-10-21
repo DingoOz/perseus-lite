@@ -1,0 +1,35 @@
+# IMU gyro bias estimation + removal (launch/bias_remover.launch.py).
+# /imu/data (i2c_imu_node) -> imu_bias_estimator -> /imu/gyro_bias
+# /imu/data + /imu/gyro_bias -> imu_bias_remover -> /imu/data_corrected
+imu_bias_estimator:
+  ros__parameters:
+    # --- Stationary detection (only enabled sources vote; see README) ---
+    # Wheel odometry, NOT /odometry/filtered: the EKF already fuses this IMU,
+    # so using it here would make the bias estimate circular.
+    use_odom: true
+    use_cmd_vel: false
+    use_stamped: true # Jazzy: /cmd_vel is geometry_msgs/TwistStamped
+    stationary_mode: "AND"
+    odom_timeout: 0.5 # s without odom -> motion unknown -> not stationary
+    cmd_vel_timeout: 0.5 # s without cmd_vel -> treated as a zero command
+    max_gyro_rate: 0.1 # rad/s; faster samples are never learned as bias
+    # --- Bias estimation ---
+    accumulator_alpha: 0.01
+    estimator_rate_hz: 30.0
+    # --- Topics ---
+    imu_in_topic: "/imu/data"
+    odom_topic: "/diff_drive_base_controller/odom"
+    cmd_vel_topic: "/cmd_vel"
+    bias_out_topic: "/imu/gyro_bias"
+    # Optional thresholds
+    cmd_vel_threshold: 0.001
+    odom_threshold: 0.001
+imu_bias_remover:
+  ros__parameters:
+    # --- Topics ---
+    imu_in_topic: "/imu/data"
+    bias_in_topic: "/imu/gyro_bias"
+    imu_out_topic: "/imu/data_corrected"
+    # --- Output control ---
+    output_rate_hz: 0.0 # <= 0: republish every IMU sample (no throttling)
+    zero_when_no_bias: false

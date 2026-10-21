@@ -95,6 +95,8 @@ exhale_args = {
         # packages that don't need documentation (most of them)
         # and are problematic to generate docs for (a few of them)
         EXCLUDE_PATTERNS += */src/perseus_bt_nodes/*
+        # vendored third-party driver (see its VENDORED.md)
+        EXCLUDE_PATTERNS += */src/rplidar_ros/*
         EXCLUDE_SYMLINKS = YES
 
         BUILTIN_STL_SUPPORT = YES

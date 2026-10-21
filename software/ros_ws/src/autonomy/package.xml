@@ -16,6 +16,14 @@
   <depend>xacro</depend>
   <depend>robot_localization</depend>
   <exec_depend>topic_tools</exec_depend>
+  <!-- BT plugins loaded by bt_navigator (plugin_lib_names) -->
+  <exec_depend>perseus_bt_nodes</exec_depend>
+  <!-- handheld_mapping -->
+  <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <!-- perseus_lite (robot bringup + scan_range_filter) is also used at launch
+       time, but it declares an exec_depend on this package, so it cannot be
+       listed here without creating a dependency cycle. -->
 
 
   <test_depend>ament_lint_auto</test_depend>

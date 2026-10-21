@@ -33,7 +33,13 @@ republishes an unstamped `Twist` as a `TwistStamped`.
 
 - **Open3D** — on conda-forge (`open3d` 0.19.0). Add to a feature's deps if used.
 - The `software/shared/{crc,fd-wrapper,ptr-wrapper,simple-networking,type-demangle}`
-  C++ libs build **in-tree**: `perseus_sensors`'s CMake `add_subdirectory`
-  fallback compiles them. No recipe, no package.xml.
+  C++ libs need no recipe: a package can build them **in-tree** via CMake
+  `add_subdirectory`. No workspace package currently does.
 - All core ROS 2, Nav2, slam*toolbox, robot_localization, ros2_control,
-  behaviortree_cpp, ros_gz*\*, rviz2, rplidar_ros, twist_mux — in robostack-jazzy.
+  behaviortree_cpp, ros_gz*\*, rviz2, twist_mux, rosbridge — in robostack-jazzy.
+
+## Vendored instead of packaged
+
+- **rplidar_ros** — robostack-jazzy only has 2.1.0, which predates RPLidar C1
+  support, so the Slamtec `ros2` branch is vendored as
+  `software/ros_ws/src/rplidar_ros` (see its `VENDORED.md`).

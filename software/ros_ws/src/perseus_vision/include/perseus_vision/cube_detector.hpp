@@ -75,7 +75,12 @@ namespace perseus_vision
 
         // inference helpers
         std::vector<float> preprocess(const cv::Mat& bgr_image);
-        std::vector<Detection> postprocess(const float* data, size_t num_boxes);
+        /// @param data       model output, either [1, C, N] or transposed [1, N, C]
+        ///                   with C = 4 + num_classes (validated by the caller)
+        /// @param num_boxes  N
+        /// @param transposed true for the [1, N, C] layout
+        std::vector<Detection> postprocess(const float* data, size_t num_boxes, bool transposed);
+        void validate_model_io();
 
         // publishing helpers
         void publish_annotated_image(
@@ -127,6 +132,10 @@ namespace perseus_vision
         int _pad_y{0};
         float _letterbox_scale{1.0f};
         const int _num_classes = static_cast<int>(CLASS_NAMES.size());
+        // Model input size (from the ONNX session; 640x640 if the model's
+        // spatial dims are dynamic).
+        int _input_w{640};
+        int _input_h{640};
         // parameters
         std::string _model_path;
         std::string _depth_estimation_mode;

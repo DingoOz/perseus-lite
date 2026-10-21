@@ -1,6 +1,10 @@
 #pragma once
 
+#include <array>
 #include <chrono>
+#include <cmath>
+#include <optional>
+#include <vector>
 
 namespace i2c_imu_driver
 {
@@ -72,6 +76,52 @@ namespace i2c_imu_driver
         calibrated_data.gyro_z = (raw_data.gyro_z - gyro_offset_z) * gyro_scale_z;
 
         return calibrated_data;
+    }
+
+    /**
+     * @brief Build a row-major 3x3 covariance matrix from a parameter value
+     *
+     * Accepts either a 3-element diagonal (`[xx, yy, zz]`) or a full 9-element
+     * row-major matrix. Every element must be finite and the diagonal must be
+     * non-negative.
+     *
+     * @param values Parameter value
+     * @return The 3x3 matrix, or std::nullopt if @p values is not a valid
+     *         covariance (wrong length, non-finite element, negative diagonal)
+     */
+    inline std::optional<std::array<double, 9>> covariance_from_param(const std::vector<double>& values)
+    {
+        std::array<double, 9> matrix{};
+        if (values.size() == 3)
+        {
+            matrix[0] = values[0];
+            matrix[4] = values[1];
+            matrix[8] = values[2];
+        }
+        else if (values.size() == 9)
+        {
+            for (size_t i = 0; i < 9; ++i)
+            {
+                matrix[i] = values[i];
+            }
+        }
+        else
+        {
+            return std::nullopt;
+        }
+
+        for (const double v : matrix)
+        {
+            if (!std::isfinite(v))
+            {
+                return std::nullopt;
+            }
+        }
+        if (matrix[0] < 0.0 || matrix[4] < 0.0 || matrix[8] < 0.0)
+        {
+            return std::nullopt;
+        }
+        return matrix;
     }
 
 }  // namespace i2c_imu_driver

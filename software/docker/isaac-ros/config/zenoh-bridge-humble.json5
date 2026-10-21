@@ -9,10 +9,10 @@
   //
   // Only /perseus_isaac/* result topics are forwarded (all standard message
   // types — no Isaac-specific types cross the bridge; see the relay node).
+  //
+  // The listen endpoint (tcp/127.0.0.1:${ZENOH_PORT}) is passed on the command
+  // line by compose.yaml (`-l`), so the port lives only in .env.
   mode: "peer",
-  listen: {
-    endpoints: ["tcp/127.0.0.1:7447"],
-  },
   scouting: {
     multicast: {
       enabled: false,

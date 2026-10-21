@@ -28,7 +28,12 @@
 
 	// automatically connect and disconnect from ROS-bridge
 	onMount(() => {
-		connectRos(localStore('rosAddress', window.location.hostname).value);
+		const savedAddress = localStore<string>('rosAddress', window.location.hostname);
+		// never connect to (or keep) an empty address
+		if (typeof savedAddress.value !== 'string' || savedAddress.value.trim() === '') {
+			savedAddress.value = window.location.hostname;
+		}
+		connectRos(savedAddress.value);
 		// This really should be it's own function (the return value is the onUnMount function)
 		return () => {
 			disconnectRos();

@@ -8,8 +8,8 @@ slam_toolbox:
     ceres_loss_function: None
     odom_frame: odom
     map_frame: map
-    base_frame: base_footprint
-    scan_topic: /scan
+    base_frame: base_link
+    scan_topic: /scan_filtered
     use_map_saver: true
     mode: mapping
     debug_logging: false

@@ -1,15 +1,29 @@
+<!--
+  Sequential waypoint navigation for NavigateThroughPoses: drive to each pose in
+  {goals} in order (plan + follow with recoveries), wait at it, then pop it.
+
+  Result semantics:
+    SUCCESS - every waypoint was reached (the queue in {goals} is exhausted).
+    FAILURE - a waypoint could not be reached after all recoveries. That
+              waypoint and every one after it are left in {goals}; they are
+              NOT silently dropped.
+
+  Requires the perseus_bt_nodes plugin (GetGoalFromGoals, PopFirstGoal,
+  IsGoalQueueEmpty) in bt_navigator's plugin_lib_names; everything else is a
+  Nav2 built-in node.
+-->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <Sequence name="SequentialWaypointNav">
 
-      <!-- When goals are finished (GetGoalFromGoals fails), convert that final FAILURE into SUCCESS -->
-      <Fallback name="FinishWhenDone">
-
-        <!-- Loop: keep running until ProcessWaypoint FAILS (i.e., no goals left) -->
+      <!-- The loop always ends in FAILURE: either GetGoalFromGoals failed
+           because the queue is empty (done), or a waypoint failed. Swallow it
+           here and let IsGoalQueueEmpty below tell the two cases apart. -->
+      <ForceSuccess name="RunUntilQueueEmptyOrWaypointFails">
         <KeepRunningUntilFailure name="LoopWaypoints">
           <Sequence name="ProcessWaypoint">
 
-            <!-- Take the first goal (index 0). MUST FAIL when goals is empty -->
+            <!-- Take the first goal (index 0). FAILS when goals is empty -->
             <GetGoalFromGoals goals="{goals}" index="0" goal="{current_goal}"/>
 
             <!-- Whole waypoint navigation wrapped in a recovery retry -->
@@ -63,11 +77,12 @@
 
           </Sequence>
         </KeepRunningUntilFailure>
+      </ForceSuccess>
 
-        <!-- Loop ended (no more goals) -> mission complete -->
-        <AlwaysSuccess name="AllWaypointsCompleted"/>
-
-      </Fallback>
+      <!-- Goals are popped only after they are reached, so an empty queue means
+           every waypoint succeeded (SUCCESS). A non-empty queue means the loop
+           stopped on a waypoint that failed after recoveries (FAILURE). -->
+      <IsGoalQueueEmpty name="AllWaypointsCompleted" goals="{goals}"/>
 
     </Sequence>
   </BehaviorTree>

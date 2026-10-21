@@ -24,8 +24,14 @@ services:
       # Isaac images default to FastDDS; fine, since nothing crosses DDS to the
       # host — the zenoh bridge is the only path off this domain.
       RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      # TensorRT engine build is opt-in (YOLOv8 is not in the launch yet) and
+      # runs in the background; see entrypoint.sh.
+      ISAAC_BUILD_ENGINE: ${ISAAC_BUILD_ENGINE:-0}
+      ISAAC_REBUILD_ENGINE: ${ISAAC_REBUILD_ENGINE:-0}
     devices:
-      - ${CAMERA_DEVICE}:${CAMERA_DEVICE}
+      # The host camera always appears as /dev/video0 inside the container,
+      # which is what perseus_isaac.yaml's usb_cam video_device expects.
+      - ${CAMERA_DEVICE}:/dev/video0
     volumes:
       - ./config/camera_info:/opt/perseus/camera_info:ro
       - isaac-models:/opt/perseus/models
@@ -42,7 +48,8 @@ services:
       ROS_DOMAIN_ID: ${ISAAC_DOMAIN_ID}
     volumes:
       - ./config/zenoh-bridge-humble.json5:/config/zenoh-bridge.json5:ro
-    command: ["-c", "/config/zenoh-bridge.json5"]
+    # Listen endpoint comes from .env's ZENOH_PORT (not the json5 file).
+    command: ["-c", "/config/zenoh-bridge.json5", "-l", "tcp/127.0.0.1:${ZENOH_PORT:-7447}"]
   # zenoh bridge, Jazzy side: joins the host domain 51 (rmw_cyclonedds_cpp),
   # connects to the Humble-side bridge, and republishes /perseus_isaac/* to the
   # host graph. Same pinned image tag as bridge-humble (zenoh versions must match).
@@ -56,7 +63,9 @@ services:
       ROS_DOMAIN_ID: ${HOST_DOMAIN_ID}
     volumes:
       - ./config/zenoh-bridge-jazzy.json5:/config/zenoh-bridge.json5:ro
-    command: ["-c", "/config/zenoh-bridge.json5"]
+    # Connect endpoint comes from .env's ZENOH_PORT (not the json5 file).
+    command: ["-c", "/config/zenoh-bridge.json5", "-e", "tcp/127.0.0.1:${ZENOH_PORT:-7447}"]
 volumes:
-  # Caches the arch-specific TensorRT engine built on first run (see entrypoint).
+  # Model cache: synced from the image whenever its model/base-image STAMP
+  # changes, plus the optional arch-specific TensorRT engine (see entrypoint).
   isaac-models:

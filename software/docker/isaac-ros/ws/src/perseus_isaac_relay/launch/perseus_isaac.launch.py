@@ -80,7 +80,10 @@ def generate_launch_description():
         package="perseus_isaac_relay",
         executable="relay",
         name="perseus_isaac_relay",
-        remappings=[("tag_detections", "/tag_detections")],
+        remappings=[
+            ("tag_detections", "/tag_detections"),
+            ("camera_info", "/camera_info"),
+        ],
     )
 
     # Throttle the rectified image to 2 Hz then republish it compressed, so an

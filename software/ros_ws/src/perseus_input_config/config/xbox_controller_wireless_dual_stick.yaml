@@ -4,7 +4,9 @@ generic_controller:
     turbo_scaling: 2.0
     drive:
       forward:
-        turbo: 2.5
+        # Turbo must not exceed diff_drive_base_controller linear.x
+        # max_velocity (2.0 m/s); the node also clamps to max_linear_velocity.
+        turbo: 2.0
         axis: 1
         # Positive scaling: joystick forward = positive linear.x = forward (ROS convention)
         scaling: 0.7
@@ -21,28 +23,15 @@ generic_controller:
         axis: 3
         # Positive scaling: joystick left = positive angular.z = turn left (ROS convention)
         # Dual-stick: right stick X for turning
+        # NEEDS HARDWARE CHECK: commit 8dd3c70a changed this from 2 to 3, but
+        # the (now removed) wireless bucket mapping used axis 2 as right-stick
+        # X / axis 3 as right-stick Y, and input_devices/xbox_controller.py
+        # also assumes right-stick X = axis 2. The wireless axis layout varies
+        # by driver/firmware (xpad vs. Bluetooth hid). Verify with
+        # `ros2 topic echo /joy` on the robot's actual pad.
         scaling: 0.5
         enable:
           follows: drive.forward.enable
         turbo_enable:
           follows: drive.forward.turbo_enable
-    bucket:
-      lift:
-        scaling: 0.1
-        button_positive: 4
-        button_negative: 5
-      tilt:
-        scaling: -0.1
-        button_positive: 3
-        button_negative: 0
-      jaws:
-        scaling: 0.1
-        button_positive: 7
-        button_negative: 6
-      rotate:
-        scaling: -0.5
-        axis: 6
-      magnet:
-        hold: true
-        axis: 7
     timeout_ns: 150000000

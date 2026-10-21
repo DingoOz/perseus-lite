@@ -1,11 +1,14 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <string>
+#include <vector>
 
 #include "i2c_imu_driver/i2c_device.hpp"
 #include "i2c_imu_driver/imu_data_types.hpp"
@@ -63,9 +66,33 @@ namespace i2c_imu_driver
         /**
          * @brief Read raw sensor data from I2C device
          *
-         * @return ImuData Raw sensor data
+         * @return Raw sensor data, or std::nullopt if the accelerometer or
+         *         gyroscope block could not be read (a partial reading must
+         *         never be published as a valid sample)
          */
-        ImuData _read_sensor_data();
+        std::optional<ImuData> _read_sensor_data();
+
+        /**
+         * @brief Record a failed read and, once the failure threshold is
+         *        reached, tear down and re-initialise the device
+         */
+        void _handle_read_failure();
+
+        /**
+         * @brief Attempt to re-open and re-configure the device (rate limited)
+         */
+        void _attempt_reinitialize();
+
+        /**
+         * @brief Parse a covariance parameter
+         *
+         * Accepts either a 3-element diagonal or a full row-major 3x3 (9-element)
+         * matrix. Anything else is rejected with an error log and @p fallback is
+         * returned.
+         */
+        std::array<double, 9> _parse_covariance(const std::string& name,
+                                                const std::vector<double>& values,
+                                                const std::array<double, 9>& fallback);
 
         /**
          * @brief Convert IMU data to ROS message
@@ -84,15 +111,17 @@ namespace i2c_imu_driver
 
         // Node parameters
         std::string _i2c_bus_path;
-        uint8_t _device_address;
-        double _update_rate;
+        uint8_t _device_address{0x6A};
+        double _update_rate{100.0};
         std::string _frame_id;
-        bool _required;
-        int _retry_count;
+        bool _required{false};
+        int _retry_count{3};
+        int _max_consecutive_failures{10};
+        double _reinit_interval{1.0};
 
         // Device configuration
         std::string _device_type;
-        const ImuDeviceConfig* _device_config;
+        const ImuDeviceConfig* _device_config{nullptr};
 
         // IMU calibration parameters
         double _accel_scale_x{1.0};
@@ -109,9 +138,15 @@ namespace i2c_imu_driver
         double _gyro_offset_y{0.0};
         double _gyro_offset_z{0.0};
 
-        // Covariance matrices (orientation not estimated by IMU)
-        std::array<double, 9> _angular_velocity_covariance;
-        std::array<double, 9> _linear_acceleration_covariance;
+        // Covariance matrices (orientation not estimated by IMU). Value-initialised
+        // to sane diagonal defaults so a rejected parameter never leaves them
+        // indeterminate.
+        static constexpr std::array<double, 9> DEFAULT_ANGULAR_VELOCITY_COVARIANCE{
+            0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01};
+        static constexpr std::array<double, 9> DEFAULT_LINEAR_ACCELERATION_COVARIANCE{
+            0.1, 0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1};
+        std::array<double, 9> _angular_velocity_covariance{DEFAULT_ANGULAR_VELOCITY_COVARIANCE};
+        std::array<double, 9> _linear_acceleration_covariance{DEFAULT_LINEAR_ACCELERATION_COVARIANCE};
 
         // ROS2 components
         std::unique_ptr<I2cDevice> _i2c_device;
@@ -121,6 +156,8 @@ namespace i2c_imu_driver
         // Status tracking
         std::atomic<bool> _device_initialized{false};
         size_t _sequence_number{0};
+        int _consecutive_failures{0};
+        std::chrono::steady_clock::time_point _last_reinit_attempt{};
     };
 
 }  // namespace i2c_imu_driver

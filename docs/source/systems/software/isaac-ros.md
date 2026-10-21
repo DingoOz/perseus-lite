@@ -48,7 +48,7 @@ digraph isaac_bridge {
     }
 
     isaac -> bh [label="DDS @52"];
-    bh -> bj [label="zenoh tcp/127.0.0.1:7447", dir=both, penwidth=2.0, color="#ec407a"];
+    bh -> bj [label="zenoh tcp/127.0.0.1:${ZENOH_PORT} (default 7447)", dir=both, penwidth=2.0, color="#ec407a"];
     bj -> host [label="DDS @51"];
 }
 ```
@@ -77,7 +77,7 @@ software/docker/isaac-ros/
 ├── .env                     # image pins, domains (52/51), camera device
 ├── compose.yaml             # isaac + bridge-humble + bridge-jazzy
 ├── Dockerfile               # FROM NGC Isaac ROS Humble base + perception pkgs
-├── entrypoint.sh            # source overlay; first-run TensorRT engine cache
+├── entrypoint.sh            # source overlay; model sync; opt-in TensorRT engine build
 ├── config/
 │   ├── zenoh-bridge-humble.json5   # domain 52, listen, /perseus_isaac/* allow
 │   ├── zenoh-bridge-jazzy.json5    # domain 51, connect, same allow-list
@@ -109,9 +109,12 @@ docker compose up -d
 docker compose logs -f
 ```
 
-On the **first run**, `entrypoint.sh` builds the arch-specific TensorRT engine
-into the `isaac-models` volume — this takes several minutes and is memory-hungry;
-it is cached for subsequent starts.
+The models are baked into the image and re-synced into the `isaac-models`
+volume whenever the image's model stamp changes. The TensorRT engine for the
+(not yet wired) YOLOv8 cube detector is **opt-in**: set `ISAAC_BUILD_ENGINE=1`
+in `.env` to build it in the background on start (several minutes,
+memory-hungry, cached afterwards). A failed build leaves a marker and is not
+retried on every restart; set `ISAAC_REBUILD_ENGINE=1` to retry.
 
 Verify from the host (native Jazzy/Pixi stack):
 

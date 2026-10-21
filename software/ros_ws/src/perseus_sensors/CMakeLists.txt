@@ -41,17 +41,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # INCLUDE DEPENDENCIES
 
 # public dependencies (which should propagate)
-set(THIS_PACKAGE_INCLUDE_DEPENDS
-    rclcpp
-    rclcpp_lifecycle
-    hardware_interface
-    sensor_msgs
-    geometry_msgs
-    tf2
-    nav_msgs
-    tf2_geometry_msgs
-    OpenSSL
-    nlohmann_json)
+set(THIS_PACKAGE_INCLUDE_DEPENDS rclcpp rclcpp_components sensor_msgs
+                                 geometry_msgs nav_msgs)
 # packages which must be present but aren't linked against
 set(THIS_PACKAGE_BUILD_DEPENDS backward_ros ament_cmake)
 
@@ -63,35 +54,14 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-find_package(simple_networking QUIET)
-if(NOT simple_networking_FOUND)
-  message(STATUS "simple_networking not found, adding subdirectory...")
-  message(
-    STATUS
-      "Attempting to add simple_networking from: ${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/simple-networking"
-  )
-  add_subdirectory(../../../shared/simple-networking simple-networking)
+# fd_wrapper (software/shared) isn't packaged for RoboStack: build it in-tree
+find_package(fd_wrapper QUIET)
+if(NOT fd_wrapper_FOUND)
+  message(STATUS "fd_wrapper not found, adding subdirectory...")
+  add_subdirectory(../../../shared/fd-wrapper fd-wrapper)
 endif()
 
-# fd_wrapper is already built as part of simple-networking
-# No need to add it separately
-
 # COMPILE (Executables)
-
-# Find all source files in the src directory
-file(GLOB_RECURSE M2M2_LIDAR_CODE_SOURCES src/m2m2_lidar/*.cpp)
-# Add the target with those sources
-
-# Add exec target
-add_executable(m2m2_lidar ${M2M2_LIDAR_CODE_SOURCES})
-
-# Add include dirs for exec
-target_include_directories(m2m2_lidar
-                           PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# Add dependencies for the executable
-ament_target_dependencies(m2m2_lidar PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
-target_link_libraries(m2m2_lidar PUBLIC simple_networking OpenSSL::Crypto)
 
 # I2C IMU Driver
 # Explicit source list - build system tracks dependencies correctly
@@ -103,7 +73,7 @@ add_executable(
 target_include_directories(
   i2c_imu_node PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/i2c_imu_driver/include)
 
-ament_target_dependencies(i2c_imu_node PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
+ament_target_dependencies(i2c_imu_node PUBLIC rclcpp sensor_msgs)
 target_link_libraries(i2c_imu_node PUBLIC fd_wrapper)
 
 # Topic Remapper
@@ -114,16 +84,17 @@ add_executable(topic_remapper src/topic_remapper/main.cpp
 target_include_directories(topic_remapper
                            PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-ament_target_dependencies(topic_remapper PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
+ament_target_dependencies(topic_remapper PUBLIC rclcpp)
 
 # Install ROS Executables
-install(TARGETS m2m2_lidar i2c_imu_node topic_remapper
-        DESTINATION lib/${PROJECT_NAME})
+install(TARGETS i2c_imu_node topic_remapper DESTINATION lib/${PROJECT_NAME})
 
 add_library(bias_estimator_component SHARED
             src/bias_remover/bias_estimator_component.cpp)
 ament_target_dependencies(bias_estimator_component rclcpp rclcpp_components
                           sensor_msgs geometry_msgs nav_msgs)
+target_include_directories(bias_estimator_component
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 rclcpp_components_register_nodes(bias_estimator_component
                                  "imu_processors::BiasEstimator")
 
@@ -141,11 +112,31 @@ install(
   RUNTIME DESTINATION bin)
 
 # Install launch
-install(
-  DIRECTORY launch config i2c_imu_driver/launch i2c_imu_driver/config
-            i2c_imu_driver/urdf
-  DESTINATION share/${PROJECT_NAME}
-  OPTIONAL)
+install(DIRECTORY launch config i2c_imu_driver/launch i2c_imu_driver/config
+        DESTINATION share/${PROJECT_NAME})
+
+# TESTING
+if(BUILD_TESTING)
+  find_package(GTest REQUIRED)
+
+  enable_testing()
+
+  add_executable(i2c_imu_helpers_test tests/i2c_imu_helpers_test.cpp
+                                      i2c_imu_driver/src/imu_device_config.cpp)
+  target_include_directories(
+    i2c_imu_helpers_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/i2c_imu_driver/include)
+  target_link_libraries(i2c_imu_helpers_test GTest::gtest_main)
+
+  add_executable(stationary_gate_test tests/stationary_gate_test.cpp)
+  target_include_directories(stationary_gate_test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(stationary_gate_test GTest::gtest_main)
+
+  include(GoogleTest)
+  gtest_discover_tests(i2c_imu_helpers_test)
+  gtest_discover_tests(stationary_gate_test)
+endif()
 
 # ROS LIBRARY POST-INSTALL
 ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS})
