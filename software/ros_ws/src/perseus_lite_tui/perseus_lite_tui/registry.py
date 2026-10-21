@@ -17,6 +17,23 @@ STRING = 'str'
 
 _TRUE_WORDS = frozenset({'1', 'true', 'yes', 'on'})
 
+# Exclusive resources a launch profile can own. Two live jobs may never hold the
+# same one: e.g. two controller_managers would both open the ST3215 serial bus
+# (and, on the shared ROS domain, fight over /controller_manager and /cmd_vel).
+DRIVE = 'drive'  # controller_manager + wheel hardware (real or simulated)
+STATE_PUBLISHER = 'robot_state_publisher'
+SLAM = 'slam'  # slam_toolbox / map->odom
+NAV2 = 'nav2'
+JOYSTICK = 'joystick'  # joy_node on /dev/input/js0 publishing /joy_vel
+
+RESOURCE_LABELS = {
+    DRIVE: 'drive hardware / controller_manager',
+    STATE_PUBLISHER: 'robot_state_publisher',
+    SLAM: 'SLAM',
+    NAV2: 'Nav2',
+    JOYSTICK: 'joystick',
+}
+
 
 @dataclass(frozen=True)
 class Option:
@@ -43,6 +60,12 @@ class Profile:
     linux64_only: bool = False
     disabled: bool = False
     note: str = ''
+    # Exclusive resources (see DRIVE etc.); the TUI refuses a launch whose
+    # resources overlap a live job's.
+    resources: Tuple[str, ...] = ()
+    # `key:=value` launch args always passed (not user-editable), e.g. to pin
+    # cmd_vel_topic so a launch-file default can't bypass twist_mux.
+    fixed_args: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,18 +112,31 @@ def build_launch_command(
     # path-sanitize hook) runs first and simulation profiles work from the
     # default-env TUI. `bash -c` (not `-lc`) avoids re-sourcing ~/.bashrc and
     # re-contaminating the environment after the sanitize hook ran.
+    # Every interpolated word is shlex-quoted: option values come from a
+    # user-editable selections.json and must never be able to inject shell.
     setup = shlex.quote(f'{ros_ws}/install/setup.bash')
-    launch = ' '.join(
-        [
-            'ros2',
-            'launch',
-            profile.package,
-            profile.launch_file,
-            *option_args(profile, selections),
-        ]
-    )
+    words = [
+        'ros2',
+        'launch',
+        profile.package,
+        profile.launch_file,
+        *profile.fixed_args,
+        *option_args(profile, selections),
+    ]
+    launch = ' '.join(shlex.quote(word) for word in words)
     inner = f'source {setup} && {launch}'
     return ['pixi', 'run', '-e', profile.env, '--', 'bash', '-c', inner]
+
+
+def resource_conflict_message(label: str, holders: Dict[str, List[str]]) -> str:
+    """Describe why `label` was refused: {holder label: [resources held]}."""
+    parts = [
+        '{} ({})'.format(
+            holder, ', '.join(RESOURCE_LABELS.get(r, r) for r in sorted(resources))
+        )
+        for holder, resources in holders.items()
+    ]
+    return f'Refused {label}: already owned by ' + '; '.join(parts) + '. Stop it first.'
 
 
 def build_task_command(task: Task) -> List[str]:

@@ -6,9 +6,30 @@
 
 """perseus-lite launch profiles and developer tasks shown in the TUI."""
 
-from perseus_lite_tui.registry import BOOL, Option, Profile, Task
+from perseus_lite_tui.registry import (
+    BOOL,
+    DRIVE,
+    JOYSTICK,
+    NAV2,
+    Option,
+    Profile,
+    SLAM,
+    STATE_PUBLISHER,
+    Task,
+)
 
 _MOCK = Option('use_mock_hardware', 'Mock hardware', BOOL, 'False')
+
+# Every profile that owns the drive goes through twist_mux, whose output is
+# /cmd_vel (the diff_drive_base_controller input). Some launch files default
+# cmd_vel_topic to /joy_vel, which would wire the controller straight to the
+# gamepad and bypass the mux (keyboard/web/Nav2 ignored), so pin it.
+_CMD_VEL = ('cmd_vel_topic:=/cmd_vel',)
+
+# Resource sets (see registry.DRIVE etc.). The simulation also runs a
+# controller_manager + robot_state_publisher on the same ROS domain, so it
+# conflicts with hardware bringup exactly like a second hardware bringup would.
+_ROBOT = (DRIVE, STATE_PUBLISHER)
 
 # Isaac ROS container stack (Jetson; see software/docker/isaac-ros/). Tasks run
 # with cwd=repo_root, so this repo-relative path resolves.
@@ -25,6 +46,8 @@ PROFILES = (
         'perseus_lite.launch.py',
         options=(_MOCK,),
         group='Bringup',
+        resources=_ROBOT,
+        fixed_args=_CMD_VEL,
     ),
     Profile(
         'controllers',
@@ -33,6 +56,8 @@ PROFILES = (
         'controllers.launch.py',
         options=(_MOCK,),
         group='Bringup',
+        resources=(DRIVE,),
+        fixed_args=_CMD_VEL,
     ),
     Profile(
         'rsp',
@@ -40,6 +65,7 @@ PROFILES = (
         'perseus_lite',
         'robot_state_publisher.launch.py',
         group='Bringup',
+        resources=(STATE_PUBLISHER,),
     ),
     # --- Autonomy ------------------------------------------------------------
     Profile(
@@ -49,6 +75,8 @@ PROFILES = (
         'perseus_lite_slam_and_nav2.launch.py',
         options=(_MOCK,),
         group='Autonomy',
+        resources=_ROBOT + (SLAM, NAV2),
+        fixed_args=_CMD_VEL,
     ),
     Profile(
         'nav2',
@@ -56,6 +84,8 @@ PROFILES = (
         'perseus_lite',
         'nav2.launch.py',
         group='Autonomy',
+        resources=_ROBOT + (NAV2,),
+        fixed_args=_CMD_VEL,
     ),
     Profile(
         'autonomy',
@@ -63,6 +93,7 @@ PROFILES = (
         'autonomy',
         'autonomy.launch.py',
         group='Autonomy',
+        resources=(SLAM, NAV2),
     ),
     Profile(
         'mapping',
@@ -70,6 +101,8 @@ PROFILES = (
         'autonomy',
         'mapping_using_slam_toolbox.launch.py',
         group='Autonomy',
+        resources=_ROBOT + (SLAM,),
+        fixed_args=_CMD_VEL,
     ),
     Profile(
         'handheld_mapping',
@@ -77,6 +110,7 @@ PROFILES = (
         'autonomy',
         'handheld_mapping.launch.py',
         group='Autonomy',
+        resources=(SLAM,),
     ),
     # --- Teleop --------------------------------------------------------------
     Profile(
@@ -85,6 +119,7 @@ PROFILES = (
         'perseus_input',
         'controller.launch.py',
         group='Teleop',
+        resources=(JOYSTICK,),
     ),
     Profile(
         'xbox',
@@ -92,6 +127,7 @@ PROFILES = (
         'input_devices',
         'xbox_controller.launch.py',
         group='Teleop',
+        resources=(JOYSTICK,),
     ),
     Profile(
         'teleop_diagnostics',
@@ -112,6 +148,7 @@ PROFILES = (
         group='Simulation',
         linux64_only=True,
         note='First launch may trigger a large simulation-env install.',
+        resources=_ROBOT,
     ),
     Profile(
         'mission_zero',
@@ -121,6 +158,7 @@ PROFILES = (
         env='simulation',
         group='Simulation',
         linux64_only=True,
+        resources=_ROBOT + (SLAM, NAV2),
     ),
 )
 

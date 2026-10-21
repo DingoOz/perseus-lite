@@ -12,6 +12,8 @@
 
 import curses
 from pathlib import Path
+import signal
+import sys
 
 from perseus_lite_tui import (
     config,
@@ -28,6 +30,7 @@ from perseus_lite_tui.registry import (
     build_task_command,
     CHOICE,
     normalize_bool,
+    resource_conflict_message,
 )
 
 TAB_LAUNCH = 0
@@ -44,6 +47,24 @@ _HINTS = {
     TAB_LOGS: '[ ] job  ↑↓ scroll  k stop  x clear finished  1-4 tabs  q quit',
 }
 
+# Signals that trigger the same orderly stop path as `q`. SIGHUP matters most:
+# closing the terminal / dropping SSH would otherwise kill the TUI while every
+# job (each in its own session) keeps running, orphaned, holding the robot.
+_SHUTDOWN_SIGNALS = (signal.SIGHUP, signal.SIGTERM)
+
+
+class _Shutdown(BaseException):
+    """
+    Raised from a signal handler to unwind the curses loop.
+
+    A BaseException (like KeyboardInterrupt) so the per-key `except Exception`
+    guard in the loop can never swallow it.
+    """
+
+    def __init__(self, signum: int):
+        super().__init__(signum)
+        self.signum = signum
+
 
 class App:
     """Owns TUI state and drives the curses render/input loop."""
@@ -56,6 +77,9 @@ class App:
         self.jobs = jobs.JobManager(noise_filter=None)
         self.state_file = persistence.state_path()
         self.selections = persistence.load_selections(self.state_file)
+        self.jobs_file = persistence.jobs_path()
+        self.orphans = self._find_orphans()
+        self._recorded_groups = None
 
         self.active = TAB_LAUNCH
         self.launch_sel = 0
@@ -65,21 +89,128 @@ class App:
         self.log_scroll = 0
         self.mon_scroll = 0
         self.monitor = ros_monitor.RosMonitor()
-        self.status = ''
+        self.status = self._orphan_warning()
         self.colors = {}
         self.stdscr = None
 
     # -- lifecycle ------------------------------------------------------------
 
     def run(self) -> int:
-        """Run the curses loop, stopping all jobs on exit."""
+        """Run the curses loop; on any exit stop every job (bounded wait)."""
+        exit_code = 0
+        previous = self._install_signal_handlers()
         try:
             curses.wrapper(self._loop)
+        except _Shutdown as exc:
+            exit_code = 128 + exc.signum
+        except KeyboardInterrupt:
+            exit_code = 130
         finally:
-            self.jobs.stop_all()
-            self.monitor.stop()
-            persistence.save_selections(self.state_file, self.selections)
-        return 0
+            self._shutdown()
+            self._restore_signal_handlers(previous)
+        return exit_code
+
+    def _install_signal_handlers(self) -> dict:
+        previous = {signal.SIGINT: signal.getsignal(signal.SIGINT)}
+        for signum in _SHUTDOWN_SIGNALS:
+            try:
+                previous[signum] = signal.signal(signum, self._on_shutdown_signal)
+            except (OSError, ValueError):
+                pass
+        return previous
+
+    def _restore_signal_handlers(self, previous: dict) -> None:
+        for signum, handler in previous.items():
+            try:
+                signal.signal(signum, handler)
+            except (OSError, ValueError, TypeError):
+                pass
+
+    def _on_shutdown_signal(self, signum, _frame) -> None:
+        # Further SIGHUP/SIGTERM/SIGINT must not interrupt the bounded stop
+        # that follows, so ignore them from here on before unwinding.
+        for other in (*_SHUTDOWN_SIGNALS, signal.SIGINT):
+            try:
+                signal.signal(other, signal.SIG_IGN)
+            except (OSError, ValueError):
+                pass
+        raise _Shutdown(signum)
+
+    def _shutdown(self) -> None:
+        """Orderly stop: SIGINT -> SIGTERM -> SIGKILL every group, then wait."""
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+        except (OSError, ValueError):
+            pass
+        live = self.jobs.running_jobs()
+        if live:
+            self._notify(f'perseus_tui: stopping {len(live)} job(s)…')
+        survivors = self.jobs.stop_all(wait=True)
+        for job in survivors:
+            self._notify(
+                f'perseus_tui: {job.label} (pgid {job.pgid}) did not exit; '
+                f'stop it with: kill -KILL -- -{job.pgid}'
+            )
+        self._record_live_groups(force=True)
+        self.monitor.stop()
+        persistence.save_selections(self.state_file, self.selections)
+
+    @staticmethod
+    def _notify(message: str) -> None:
+        # The terminal may already be gone (SIGHUP): never let this raise.
+        try:
+            print(message, file=sys.stderr, flush=True)
+        except (OSError, ValueError):
+            pass
+
+    # -- orphan tracking ------------------------------------------------------
+
+    def _find_orphans(self) -> dict:
+        recorded = persistence.load_running_jobs(self.jobs_file)
+        return {
+            key: entry
+            for key, entry in recorded.items()
+            if jobs.group_alive(entry['pgid'])
+        }
+
+    def _orphan_warning(self) -> str:
+        if not self.orphans:
+            return ''
+        parts = ', '.join(
+            f'{entry["label"]} (pgid {entry["pgid"]})'
+            for entry in self.orphans.values()
+        )
+        first = next(iter(self.orphans.values()))['pgid']
+        return (
+            f'WARNING: still running from a previous session: {parts}. '
+            f'Stop with e.g. kill -INT -- -{first}'
+        )
+
+    def _record_live_groups(self, force: bool = False) -> None:
+        """Persist live job pgids (plus surviving orphans) when they change."""
+        self.orphans = {
+            key: entry
+            for key, entry in self.orphans.items()
+            if jobs.group_alive(entry['pgid'])
+        }
+        groups = dict(self.orphans)
+        groups.update(self.jobs.live_groups())
+        if force or groups != self._recorded_groups:
+            persistence.save_running_jobs(self.jobs_file, groups)
+            self._recorded_groups = groups
+
+    def _resource_conflicts(self, key: str, resources) -> dict:
+        """Return {holder label: [shared resources]} for live jobs/orphans."""
+        wanted = set(resources)
+        holders = {}
+        for job in self.jobs.conflicts(wanted, key=key):
+            holders[job.label] = sorted(wanted & set(job.resources))
+        for entry in self.orphans.values():
+            shared = wanted & set(entry['resources'])
+            if shared and jobs.group_alive(entry['pgid']):
+                label = f'{entry["label"]} [orphan pgid {entry["pgid"]}]'
+                holders[label] = sorted(shared)
+        return holders
 
     def _loop(self, stdscr) -> None:
         self.stdscr = stdscr
@@ -88,12 +219,18 @@ class App:
         self._init_colors()
         self.monitor.start()
         while True:
+            self._record_live_groups()
             self._render()
             key = stdscr.getch()
             if key == -1 or key == curses.KEY_RESIZE:
                 continue
-            if self._handle_key(key):
-                return
+            try:
+                if self._handle_key(key):
+                    return
+            except Exception as exc:  # noqa: BLE001
+                # A bug in one action must not unwind the loop: that would run
+                # the exit path and stop every live job (e.g. robot bringup).
+                self.status = f'Error: {type(exc).__name__}: {exc}'
 
     def _init_colors(self) -> None:
         try:
@@ -338,10 +475,15 @@ class App:
     def _job_attr(self, job) -> int:
         if job.running:
             return self._color('running')
-        return self._color('bad') if job.returncode else self._color('dim')
+        if job.error is not None or job.returncode:
+            return self._color('bad')
+        return self._color('dim')
 
     def _opt_value(self, prof, option) -> str:
-        return self.selections.get(prof.slug, {}).get(option.key, option.default)
+        options = self.selections.get(prof.slug)
+        if not isinstance(options, dict):
+            return option.default
+        return str(options.get(option.key, option.default))
 
     def _set_opt(self, prof, option, value: str) -> None:
         self.selections.setdefault(prof.slug, {})[option.key] = value
@@ -384,12 +526,21 @@ class App:
             self.status = 'Workspace not built — run Tasks → Build first.'
             self.active = TAB_TASKS
             return
+        existing = self.jobs.get(prof.slug)
+        if existing is not None and existing.group_alive:
+            self.status = f'{prof.label} already running'
+            self._focus_logs(prof.slug)
+            return
+        holders = self._resource_conflicts(prof.slug, prof.resources)
+        if holders:
+            self.status = resource_conflict_message(prof.label, holders)
+            return
         selections = self.selections.get(prof.slug, {})
         argv = build_launch_command(prof, selections, self.ros_ws)
-        _, started = self.jobs.start(prof.slug, prof.label, argv, str(self.repo_root))
-        self.status = (
-            f'Launched {prof.label}' if started else f'{prof.label} already running'
+        job, started = self.jobs.start(
+            prof.slug, prof.label, argv, str(self.repo_root), resources=prof.resources
         )
+        self.status = self._start_status(job, started, 'Launched')
         self._focus_logs(prof.slug)
 
     def _run_task(self) -> None:
@@ -398,11 +549,17 @@ class App:
         task = self.tasks[self.task_sel]
         argv = build_task_command(task)
         key = 'task:' + task.slug
-        _, started = self.jobs.start(key, task.label, argv, str(self.repo_root))
-        self.status = (
-            f'Running {task.label}' if started else f'{task.label} already running'
-        )
+        job, started = self.jobs.start(key, task.label, argv, str(self.repo_root))
+        self.status = self._start_status(job, started, 'Running')
         self._focus_logs(key)
+
+    @staticmethod
+    def _start_status(job, started: bool, verb: str) -> str:
+        if started:
+            return f'{verb} {job.label}'
+        if job.error is not None:
+            return f'Failed to start {job.label}: {job.error}'
+        return f'{job.label} already running'
 
     def _focus_logs(self, key: str) -> None:
         self.active = TAB_LOGS
