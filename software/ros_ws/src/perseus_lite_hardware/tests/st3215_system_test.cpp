@@ -41,7 +41,7 @@ namespace
 
     struct RegisterWrite
     {
-        uint8_t reg;
+        uint8_t reg = 0;
         std::vector<uint8_t> data;
     };
 

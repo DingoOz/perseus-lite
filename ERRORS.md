@@ -3,6 +3,16 @@
 Defects found and fixed in this codebase, recorded per the error-tracking
 workflow. Review the **Prevention rules** before modifying the listed files.
 
+### CI cppcheck failed on the vendored rplidar_ros sources — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `.github/workflows/all.yaml`, `perseus_lite_hardware/tests/st3215_system_test.cpp`
+- **Pattern:** The PR's "Static analysis" job failed (`--error-exitcode=1`). All 14 findings were in `software/ros_ws/src/rplidar_ros/` (including Win32 HAL files that never build here). Local `colcon test` was green, because the package doesn't run ament_cppcheck.
+- **Root cause:** The CI job runs plain `cppcheck` over all of `software/ros_ws/src`. Vendoring `rplidar_ros` was excluded from treefmt but not from this job. Separately, the newer cppcheck 2.21 flags an uninitialised `RegisterWrite::reg` in the fake-servo-bus test; CI's 2.13 doesn't.
+- **Fix applied:** Added `-i software/ros_ws/src/rplidar_ros` to the CI cppcheck command. Gave `RegisterWrite::reg` a default initializer. A local run of the CI command (cppcheck 2.21) now exits 0.
+- **Prevention rule:** When vendoring third-party code, exclude it from every repo-wide check: treefmt, the CI cppcheck path list, and any other linter that walks a whole directory. Run the CI cppcheck command locally (`pixi run -e default cppcheck ...`, copied from `all.yaml`) before pushing.
+
 ### Robot env could not spawn any controller (`filelock` missing) and lacked twist_mux/rosbridge — 2026-10-21
 
 - **Severity:** Critical
