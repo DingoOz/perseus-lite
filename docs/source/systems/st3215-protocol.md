@@ -22,10 +22,10 @@ digraph st3215_bus {
 
     host [label="Host\n(perseus_lite_hardware)", shape=box, fillcolor="#1a237e", fontcolor="white"];
     bus  [label="/dev/ttyACM0\nhalf-duplex serial @ 1 Mbit", shape=cylinder, fillcolor="#37474f", fontcolor="white"];
-    s1 [label="ID 1\nFL", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
-    s2 [label="ID 2\nFR", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
-    s3 [label="ID 3\nRL", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
-    s4 [label="ID 4\nRR", shape=circle, fixedsize=true, width=0.75, fillcolor="#ec407a", fontcolor="white"];
+    s1 [label="ID 1\nRR", shape=circle, fixedsize=true, width=0.9, fillcolor="#ec407a", fontcolor="white"];
+    s2 [label="ID 2\nRL\n(inv)", shape=circle, fixedsize=true, width=0.9, fillcolor="#ec407a", fontcolor="white"];
+    s3 [label="ID 3\nFL\n(inv)", shape=circle, fixedsize=true, width=0.9, fillcolor="#ec407a", fontcolor="white"];
+    s4 [label="ID 4\nFR", shape=circle, fixedsize=true, width=0.9, fillcolor="#ec407a", fontcolor="white"];
 
     host -> bus  [dir=both, label="TX / RX", penwidth=2.0, color="#ec407a"];
     bus  -> s1;
@@ -34,6 +34,17 @@ digraph st3215_bus {
     bus  -> s4;
 }
 ```
+
+The ID-to-wheel mapping is fixed by the wiring and set in `perseus_lite_description/ros2_control/perseus_lite.ros2_control.xacro`:
+
+| Wheel joint               | Servo ID | Direction |
+| ------------------------- | -------- | --------- |
+| `front_left_wheel_joint`  | 3        | inverted  |
+| `front_right_wheel_joint` | 4        | normal    |
+| `rear_left_wheel_joint`   | 2        | inverted  |
+| `rear_right_wheel_joint`  | 1        | normal    |
+
+The left-side servos (IDs 2 and 3) are mounted mirrored, so the hardware interface negates their velocity commands (`inverted_servo_ids`, default `2,3`).
 
 ## Memory Map
 
