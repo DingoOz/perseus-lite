@@ -34,8 +34,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "launch_ekf",
-            default_value="false",
-            description="If true, launch the EKF filter node",
+            default_value="true",
+            description="Launch the EKF (the only odom -> base_link publisher; the controller does not publish TF)",
         ),
         DeclareLaunchArgument(
             "gz_world",
@@ -131,8 +131,9 @@ def generate_launch_description():
     rviz_config = PathJoinSubstitution(
         [FindPackageShare("perseus_lite_simulation"), "rviz", "view.rviz"]
     )
+    # Same EKF config as the robot, so sim exercises the real TF chain
     ekf_config_file = PathJoinSubstitution(
-        [FindPackageShare("perseus_lite_simulation"), "config", "ekf_sim_config.yaml"]
+        [FindPackageShare("perseus_lite"), "config", "ekf.yaml"]
     )
     rviz_env = {
         "QT_QPA_PLATFORM": "xcb",
@@ -156,17 +157,12 @@ def generate_launch_description():
         additional_env=rviz_env,
     )
 
-    # EKF node - only run if launch_ekf parameter is true
     ekf_node = Node(
         package="robot_localization",
         executable="ekf_node",
         name="ekf_filter_node",
         output="screen",
         parameters=[ekf_config_file, {"use_sim_time": use_sim_time}],
-        # Explicit remapping to ensure proper topic connections
-        remappings=[
-            ("/odometry/filtered", "/odometry/filtered"),  # EKF output
-        ],
     )
     # Add delay to EKF to ensure all other nodes are ready
     ekf_delayed = TimerAction(
@@ -195,7 +191,7 @@ def generate_launch_description():
             [
                 PathJoinSubstitution(
                     [
-                        FindPackageShare("perseus_lite_simulation"),
+                        FindPackageShare("perseus_lite"),
                         "launch",
                         "twist_mux.launch.py",
                     ]
@@ -206,11 +202,20 @@ def generate_launch_description():
             "use_sim_time": use_sim_time,
         }.items(),
     )
+    # Same self-occlusion filter as the robot: consumers read /scan_filtered
+    scan_range_filter = Node(
+        package="perseus_lite",
+        executable="scan_range_filter.py",
+        name="scan_range_filter",
+        output="screen",
+        parameters=[{"min_range": 0.5, "use_sim_time": use_sim_time}],
+    )
     launch_files = [
         gz_launch,
         rsp_launch,
         controllers_launch_delayed,
         ekf_delayed,
+        scan_range_filter,
         rosbridge_launch,
         twist_mux_launch,
         rviz,

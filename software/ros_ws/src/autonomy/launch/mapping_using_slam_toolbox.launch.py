@@ -8,13 +8,14 @@ from launch.actions import (
 )
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Hardware bringup + slam_toolbox mapping + RViz (no Nav2)."""
     # Arguments
     use_sim_time = LaunchConfiguration("use_sim_time")
+    use_mock_hardware = LaunchConfiguration("use_mock_hardware")
     slam_params_file = LaunchConfiguration("slam_params_file")
 
     declare_args = [
@@ -22,6 +23,11 @@ def generate_launch_description():
             "use_sim_time",
             default_value="false",
             description="Use simulation/Gazebo clock",
+        ),
+        DeclareLaunchArgument(
+            "use_mock_hardware",
+            default_value="false",
+            description="Use mock ros2_control hardware instead of the ST3215 servos",
         ),
         DeclareLaunchArgument(
             "slam_params_file",
@@ -32,7 +38,7 @@ def generate_launch_description():
         ),
     ]
 
-    # Include robot bringup from perseus_lite package
+    # Robot bringup (servos, lidar + scan filter, IMU, EKF, twist_mux)
     perseus_bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
@@ -47,42 +53,24 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "use_mock_hardware": use_mock_hardware,
         }.items(),
     )
 
-    # SLAM nodes
-    static_tf_publisher = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_map_odom_publisher",
-        # arguments=["0", "0", "0", "0", "0", "0", "base_link", "lidar_frame"],
-        arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
-    )
-    # Node(
-    # # Base link to LIDAR transform
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     name="lidar_tf_publisher",
-    #     arguments=["0", "0", "0.2", "0", "0", "0", "odom", "lidar_frame"],
-    # ),
-
-    slam_toolbox = Node(
-        package="slam_toolbox",
-        executable="async_slam_toolbox_node",
-        name="slam_toolbox",
-        output="screen",
-        parameters=[
-            #     get_package_share_directory("autonomy")
-            #     + "/config/slam_toolbox_params.yaml",
-            slam_params_file,
-            # {
-            #     "use_sim_time": use_sim_time,
-            #     "odom_frame": "odom",
-            #     "base_frame": "base_link",
-            #     "map_frame": "map",
-            #     "scan_topic": "/scan",
-            # },
-        ],
+    # slam_toolbox is a lifecycle node: online_async_launch.py configures and
+    # activates it. It is also the only map -> odom publisher.
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [FindPackageShare("autonomy"), "launch", "online_async_launch.py"]
+                )
+            ]
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "slam_params_file": slam_params_file,
+        }.items(),
     )
 
     # RViz
@@ -113,8 +101,7 @@ def generate_launch_description():
 
     nodes = [
         perseus_bringup,
-        static_tf_publisher,
-        slam_toolbox,
+        slam_launch,
         rviz,
     ]
 

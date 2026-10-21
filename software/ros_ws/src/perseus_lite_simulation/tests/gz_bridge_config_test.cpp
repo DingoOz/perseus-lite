@@ -143,7 +143,7 @@ TEST_F(GzBridgeConfigTest, ExpectedCoreTopics)
 {
     auto mappings = load_bridge_mappings();
     std::unordered_set<std::string> required_topics = {
-        "clock", "tf", "gazebo_odom", "joint_states"};
+        "clock", "scan", "imu/data"};
 
     std::unordered_set<std::string> found_topics;
     for (const auto& mapping : mappings)
