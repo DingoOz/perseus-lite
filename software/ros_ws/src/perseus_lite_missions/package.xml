@@ -10,17 +10,23 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>nav2_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>action_msgs</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
+  <depend>ament_index_python</depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <exec_depend>perseus_lite_simulation</exec_depend>
   <exec_depend>autonomy</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
+  <!-- nav2_params.*.yaml load libperseus_bt_nodes via bt_navigator plugin_lib_names. -->
+  <exec_depend>perseus_bt_nodes</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
+  <!-- The orchestrator runs `ros2 launch` for the SLAM and Nav2 stacks. -->
+  <exec_depend>ros2launch</exec_depend>
 
+  <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
