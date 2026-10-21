@@ -1,1 +1,18 @@
-{"build": {"symlink-install": true}}
+# Workspace-local colcon defaults. colcon-defaults reads `colcon_defaults.yaml`
+# from the current working directory, so this applies to every Pixi build task
+# (they all run with cwd = software/ros_ws) and to a manual `colcon build` run
+# from here inside `pixi shell`.
+#
+# CMAKE_BUILD_TYPE=RelWithDebInfo: optimised binaries for the robot that keep
+# debug info for backward_ros backtraces. It also matches the CMakeLists'
+# `CMAKE_BUILD_TYPE MATCHES "Rel.*"` check that adds -Werror (the "no warnings"
+# software standard). Without it every package defaults to Debug (-O0, no
+# -Werror).
+#
+# NOTE: passing --cmake-args on the command line REPLACES this list rather than
+# appending to it, so repeat -DCMAKE_BUILD_TYPE=RelWithDebInfo whenever you pass
+# your own --cmake-args (the pixi `build-test` tasks do exactly that).
+build:
+  symlink-install: true
+  cmake-args:
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
