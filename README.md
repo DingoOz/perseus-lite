@@ -24,29 +24,32 @@ enter it and drop the `-e` from then on).
 ### Commands (once you're in an environment)
 
 Which packages `build`/`build-test`/`test` cover depends on the environment
-(see the table above) — `default` skips `perseus_lite_simulation` and
-`perseus_vision`, `simulation` includes `perseus_lite_simulation`,
-`machine-learning` includes `perseus_vision`.
+(see the table above) — `default` skips `perseus_lite_simulation`,
+`perseus_lite_missions` and `perseus_vision`, `simulation` includes
+`perseus_lite_simulation` + `perseus_lite_missions`, `machine-learning`
+includes `perseus_vision`. All builds use `CMAKE_BUILD_TYPE=RelWithDebInfo`
+(set in `software/ros_ws/colcon_defaults.yaml`), which also enables `-Werror`.
 
-| Command                 | Environment(s)                              | What it does                                                            |
-| ----------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
-| `pixi run build`        | `default`, `simulation`, `machine-learning` | `colcon build` the workspace                                            |
-| `pixi run build-test`   | `default`, `simulation`                     | Same build, with `-DBUILD_TESTING=ON`                                   |
-| `pixi run test`         | `default`, `simulation`                     | `colcon test` the workspace's test suite                                |
-| `pixi run bringup`      | `default`, `simulation`, `machine-learning` | Launch the robot (`perseus_lite.launch.py`) — real hardware             |
-| `pixi run bringup-mock` | `default`, `simulation`, `machine-learning` | Same launch, with mock hardware (`use_mock_hardware:=True`)             |
-| `pixi run clean`        | `default`, `simulation`, `machine-learning` | Remove `build/`, `install/`, `log/` from the colcon workspace           |
-| `pixi run sim`          | `simulation`                                | Build, then launch the full Gazebo simulation (`perseus_sim.launch.py`) |
-| `pixi run docs`         | `docs`                                      | Build the Sphinx documentation site                                     |
-| `pixi run fmt`          | `format`                                    | Apply formatting across the repo (`treefmt`)                            |
-| `pixi run fmt-check`    | `format`                                    | Check formatting without writing changes (CI mode)                      |
+| Command                     | Environment(s)                              | What it does                                                            |
+| --------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| `pixi run build`            | `default`, `simulation`, `machine-learning` | `colcon build` the workspace                                            |
+| `pixi run build-test`       | `default`, `simulation`, `machine-learning` | Same build, with `-DBUILD_TESTING=ON`                                   |
+| `pixi run test`             | `default`, `simulation`, `machine-learning` | `colcon test` the env's CI test set (see `pixi.toml` for the policy)    |
+| `pixi run build-arm-teleop` | `default`, `simulation`, `machine-learning` | Plain-CMake build of `software/arm-teleop-direct` (not a ROS package)   |
+| `pixi run bringup`          | `default`, `simulation`, `machine-learning` | Launch the robot (`perseus_lite.launch.py`) — real hardware             |
+| `pixi run bringup-mock`     | `default`, `simulation`, `machine-learning` | Same launch, with mock hardware (`use_mock_hardware:=True`)             |
+| `pixi run clean`            | `default`, `simulation`, `machine-learning` | Remove `build/`, `install/`, `log/` from the colcon workspace           |
+| `pixi run sim`              | `simulation`                                | Build, then launch the full Gazebo simulation (`perseus_sim.launch.py`) |
+| `pixi run docs`             | `docs`                                      | Build the Sphinx documentation site                                     |
+| `pixi run fmt`              | `format`                                    | Apply formatting across the repo (`treefmt`)                            |
+| `pixi run fmt-check`        | `format`                                    | Check formatting without writing changes (CI mode)                      |
 
 See `pixi.toml` for the full environment/dependency definitions and
 `CLAUDE.md` for build details, migration notes, and known issues.
 
 ## Documentation
 
-Full documentation is located [here](https://roar-qutrc.github.io/)
+Full documentation is located [here](https://dingooz.github.io/perseus-lite/)
 
 ## CI/CD Status
 
