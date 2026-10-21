@@ -11,16 +11,20 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Superseded PR pushes cancel their older run. Every other event (pushes to
+# main, merge queue, dispatch) gets its own group (keyed on run_id) so it is
+# never cancelled — not even while pending, which a shared group would do —
+# and every main commit gets a CI result (the Pages deploy is gated on it).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   format:
     name: Format and lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.10
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
         with:
           environments: format
           cache: true
@@ -30,13 +34,16 @@ jobs:
     name: Static analysis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install cppcheck
         run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Run cppcheck
+        # rplidar_ros is vendored third-party code (see its VENDORED.md); it is
+        # kept unmodified, so it is excluded here as it is from treefmt.
         run: |
           cppcheck --enable=warning,performance,portability --std=c++20 \
             --inline-suppr --error-exitcode=1 \
+            -i software/ros_ws/src/rplidar_ros \
             software/ros_ws/src software/shared software/arm-teleop-direct
   build:
     name: Build + test
@@ -46,8 +53,8 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.10
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
         with:
           environments: default
           cache: true
@@ -55,12 +62,16 @@ jobs:
         run: pixi run -e default build-test
       - name: Run unit tests
         run: pixi run -e default test
+      # Out-of-workspace C++ (not colcon-built): compile it so toolchain pins
+      # (Boost, compiler) can't silently break it. See ERRORS.md.
+      - name: Build arm-teleop-direct
+        run: pixi run -e default build-arm-teleop
   build-sim:
     name: Build + test simulation (linux-64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.10
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
         with:
           environments: simulation
           cache: true
@@ -72,8 +83,8 @@ jobs:
     name: Build docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.10
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
         with:
           environments: docs
           cache: true
@@ -83,6 +94,6 @@ jobs:
     name: Validate Isaac compose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Validate docker compose
         run: docker compose -f software/docker/isaac-ros/compose.yaml config -q

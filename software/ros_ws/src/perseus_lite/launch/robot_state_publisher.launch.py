@@ -7,15 +7,19 @@ from launch.substitutions import (
 )
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    # ARGUMENTS
-    use_sim_time = LaunchConfiguration("use_sim_time", default=False)
-    hardware_plugin = LaunchConfiguration("hardware_plugin")
-    serial_port = LaunchConfiguration("serial_port", default="")
-    baud_rate = LaunchConfiguration("baud_rate", default="")
+    # ARGUMENTS (defaults match the xacro's own defaults)
+    use_sim_time = LaunchConfiguration("use_sim_time", default="false")
+    hardware_plugin = LaunchConfiguration(
+        "hardware_plugin", default="perseus_lite_hardware/ST3215SystemHardware"
+    )
+    serial_port = LaunchConfiguration("serial_port", default="/dev/ttyACM0")
+    baud_rate = LaunchConfiguration("baud_rate", default="1000000")
+    servo_max_rpm = LaunchConfiguration("servo_max_rpm", default="485.1")
 
     # XACRO FILES
     robot_description_xacro = PathJoinSubstitution(
@@ -34,6 +38,8 @@ def generate_launch_description():
             serial_port,
             " baud_rate:=",
             baud_rate,
+            " servo_max_rpm:=",
+            servo_max_rpm,
         ]
     )
 
@@ -43,7 +49,9 @@ def generate_launch_description():
         executable="robot_state_publisher",
         parameters=[
             {
-                "robot_description": robot_description_content,
+                "robot_description": ParameterValue(
+                    robot_description_content, value_type=str
+                ),
                 "use_sim_time": use_sim_time,
             }
         ],

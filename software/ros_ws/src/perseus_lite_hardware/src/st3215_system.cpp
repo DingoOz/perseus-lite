@@ -1,5 +1,7 @@
 #include "st3215_system.hpp"
 
+#include <termios.h>
+
 #include <algorithm>
 #include <cmath>
 #include <hardware_interface/system_interface.hpp>
@@ -22,6 +24,14 @@ namespace perseus_lite_hardware
     namespace
     {
         static const char* const LOGGER_NAME = "ST3215SystemHardware";
+
+        // Throttled logging from the communication thread must not depend on
+        // the controller manager's clock type.
+        rclcpp::Clock& steady_log_clock()
+        {
+            static rclcpp::Clock clock(RCL_STEADY_TIME);
+            return clock;
+        }
     }  // namespace
 
     ST3215SystemHardware::~ST3215SystemHardware()
@@ -53,41 +63,82 @@ namespace perseus_lite_hardware
         }
 
         auto logger = rclcpp::get_logger(LOGGER_NAME);
+        const auto& hardware_parameters = params.hardware_info.hardware_parameters;
 
         // Check required parameters
-        if (!has_parameter(params.hardware_info.hardware_parameters, "serial_port"))
+        if (!has_parameter(hardware_parameters, "serial_port"))
         {
             RCLCPP_ERROR(logger, "Missing required parameter 'serial_port'");
             return hardware_interface::CallbackReturn::ERROR;
         }
-        if (!has_parameter(params.hardware_info.hardware_parameters, "baud_rate"))
+        if (!has_parameter(hardware_parameters, "baud_rate"))
         {
             RCLCPP_ERROR(logger, "Missing required parameter 'baud_rate'");
             return hardware_interface::CallbackReturn::ERROR;
         }
 
         RCLCPP_DEBUG(logger, "Serial configuration - Port: %s, Baud Rate: %s",
-                     params.hardware_info.hardware_parameters.at("serial_port").c_str(),
-                     params.hardware_info.hardware_parameters.at("baud_rate").c_str());
+                     hardware_parameters.at("serial_port").c_str(),
+                     hardware_parameters.at("baud_rate").c_str());
+
+        // Speed scale: the RPM that a full-scale (32767) speed value represents
+        if (has_parameter(hardware_parameters, "servo_max_rpm"))
+        {
+            try
+            {
+                _servo_max_rpm = std::stod(hardware_parameters.at("servo_max_rpm"));
+            }
+            catch (const std::exception& e)
+            {
+                RCLCPP_ERROR(logger, "Invalid 'servo_max_rpm': %s", e.what());
+                return hardware_interface::CallbackReturn::ERROR;
+            }
+            if (!std::isfinite(_servo_max_rpm) || _servo_max_rpm <= 0.0)
+            {
+                RCLCPP_ERROR(logger, "'servo_max_rpm' must be positive, got %f", _servo_max_rpm);
+                return hardware_interface::CallbackReturn::ERROR;
+            }
+        }
+        RCLCPP_INFO(logger, "Using servo_max_rpm: %.1f", _servo_max_rpm);
+
+        if (has_parameter(hardware_parameters, "acceleration"))
+        {
+            try
+            {
+                const int acceleration = std::stoi(hardware_parameters.at("acceleration"));
+                if (acceleration < 0 || acceleration > 254)
+                {
+                    RCLCPP_ERROR(logger, "'acceleration' must be 0-254, got %d", acceleration);
+                    return hardware_interface::CallbackReturn::ERROR;
+                }
+                _acceleration = static_cast<uint8_t>(acceleration);
+            }
+            catch (const std::exception& e)
+            {
+                RCLCPP_ERROR(logger, "Invalid 'acceleration': %s", e.what());
+                return hardware_interface::CallbackReturn::ERROR;
+            }
+        }
 
         // Pre-allocate vectors with known size
         const auto joint_count = params.hardware_info.joints.size();
-        _command_speeds.resize(joint_count, 0.0);
-        _current_positions.resize(joint_count, 0.0);
-        _current_velocities.resize(joint_count, 0.0);
-        _temperatures.resize(joint_count, _ROOM_TEMPERATURE_CELSIUS);  // Initialize to room temperature
+        _command_speeds.assign(joint_count, 0.0);
+        _current_positions.assign(joint_count, 0.0);
+        _current_velocities.assign(joint_count, 0.0);
+        _temperatures.assign(joint_count, _ROOM_TEMPERATURE_CELSIUS);  // Initialize to room temperature
+        _servo_ids.clear();
         _servo_ids.reserve(joint_count);
 
-        _servo_states.resize(joint_count);  // Initialize servo states vector
+        _servo_states.assign(joint_count, ServoState{});
 
         // Servos whose drive direction is inverted (left side of the rover).
         // Override with the hardware parameter 'inverted_servo_ids', a
         // comma-separated ID list, when the wiring differs.
         _inverted_servo_ids = {2, 3};
-        if (has_parameter(params.hardware_info.hardware_parameters, "inverted_servo_ids"))
+        if (has_parameter(hardware_parameters, "inverted_servo_ids"))
         {
             _inverted_servo_ids.clear();
-            std::stringstream ids_ss(params.hardware_info.hardware_parameters.at("inverted_servo_ids"));
+            std::stringstream ids_ss(hardware_parameters.at("inverted_servo_ids"));
             std::string token;
             while (std::getline(ids_ss, token, ','))
             {
@@ -184,11 +235,16 @@ namespace perseus_lite_hardware
     hardware_interface::CallbackReturn ST3215SystemHardware::on_configure(
         const rclcpp_lifecycle::State&)
     {
+        auto logger = rclcpp::get_logger(LOGGER_NAME);
         try
         {
             const auto& serial_port = info_.hardware_parameters.at("serial_port");
             const int baud_rate = std::stoi(info_.hardware_parameters.at("baud_rate"));
 
+            if (_serial_port.is_open())
+            {
+                _serial_port.close();
+            }
             _serial_port.open(serial_port);
 
             // Configure serial port settings
@@ -201,56 +257,96 @@ namespace perseus_lite_hardware
             _serial_port.set_option(boost::asio::serial_port_base::flow_control(
                 boost::asio::serial_port_base::flow_control::none));
 
-            // Set the servos as wheel mode and enable torque
-            // Using enum classes instead of #define constants
+            {
+                std::lock_guard<std::mutex> state_lock(_state_mutex);
+                std::fill(_servo_states.begin(), _servo_states.end(), ServoState{});
+            }
+
+            const uint8_t goal_speed_register = static_cast<uint8_t>(ServoSramRegister::GOAL_SPEED_L);
             const uint8_t mode_register = static_cast<uint8_t>(ServoEpromRegister::MODE);
+            const uint8_t acc_register = static_cast<uint8_t>(ServoSramRegister::ACC);
             const uint8_t torque_register = static_cast<uint8_t>(ServoSramRegister::TORQUE_ENABLE);
 
-            // Set wheel mode and enable torque for each servo
             for (uint8_t servo_id : _servo_ids)
             {
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Setting wheel mode for servo %d", servo_id);
-
-                // Set wheel mode command
-                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{mode_register, _WHEEL_MODE_VALUE}))
+                // Zero the goal speed first: a servo left spinning by a previous
+                // crashed run must not keep moving once torque is (re)enabled.
+                RCLCPP_DEBUG(logger, "Zeroing goal speed for servo %d", servo_id);
+                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 3>{goal_speed_register, 0, 0}))
                 {
-                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),
-                                 "Failed to set wheel mode for servo %d", servo_id);
+                    RCLCPP_ERROR(logger, "Failed to zero goal speed for servo %d", servo_id);
+                    _serial_port.close();
                     return hardware_interface::CallbackReturn::ERROR;
                 }
-
-                // Small delay between commands
                 std::this_thread::sleep_for(_COMMAND_DELAY);
 
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Enabling torque for servo %d", servo_id);
-
-                // Enable torque command
-                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{torque_register, _TORQUE_ENABLE_VALUE}))
+                RCLCPP_DEBUG(logger, "Setting wheel mode for servo %d", servo_id);
+                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{mode_register, _WHEEL_MODE_VALUE}))
                 {
-                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),
-                                 "Failed to enable torque for servo %d", servo_id);
+                    RCLCPP_ERROR(logger, "Failed to set wheel mode for servo %d", servo_id);
+                    _serial_port.close();
                     return hardware_interface::CallbackReturn::ERROR;
                 }
+                std::this_thread::sleep_for(_COMMAND_DELAY);
 
-                // Small delay between servos
+                RCLCPP_DEBUG(logger, "Setting acceleration %d for servo %d", _acceleration, servo_id);
+                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{acc_register, _acceleration}))
+                {
+                    RCLCPP_ERROR(logger, "Failed to set acceleration for servo %d", servo_id);
+                    _serial_port.close();
+                    return hardware_interface::CallbackReturn::ERROR;
+                }
+                std::this_thread::sleep_for(_COMMAND_DELAY);
+
+                RCLCPP_DEBUG(logger, "Enabling torque for servo %d", servo_id);
+                if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{torque_register, _TORQUE_ENABLE_VALUE}))
+                {
+                    RCLCPP_ERROR(logger, "Failed to enable torque for servo %d", servo_id);
+                    _serial_port.close();
+                    return hardware_interface::CallbackReturn::ERROR;
+                }
                 std::this_thread::sleep_for(_COMMAND_DELAY);
             }
 
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Successfully configured all servos with wheel mode and torque enabled");
+            // Writes are fire-and-forget, so confirm each servo actually answers.
+            // A missing servo is reported loudly but does not block bringup; its
+            // feedback stays stale (zero velocity) until it responds.
+            size_t responding = 0;
+            for (size_t i = 0; i < _servo_ids.size(); ++i)
+            {
+                bool ok = false;
+                for (int attempt = 0; attempt < _STARTUP_PROBE_ATTEMPTS && !ok; ++attempt)
+                {
+                    std::lock_guard<std::mutex> lock(_serial_mutex);
+                    ok = request_status(i);
+                }
+                if (ok)
+                {
+                    ++responding;
+                }
+                else
+                {
+                    RCLCPP_ERROR(logger, "Servo %d did not respond to a status request - check wiring, ID and baud rate",
+                                 _servo_ids[i]);
+                }
+            }
+            RCLCPP_INFO(logger, "Configured %zu servos in wheel mode with torque enabled (%zu responding)",
+                        _servo_ids.size(), responding);
 
             // Start communication thread
             _comm_thread_running = true;
             _comm_thread = std::thread(&ST3215SystemHardware::communication_thread, this);
 
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Successfully configured!");
+            RCLCPP_INFO(logger, "Successfully configured!");
             return hardware_interface::CallbackReturn::SUCCESS;
         }
-        catch (const boost::system::system_error& e)
+        catch (const std::exception& e)
         {
-            RCLCPP_FATAL(rclcpp::get_logger(LOGGER_NAME),
-                         "Serial port error: %s", e.what());
+            // boost::system::system_error from the port, std::invalid_argument /
+            // std::out_of_range from a malformed baud_rate
+            RCLCPP_FATAL(logger, "Failed to configure serial port: %s", e.what());
+            boost::system::error_code ignored;
+            _serial_port.close(ignored);
             return hardware_interface::CallbackReturn::ERROR;
         }
     }
@@ -259,69 +355,20 @@ namespace perseus_lite_hardware
     {
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Starting communication thread");
 
-        // Read buffer for responses
-        std::array<uint8_t, _BUFFER_SIZE> buffer;
-
         while (_comm_thread_running)
         {
             // Request status from each servo in sequence
             for (size_t i = 0; i < _servo_ids.size() && _comm_thread_running; ++i)
             {
-                const auto servo_id = _servo_ids[i];
-
-                // Create status request packet
-                // According to protocol: READ(0x02) command starting at position register (0x38)
-                // Reading 8 bytes to get position(2), speed(2), load(2), temp(1), and moving status(1)
-                const std::array<uint8_t, 2> read_data{
-                    _PRESENT_POSITION_REG,                              // Start reading from position register (0x38)
-                    static_cast<uint8_t>(protocol::STATUS_DATA_SIZE)};  // Read 8 bytes total
-
-                try
+                // Hold the serial mutex across the whole request/response
+                // transaction so a velocity write() from the controller
+                // thread cannot interleave between request and reply.
+                std::lock_guard<std::mutex> lock(_serial_mutex);
+                if (!request_status(i))
                 {
-                    // Hold the serial mutex across the whole request/response
-                    // transaction so a velocity write() from the controller
-                    // thread cannot interleave between request and reply.
-                    std::lock_guard<std::mutex> lock(_serial_mutex);
-                    if (!send_servo_command(servo_id, ServoCommand::READ, std::span{read_data}))
-                    {
-                        RCLCPP_WARN(rclcpp::get_logger(LOGGER_NAME),
-                                    "Failed to request status from servo %d", servo_id);
-                        continue;
-                    }
-
-                    // Give the servo time to process and respond so the reply
-                    // is complete when the read returns
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-
-                    RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME), "Attempting to read response from servo %d", servo_id);
-                    boost::system::error_code error;
-                    const size_t bytes_read = read_with_timeout(buffer, _RESPONSE_TIMEOUT, error);
-
-                    if (error == boost::asio::error::operation_aborted)
-                    {
-                        static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
-                        RCLCPP_WARN_THROTTLE(rclcpp::get_logger(LOGGER_NAME),
-                                             steady_clock, 1000,
-                                             "Timed out waiting for response from servo %d", servo_id);
-                        continue;
-                    }
-                    if (error)
-                    {
-                        RCLCPP_WARN(rclcpp::get_logger(LOGGER_NAME),
-                                    "Error reading from servo %d: %s",
-                                    servo_id, error.message().c_str());
-                        continue;
-                    }
-
-                    if (bytes_read > 0)
-                    {
-                        process_response(std::span{buffer.data(), bytes_read});
-                    }
-                }
-                catch (const boost::system::system_error& e)
-                {
-                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),
-                                 "Serial communication error: %s", e.what());
+                    RCLCPP_WARN_THROTTLE(rclcpp::get_logger(LOGGER_NAME),
+                                         steady_log_clock(), 1000,
+                                         "No status reply from servo %d", _servo_ids[i]);
                 }
             }
 
@@ -330,6 +377,68 @@ namespace perseus_lite_hardware
         }
 
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Communication thread stopped");
+    }
+
+    bool ST3215SystemHardware::request_status(const size_t index) noexcept
+    {
+        const auto servo_id = _servo_ids[index];
+
+        // READ(0x02) from the position register (0x38): position(2), speed(2),
+        // load(2), voltage(1), temperature(1)
+        const std::array<uint8_t, 2> read_data{
+            _PRESENT_POSITION_REG,
+            static_cast<uint8_t>(protocol::STATUS_DATA_SIZE)};
+
+        try
+        {
+            discard_pending_input();
+            if (!send_servo_command(servo_id, ServoCommand::READ, std::span{read_data}))
+            {
+                return false;
+            }
+
+            // Accumulate until a complete status packet from this servo arrives
+            // or the deadline passes; a reply can be split across several reads.
+            std::array<uint8_t, _BUFFER_SIZE> buffer{};
+            size_t total = 0;
+            const auto deadline = std::chrono::steady_clock::now() + _RESPONSE_TIMEOUT;
+            while (total < buffer.size())
+            {
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now());
+                if (remaining.count() <= 0)
+                {
+                    return false;
+                }
+
+                boost::system::error_code error;
+                const size_t bytes_read = read_with_timeout(
+                    std::span{buffer.data() + total, buffer.size() - total}, remaining, error);
+                if (error)
+                {
+                    if (error != boost::asio::error::operation_aborted)
+                    {
+                        RCLCPP_WARN_THROTTLE(rclcpp::get_logger(LOGGER_NAME),
+                                             steady_log_clock(), 1000,
+                                             "Error reading from servo %d: %s",
+                                             servo_id, error.message().c_str());
+                    }
+                    return false;
+                }
+
+                total += bytes_read;
+                if (process_response(std::span{buffer.data(), total}, servo_id))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            RCLCPP_ERROR_THROTTLE(rclcpp::get_logger(LOGGER_NAME), steady_log_clock(), 1000,
+                                  "Serial communication error: %s", e.what());
+        }
+        return false;
     }
 
     size_t ST3215SystemHardware::read_with_timeout(std::span<uint8_t> buffer,
@@ -366,21 +475,79 @@ namespace perseus_lite_hardware
         return error ? 0 : bytes_read;
     }
 
-    hardware_interface::CallbackReturn ST3215SystemHardware::on_cleanup(
-        const rclcpp_lifecycle::State&)
+    void ST3215SystemHardware::discard_pending_input() noexcept
     {
-        // Stop communication thread
+        // Servos acknowledge every WRITE; those replies (and any line noise)
+        // must not be mistaken for the status reply that follows.
+        if (_serial_port.is_open())
+        {
+            ::tcflush(_serial_port.native_handle(), TCIFLUSH);
+        }
+    }
+
+    void ST3215SystemHardware::stop_communication_thread() noexcept
+    {
         _comm_thread_running = false;
         if (_comm_thread.joinable())
         {
             _comm_thread.join();
         }
+    }
+
+    void ST3215SystemHardware::stop_all_servos(const bool disable_torque) noexcept
+    {
+        if (!_serial_port.is_open())
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(_serial_mutex);
+        const uint8_t goal_speed_register = static_cast<uint8_t>(ServoSramRegister::GOAL_SPEED_L);
+        const uint8_t torque_register = static_cast<uint8_t>(ServoSramRegister::TORQUE_ENABLE);
+        for (uint8_t servo_id : _servo_ids)
+        {
+            if (!send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 3>{goal_speed_register, 0, 0}))
+            {
+                RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME), "Failed to stop servo %d", servo_id);
+            }
+            if (disable_torque &&
+                !send_servo_command(servo_id, ServoCommand::WRITE, std::array<uint8_t, 2>{torque_register, _TORQUE_DISABLE_VALUE}))
+            {
+                RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME), "Failed to disable torque for servo %d", servo_id);
+            }
+        }
+    }
+
+    hardware_interface::CallbackReturn ST3215SystemHardware::on_cleanup(
+        const rclcpp_lifecycle::State&)
+    {
+        stop_communication_thread();
 
         if (_serial_port.is_open())
         {
-            _serial_port.close();
+            stop_all_servos(true);
+            boost::system::error_code ignored;
+            _serial_port.close(ignored);
         }
 
+        return hardware_interface::CallbackReturn::SUCCESS;
+    }
+
+    hardware_interface::CallbackReturn ST3215SystemHardware::on_shutdown(
+        const rclcpp_lifecycle::State& previous_state)
+    {
+        return on_cleanup(previous_state);
+    }
+
+    hardware_interface::CallbackReturn ST3215SystemHardware::on_error(
+        const rclcpp_lifecycle::State&)
+    {
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME), "Hardware error - stopping all servos");
+        std::fill(_command_speeds.begin(), _command_speeds.end(), 0.0);
+        stop_communication_thread();
+        stop_all_servos(true);
+        boost::system::error_code ignored;
+        _serial_port.close(ignored);
         return hardware_interface::CallbackReturn::SUCCESS;
     }
 
@@ -409,54 +576,34 @@ namespace perseus_lite_hardware
         RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME), "Reading servo states");
         std::lock_guard<std::mutex> lock(_state_mutex);
 
-        try
+        const auto now = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < _servo_ids.size(); ++i)
         {
-            for (size_t i = 0; i < _servo_ids.size(); ++i)
+            const auto& state = _servo_states[i];
+
+            if (!state.last_update || now - *state.last_update > _SERVO_TIMEOUT)
             {
-                const auto& state = _servo_states[i];
+                RCLCPP_WARN_THROTTLE(rclcpp::get_logger(LOGGER_NAME),
+                                     steady_log_clock(), 1000,  // Warn every 1 second
+                                     "No response from servo %d for more than %ld seconds - reporting zero velocity",
+                                     _servo_ids[i], static_cast<long>(_SERVO_TIMEOUT.count()));
 
-                // Check for timeout and implement recovery
-                const auto now = get_clock()->now();
-                const double timeout_seconds = (now - state.last_update).seconds();
-                if (timeout_seconds > _SERVO_TIMEOUT.count())
-                {
-                    RCLCPP_WARN_THROTTLE(rclcpp::get_logger(LOGGER_NAME),
-                                         *get_clock(), 1000,  // Warn every 1 second
-                                         "No response from servo %d for more than %ld seconds - implementing recovery",
-                                         _servo_ids[i], _SERVO_TIMEOUT.count());
-
-                    // Timeout recovery actions:
-                    // 1. Set velocity to zero for safety
-                    _current_velocities[i] = 0.0;
-
-                    // 2. Mark position as stale by not updating it (keep last known position)
-                    // This prevents using potentially incorrect position data
-
-                    // 3. Set temperature to a safe default to indicate stale data
-                    _temperatures[i] = _ROOM_TEMPERATURE_CELSIUS;
-
-                    // 4. Log detailed timeout information for debugging
-                    RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                                 "Servo %d timeout recovery: velocity set to 0, position held at %f, temperature reset to %zu",
-                                 _servo_ids[i], state.position, _ROOM_TEMPERATURE_CELSIUS);
-
-                    // Continue to next servo instead of using stale data
-                    continue;
-                }
-
-                _current_positions[i] = state.position;
-                _current_velocities[i] = state.velocity;
-                _temperatures[i] = state.temperature;
+                // Stale feedback: report standstill and hold the last known
+                // position rather than integrating outdated data.
+                _current_velocities[i] = 0.0;
+                _temperatures[i] = _ROOM_TEMPERATURE_CELSIUS;
+                continue;
             }
 
-            return hardware_interface::return_type::OK;
+            // Mirror the command inversion in write() so diff_drive_controller
+            // sees both sides turning forward when the rover drives forward.
+            const double direction = protocol::apply_motor_direction(_servo_ids[i], 1.0, _inverted_servo_ids);
+            _current_positions[i] = direction * state.position;
+            _current_velocities[i] = direction * state.velocity;
+            _temperatures[i] = state.temperature;
         }
-        catch (const std::exception& e)
-        {
-            RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),
-                         "Error reading from servos: %s", e.what());
-            return hardware_interface::return_type::ERROR;
-        }
+
+        return hardware_interface::return_type::OK;
     }
 
     hardware_interface::return_type ST3215SystemHardware::write(
@@ -476,7 +623,7 @@ namespace perseus_lite_hardware
                 double corrected_speed = protocol::apply_motor_direction(
                     _servo_ids[i], _command_speeds[i], _inverted_servo_ids);
 
-                uint16_t servo_speed = protocol::encode_servo_velocity(corrected_speed);
+                uint16_t servo_speed = protocol::encode_servo_velocity(corrected_speed, _servo_max_rpm);
 
                 const uint8_t goal_speed_register = static_cast<uint8_t>(ServoSramRegister::GOAL_SPEED_L);
                 const std::array<uint8_t, 3> vel_data{
@@ -531,13 +678,14 @@ namespace perseus_lite_hardware
         }
         catch (const boost::system::system_error& e)
         {
-            RCLCPP_ERROR(rclcpp::get_logger("ST3215Hardware"),
-                         "Failed to send command: %s", e.what());
+            RCLCPP_ERROR_THROTTLE(rclcpp::get_logger(LOGGER_NAME), steady_log_clock(), 1000,
+                                  "Failed to send command: %s", e.what());
             return false;
         }
     }
 
-    void ST3215SystemHardware::process_response(const std::span<const uint8_t> response) noexcept
+    bool ST3215SystemHardware::process_response(const std::span<const uint8_t> response,
+                                                const uint8_t expected_id) noexcept
     {
         // Log raw response bytes for debugging
         {
@@ -551,6 +699,7 @@ namespace perseus_lite_hardware
             RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME), "%s", debug_ss.str().c_str());
         }
 
+        bool got_expected = false;
         for (const auto& [id, payload] : protocol::extract_packets(response))
         {
             // Find matching servo ID
@@ -597,24 +746,44 @@ namespace perseus_lite_hardware
                 }
             }
 
-            // Lock state mutex while updating
+            // Only a full status reply counts as feedback. Short packets (the
+            // acknowledgements for WRITE commands) must not refresh the
+            // timestamp, or a servo that only ACKs would look alive.
+            const auto status = protocol::parse_status_payload(payload, _servo_max_rpm);
+            if (!status)
+            {
+                continue;
+            }
+
             std::lock_guard<std::mutex> state_lock(_state_mutex);
             auto& state = _servo_states[index];
 
-            // Update timestamp
-            state.last_update = rclcpp::Clock(RCL_ROS_TIME).now();
-
-            if (const auto status = protocol::parse_status_payload(payload))
+            // Wheel-mode position wraps every revolution; integrate the
+            // shortest signed tick delta into a continuous joint angle.
+            if (state.last_raw_position)
             {
-                state.position = status->position_rad;
-                state.velocity = status->velocity_rad_s;
-                state.temperature = status->temperature_c;
+                state.position += protocol::ticks_to_radians(static_cast<int16_t>(
+                    protocol::position_delta_ticks(*state.last_raw_position, status->raw_position)));
+            }
+            else
+            {
+                state.position = protocol::ticks_to_radians(static_cast<int16_t>(status->raw_position));
+            }
+            state.last_raw_position = status->raw_position;
+            state.velocity = status->velocity_rad_s;
+            state.temperature = status->temperature_c;
+            state.last_update = std::chrono::steady_clock::now();
 
-                RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
-                             "Servo %d state updated - Pos: %.2f rad, Vel: %.2f rad/s, Temp: %.1f°C",
-                             id, state.position, state.velocity, state.temperature);
+            RCLCPP_DEBUG(rclcpp::get_logger(LOGGER_NAME),
+                         "Servo %d state updated - Pos: %.2f rad, Vel: %.2f rad/s, Temp: %.1f°C",
+                         id, state.position, state.velocity, state.temperature);
+
+            if (id == expected_id)
+            {
+                got_expected = true;
             }
         }
+        return got_expected;
     }
 
     bool ST3215SystemHardware::verify_command_interfaces(

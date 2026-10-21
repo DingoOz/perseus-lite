@@ -52,10 +52,10 @@ perseus_lite_description/
 
 ## Robot Architecture
 
-The following diagram illustrates the TF architecture of Perseus-Lite when operating with odometry (`/odom`) estimation enabled. This representation shows how major physical components, drivetrain assemblies, and sensors attach to the `base_link`, which serves as the primary reference frame for state estimation, navigation, and perception.
+The following diagram illustrates the TF architecture of Perseus-Lite. `map -> odom` comes only from slam_toolbox (or AMCL when localising on a saved map) and `odom -> base_link` only from the robot_localization EKF (`/odometry/filtered`); the diff-drive controller does not publish TF. This representation shows how major physical components, drivetrain assemblies, and sensors attach to the `base_link`, which serves as the primary reference frame for state estimation, navigation, and perception.
 
 ```{graphviz}
-:caption: Perseus-Lite TF tree (odom enabled)
+:caption: Perseus-Lite TF tree
 :align: center
 
 digraph tf_tree {
@@ -65,15 +65,13 @@ digraph tf_tree {
            shape=box, penwidth=1.1, margin="0.16,0.08"];
     edge  [fontname="Roboto", fontsize=9, color="#7a6cad"];
 
+    map             [label="map", fillcolor="#5e35b1", fontcolor="white", shape=oval];
     odom            [label="odom", fillcolor="#5e35b1", fontcolor="white", shape=oval];
     base_link       [label="base_link", fillcolor="#311b92", fontcolor="white", penwidth=2.0];
-    base_footprint  [label="base_footprint", fillcolor="#1a237e", fontcolor="white"];
     chassis         [label="chassis", fillcolor="#3949ab", fontcolor="white"];
 
-    camera_link         [label="camera_link", fillcolor="#ad1457", fontcolor="white"];
-    camera_link_optical [label="camera_link_optical", fillcolor="#ad1457", fontcolor="white"];
-    laser_2d_frame      [label="laser_2d_frame", fillcolor="#ad1457", fontcolor="white"];
-    laser_frame         [label="laser_frame", fillcolor="#ad1457", fontcolor="white"];
+    c1_lidar_frame  [label="c1_lidar_frame\n(under chassis, inverted)", fillcolor="#ad1457", fontcolor="white"];
+    imu_link        [label="imu_link", fillcolor="#ad1457", fontcolor="white"];
 
     flange_bearing   [label="flange_bearing", fillcolor="#00838f", fontcolor="white"];
     differential_bar [label="differential_bar", fillcolor="#00838f", fontcolor="white"];
@@ -90,18 +88,16 @@ digraph tf_tree {
     front_right_wheel [label="front_right_wheel", fillcolor="#880e4f", fontcolor="white", shape=ellipse];
     rear_right_wheel  [label="rear_right_wheel",  fillcolor="#880e4f", fontcolor="white", shape=ellipse];
 
-    odom -> base_link [penwidth=2.0, color="#ec407a"];
-    base_link -> base_footprint;
+    map -> odom [label="slam_toolbox", style=dashed];
+    odom -> base_link [label="EKF", penwidth=2.0, color="#ec407a"];
     base_link -> chassis;
 
-    chassis -> camera_link;
     chassis -> flange_bearing;
     chassis -> left_rocker;
     chassis -> right_rocker;
-    chassis -> laser_2d_frame;
-    chassis -> laser_frame;
+    chassis -> c1_lidar_frame;
+    chassis -> imu_link;
 
-    camera_link    -> camera_link_optical;
     flange_bearing -> differential_bar;
 
     left_rocker  -> front_left_motor  -> front_left_wheel;
@@ -132,7 +128,7 @@ Each wheel joint follows standard differential-drive and rocker-based rover conv
 - **Rotation axis:** +Y
 - **Forward motion:** +X
 
-This ensures proper behaviour when executing velocity commands through `/cmd_vel_out` and when using `ros2_control` interfaces to apply wheel velocities.
+This ensures proper behaviour when executing velocity commands through `/cmd_vel` and when using `ros2_control` interfaces to apply wheel velocities.
 
 ### **IMU Frame**
 

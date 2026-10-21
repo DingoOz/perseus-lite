@@ -32,12 +32,14 @@
 
     <test_depend>ament_lint_auto</test_depend>
     <!-- <exec_depend>ament_cmake_copyright</exec_depend> -->
+    <!-- cpplint, uncrustify and lint_cmake are deliberately not run: they
+         enforce ROS style that contradicts the repo-wide treefmt formatters
+         (.clang-format Allman braces + namespace indentation, cmake-format),
+         so they could never pass on formatted code. Python quote style is
+         reconciled with flake8 via this package's ruff.toml. -->
     <test_depend>ament_cmake_cppcheck</test_depend>
-    <test_depend>ament_cmake_cpplint</test_depend>
     <test_depend>ament_cmake_flake8</test_depend>
-    <test_depend>ament_cmake_lint_cmake</test_depend>
     <test_depend>ament_cmake_pep257</test_depend>
-    <test_depend>ament_cmake_uncrustify</test_depend>
     <test_depend>ament_cmake_xmllint</test_depend>
 
     <export>

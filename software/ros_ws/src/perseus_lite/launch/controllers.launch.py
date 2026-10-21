@@ -15,6 +15,7 @@ def generate_launch_description():
     launch_controller_manager = LaunchConfiguration(
         "launch_controller_manager", default="true"
     )
+    # twist_mux publishes /cmd_vel; only override this for debugging without it
     cmd_vel_topic = LaunchConfiguration("cmd_vel_topic", default="/cmd_vel")
     use_sim_time_param = {"use_sim_time": use_sim_time}
 

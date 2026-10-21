@@ -80,7 +80,10 @@ namespace networking
          * @brief Transmit a buffer over the socket
          *
          * @param buffer Data to transmit
-         * @return ssize_t Number of bytes actually transmitted
+         * @return ssize_t Number of bytes transmitted - always the whole buffer
+         * @throws std::runtime_error if the connection fails or is closed by the peer
+         * @note Partial writes and EINTR are retried internally; MSG_NOSIGNAL is used
+         *       so a peer reset raises an exception instead of SIGPIPE
          */
         ssize_t transmit(const std::vector<uint8_t>& buffer);
         /**

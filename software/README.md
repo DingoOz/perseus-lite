@@ -3,19 +3,25 @@
 This folder contains:
 
 - All code running on the rover
-- The configuration files for the Pixi-managed dev/build environments
-- Machine-specific setup and configuration files
+- Container definitions and system services that support it
 - Tooling helper scripts
 
-Its subdirectories are as follows. Each one contains its own README.md detailing its purpose and contents.
+Its subdirectories are as follows. Most contain their own README.md detailing their purpose and contents.
 
-- `machines`: Machine-specific configuration and setup files.
+- `arm-teleop-direct`: Standalone serial teleop for the Feetech-servo manipulator arm (plain CMake project, not a ROS package; build with `pixi run -e default build-arm-teleop`).
+- `assets`: Non-code assets (eg. mission scripts/briefs).
+- `daemons`: systemd units and setup scripts for services running on the robot (eg. time sync).
+- `docker`: Container stacks, currently the Isaac ROS (Humble) GPU perception stack for the Jetson Orin Nano (`docker/isaac-ros`).
+- `home-manager`: Legacy Nix home-manager machine/user configuration. Orphaned since the Nix to Pixi migration (non-functional without a flake); kept for reference only.
 - `native`: Pure C/C++/Python/etc programs which are built and run directly on machines.
 - `ros_ws`: The ROS 2 software workspace containing all the actual logic.
-- `shared`: Libraries which are shared between the `native` and `ros_ws` workspaces, as well as potentially firmware as well.
+- `scripts`: Short bash scripts for some commonly run tasks (incl. the Pixi activation sanitiser).
+- `shared`: C++ libraries shared between the `native` and `ros_ws` workspaces.
 - `templates`: Template files for bringing up new projects.
-- `scripts`: Short bash scripts for some commonly run tasks.
+- `utilities`: One-off developer utilities and demos.
 - `web_ui`: The rover web interface.
+
+The configuration for the Pixi-managed dev/build environments lives in the repository root (`pixi.toml`, `pixi.lock`), not in this folder.
 
 # Build System
 

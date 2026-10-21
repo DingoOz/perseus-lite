@@ -111,8 +111,7 @@ sd_hide_title: true
 <span class="pl-tok-c"># Source the built colcon workspace overlay</span>
 <span class="pl-tok-p">$</span> source software/ros_ws/install/setup.bash
 <span class="pl-tok-c"># Launch ros2_control, drivers, and twist_mux</span>
-<span class="pl-tok-p">$</span> ros2 launch perseus_lite perseus_lite.launch.py \
-      cmd_vel_topic:=/joy_vel</code></pre>
+<span class="pl-tok-p">$</span> ros2 launch perseus_lite perseus_lite.launch.py</code></pre>
     </div>
     <div class="pl-term">
       <div class="pl-term__bar">
@@ -122,7 +121,7 @@ sd_hide_title: true
         <span class="pl-term__title">terminal 2 &middot; controller input</span>
       </div>
       <pre class="pl-term__body"><code><span class="pl-tok-c"># Xbox / generic gamepad teleop</span>
-<span class="pl-tok-p">$</span> ros2 run input_devices generic_controller
+<span class="pl-tok-p">$</span> ros2 launch perseus_input controller.launch.py
 
 <span class="pl-tok-c"># &mdash; or, if you prefer keyboard &mdash;</span>
 <span class="pl-tok-p">$</span> ros2 run teleop_twist_keyboard teleop_twist_keyboard \

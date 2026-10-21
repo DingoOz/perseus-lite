@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -144,41 +145,48 @@ TEST_F(ST3215ProtocolTest, RawVelocityToRadSZero)
     EXPECT_DOUBLE_EQ(protocol::raw_velocity_to_rad_s(0), 0.0);
 }
 
-TEST_F(ST3215ProtocolTest, RawVelocityToRadSPositive)
+TEST_F(ST3215ProtocolTest, RawVelocityToRadSFullScaleIsServoMaxRpm)
 {
-    double result = protocol::raw_velocity_to_rad_s(1000);
-    // 1000 * (7.5 / 1000) = 7.5 RPM -> 7.5 * 2π/60 rad/s
-    double expected = 7.5 * 2.0 * std::numbers::pi / 60.0;
-    EXPECT_NEAR(result, expected, 1e-10);
+    // Full-scale magnitude represents servo_max_rpm
+    const double result = protocol::raw_velocity_to_rad_s(protocol::MAX_VELOCITY_PROTOCOL, 480.0);
+    EXPECT_NEAR(result, 480.0 * 2.0 * std::numbers::pi / 60.0, 1e-9);
+}
+
+TEST_F(ST3215ProtocolTest, RawVelocityToRadSDefaultScaleIsAboutOneStepPerSecond)
+{
+    // One protocol unit is ~one encoder step per second (2*pi/4096 rad/s);
+    // the calibrated default is within 2% of that nominal value.
+    const double one_step_per_second = 2.0 * std::numbers::pi / 4096.0;
+    EXPECT_NEAR(protocol::raw_velocity_to_rad_s(4096) / (4096 * one_step_per_second), 1.0, 0.02);
 }
 
 TEST_F(ST3215ProtocolTest, RawVelocityToRadSNegative)
 {
-    double result = protocol::raw_velocity_to_rad_s(-500);
-    double expected = -3.75 * 2.0 * std::numbers::pi / 60.0;
-    EXPECT_NEAR(result, expected, 1e-10);
+    EXPECT_NEAR(protocol::raw_velocity_to_rad_s(-500), -protocol::raw_velocity_to_rad_s(500), 1e-12);
+    EXPECT_LT(protocol::raw_velocity_to_rad_s(-500), 0.0);
 }
 
 TEST_F(ST3215ProtocolTest, EncodeServoVelocityZero)
 {
     EXPECT_EQ(protocol::encode_servo_velocity(0.0), 0u);
+    // Negative zero / tiny values must not produce a bare sign bit
+    EXPECT_EQ(protocol::encode_servo_velocity(-1e-9), 0u);
 }
 
-TEST_F(ST3215ProtocolTest, EncodeServoVelocityPositive)
+TEST_F(ST3215ProtocolTest, EncodeServoVelocityUsesServoMaxRpm)
 {
-    // 1 rad/s -> RPM -> scaled to servo units
-    uint16_t result = protocol::encode_servo_velocity(1.0);
-    // 1 rad/s * 60/(2π) ≈ 9.549 RPM * (1000/7.5) ≈ 1273 -> clamped to 1000
-    EXPECT_EQ(result, 1000u);
+    // 1 rad/s = 9.549 RPM; with full scale = 480 RPM -> 9.549 * 32767 / 480 = 651.9
+    EXPECT_EQ(protocol::encode_servo_velocity(1.0, 480.0), 652u);
 }
 
-TEST_F(ST3215ProtocolTest, EncodeServoVelocitySmallPositive)
+TEST_F(ST3215ProtocolTest, EncodeServoVelocityDriveSpeedIsNotClamped)
 {
-    // Small velocity that doesn't hit the clamp
-    uint16_t result = protocol::encode_servo_velocity(0.1);
-    // 0.1 rad/s * 60/(2π) ≈ 0.955 RPM * (1000/7.5) ≈ 127
-    EXPECT_GT(result, 0u);
-    EXPECT_LT(result, 1000u);
+    // Regression: the old scale clamped every wheel at ~0.79 rad/s
+    // (~0.06 m/s at r=0.0725). A typical drive speed of 5 rad/s must encode
+    // without hitting the protocol limit.
+    const uint16_t result = protocol::encode_servo_velocity(5.0);
+    EXPECT_GT(result, 3000u);
+    EXPECT_LT(result, static_cast<uint16_t>(protocol::MAX_VELOCITY_PROTOCOL));
 }
 
 TEST_F(ST3215ProtocolTest, EncodeServoVelocityNegative)
@@ -194,18 +202,55 @@ TEST_F(ST3215ProtocolTest, EncodeServoVelocityNegative)
 
 TEST_F(ST3215ProtocolTest, EncodeServoVelocityClampPositive)
 {
-    // Very high velocity should clamp to MAX_VELOCITY_RPM
-    uint16_t result = protocol::encode_servo_velocity(100.0);
-    EXPECT_EQ(result, 1000u);
+    uint16_t result = protocol::encode_servo_velocity(1000.0);
+    EXPECT_EQ(result, static_cast<uint16_t>(protocol::MAX_VELOCITY_PROTOCOL));
 }
 
 TEST_F(ST3215ProtocolTest, EncodeServoVelocityClampNegative)
 {
-    // Very negative velocity should clamp and have sign bit
-    uint16_t result = protocol::encode_servo_velocity(-100.0);
+    uint16_t result = protocol::encode_servo_velocity(-1000.0);
     uint16_t magnitude = result & 0x7FFF;
-    EXPECT_EQ(magnitude, 1000u);
+    EXPECT_EQ(magnitude, static_cast<uint16_t>(protocol::MAX_VELOCITY_PROTOCOL));
     EXPECT_TRUE(result & 0x8000);
+}
+
+TEST_F(ST3215ProtocolTest, EncodeServoVelocityRejectsNonFinite)
+{
+    EXPECT_EQ(protocol::encode_servo_velocity(std::nan("")), 0u);
+    EXPECT_EQ(protocol::encode_servo_velocity(std::numeric_limits<double>::infinity()), 0u);
+    EXPECT_EQ(protocol::encode_servo_velocity(1.0, 0.0), 0u);
+}
+
+TEST_F(ST3215ProtocolTest, PositionDeltaWithoutWrap)
+{
+    EXPECT_EQ(protocol::position_delta_ticks(100, 300), 200);
+    EXPECT_EQ(protocol::position_delta_ticks(300, 100), -200);
+    EXPECT_EQ(protocol::position_delta_ticks(1234, 1234), 0);
+}
+
+TEST_F(ST3215ProtocolTest, PositionDeltaWrapsForward)
+{
+    // 4090 -> 10 is +16 ticks across the 4095/0 boundary, not -4080
+    EXPECT_EQ(protocol::position_delta_ticks(4090, 10), 16);
+}
+
+TEST_F(ST3215ProtocolTest, PositionDeltaWrapsBackward)
+{
+    EXPECT_EQ(protocol::position_delta_ticks(10, 4090), -16);
+}
+
+TEST_F(ST3215ProtocolTest, PositionDeltaAccumulatesAcrossRevolutions)
+{
+    // Simulate two full forward revolutions sampled every 300 ticks
+    uint16_t raw = 4000;
+    int64_t total = 0;
+    for (int step = 0; step < 2 * 4096 / 300; ++step)
+    {
+        const auto next = static_cast<uint16_t>((raw + 300) % 4096);
+        total += protocol::position_delta_ticks(raw, next);
+        raw = next;
+    }
+    EXPECT_EQ(total, static_cast<int64_t>(2 * 4096 / 300) * 300);
 }
 
 // Default rover wiring: left-side servos (IDs 2 and 3) are inverted
@@ -270,8 +315,8 @@ TEST_F(ST3215ProtocolTest, VelocityRoundTrip)
 
     double decoded = protocol::raw_velocity_to_rad_s(raw);
 
-    // Round-trip error comes from integer truncation in encode
-    EXPECT_NEAR(decoded, input, 0.02);
+    // Round-trip error comes from integer rounding in encode
+    EXPECT_NEAR(decoded, input, 0.002);
 }
 
 TEST_F(ST3215ProtocolTest, VelocityRoundTripNegative)
@@ -290,7 +335,7 @@ TEST_F(ST3215ProtocolTest, VelocityRoundTripNegative)
     }
 
     double decoded = protocol::raw_velocity_to_rad_s(raw);
-    EXPECT_NEAR(decoded, input, 0.02);
+    EXPECT_NEAR(decoded, input, 0.002);
 }
 
 TEST_F(ST3215ProtocolTest, BuildPacketAllServoIds)
@@ -418,6 +463,7 @@ TEST_F(ST3215ProtocolTest, ParseStatusPayloadDecodesFields)
     ASSERT_TRUE(status.has_value());
     EXPECT_EQ(status->error_flags, 0);
     EXPECT_NEAR(status->position_rad, std::numbers::pi, 1e-10);
+    EXPECT_EQ(status->raw_position, 2048);
     EXPECT_NEAR(status->velocity_rad_s, protocol::raw_velocity_to_rad_s(-100), 1e-10);
     EXPECT_DOUBLE_EQ(status->temperature_c, 32.0);
 }

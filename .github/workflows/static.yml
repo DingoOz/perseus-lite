@@ -1,20 +1,19 @@
 # Build the Sphinx documentation site with Pixi (`pixi run -e docs docs`)
 # and deploy the rendered HTML to GitHub Pages.
+#
+# Gated on CI: runs only after the "CI" workflow (all.yaml) completes
+# successfully for a push to main in this repository, and builds exactly the
+# commit CI tested. workflow_run always runs the workflow file from the default
+# branch, so changes to this file take effect once merged to main.
 name: Deploy docs to Pages
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "docs/**"
-      - "software/**"
-      - "pixi.toml"
-      - "pixi.lock"
-      - ".github/workflows/static.yml"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 # Allow only one concurrent deployment, but don't cancel an in-progress
 # run — we want production deployments to finish.
 concurrency:
@@ -23,10 +22,17 @@ concurrency:
 jobs:
   build:
     name: Build docs
+    # Manual dispatch, or a successful CI run for a push to main in this repo.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.10
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The commit CI tested (workflow_run), else the dispatched ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
         with:
           environments: docs
           cache: true
@@ -36,16 +42,20 @@ jobs:
         run: |
           mkdir -p _site
           cp -RL docs/build/html/. _site/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: "_site"
   deploy:
     name: Deploy to Pages
     needs: build
+    # Only the deploy job gets Pages write + OIDC token permissions.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

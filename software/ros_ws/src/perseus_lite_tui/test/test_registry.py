@@ -6,14 +6,19 @@
 
 """Unit tests for command building in the registry."""
 
+import shlex
+
 from perseus_lite_tui.registry import (
     BOOL,
     build_launch_command,
     build_task_command,
+    DRIVE,
     normalize_bool,
     Option,
     option_args,
     Profile,
+    resource_conflict_message,
+    STRING,
     Task,
 )
 
@@ -65,3 +70,39 @@ def test_env_routing_selects_simulation():
 def test_build_task_command():
     task = Task('build', 'Build', ('pixi', 'run', '-e', 'default', 'build'))
     assert build_task_command(task) == ['pixi', 'run', '-e', 'default', 'build']
+
+
+def test_option_values_are_shell_quoted():
+    hostile = Profile(
+        'x',
+        'X',
+        'perseus_lite',
+        'perseus_lite.launch.py',
+        options=(Option('map', 'Map', STRING, ''),),
+    )
+    argv = build_launch_command(hostile, {'map': 'a; touch /tmp/pwned'}, '/ws')
+    inner = argv[-1]
+    assert "'map:=a; touch /tmp/pwned'" in inner
+    # The shell sees exactly one argument for the option (no injection).
+    words = shlex.split(inner.split('&&', 1)[1])
+    assert words[-1] == 'map:=a; touch /tmp/pwned'
+    assert 'touch' not in words
+
+
+def test_fixed_args_are_always_emitted():
+    prof = Profile(
+        'p',
+        'P',
+        'perseus_lite',
+        'perseus_lite_slam_and_nav2.launch.py',
+        fixed_args=('cmd_vel_topic:=/cmd_vel',),
+    )
+    inner = build_launch_command(prof, {}, '/ws')[-1]
+    assert inner.endswith('slam_and_nav2.launch.py cmd_vel_topic:=/cmd_vel')
+
+
+def test_resource_conflict_message_names_holder_and_resource():
+    msg = resource_conflict_message('SLAM + Nav2', {'Robot bringup': [DRIVE]})
+    assert 'SLAM + Nav2' in msg
+    assert 'Robot bringup' in msg
+    assert 'drive hardware' in msg

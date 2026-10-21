@@ -123,12 +123,15 @@ At this point, you can run standard ROS2 commands, and all the rover packages ar
 
 `direnv` automatically activates the Pixi environment (via the repo's `.envrc`, which runs `pixi shell-hook`) when you `cd` into the repo.
 If you don't like `direnv`, you can alternatively run `pixi shell` to be dropped into a `bash` shell with everything fully set up, including autocomplete.
-In this environment, you can either run `pixi run -e default build` to build the entire workspace, or you can `cd` to the ROS workspace root `software/ros_ws` and run `colcon build` just like you're developing in a standard ROS2 environment.
+In this environment, run `pixi run -e default build` to build the workspace (or `pixi run -e simulation build` / `pixi run -e machine-learning build` in those environments).
+A bare `colcon build` does **not** work as-is: each environment can only build a subset of the packages (eg. `perseus_vision` needs the `machine-learning` environment's CUDA `onnxruntime-cpp`, and `perseus_lite_simulation`/`perseus_lite_missions` need the `simulation` environment's Gazebo), so the Pixi tasks pass the right `--packages-skip` list for you - see the `build` tasks in `pixi.toml`.
+If you want to iterate on a single package, `cd` to the ROS workspace root `software/ros_ws` and run `colcon build --packages-select <package>` just like you're developing in a standard ROS2 environment.
 :::{important}
 You must **always** run `colcon` inside the workspace root `software/ros_ws`, otherwise the configuration file may not apply properly.
 :::
 :::{note}
-To the experienced ROS2 developers - you may notice the lack of a `--symlink-install` flag on the `colcon build` command - that's because it's configured using a [`colcon_defaults.yaml`](https://colcon.readthedocs.io/en/released/user/configuration.html#defaults-yaml) file present at `software/ros_ws/colcon_defaults.yaml` which adds this flag by default.
+To the experienced ROS2 developers - you may notice the lack of `--symlink-install` and `--cmake-args -DCMAKE_BUILD_TYPE=...` flags on the `colcon build` command - that's because they're configured using a [`colcon_defaults.yaml`](https://colcon.readthedocs.io/en/released/user/configuration.html#defaults-yaml) file present at `software/ros_ws/colcon_defaults.yaml`, which enables symlink installs and the `RelWithDebInfo` build type (and with it `-Werror`) by default.
+If you pass your own `--cmake-args`, they replace the defaults, so add `-DCMAKE_BUILD_TYPE=RelWithDebInfo` yourself.
 :::
 
 ### Before you start

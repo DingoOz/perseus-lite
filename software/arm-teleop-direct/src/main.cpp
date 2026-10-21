@@ -5,18 +5,23 @@
 #endif
 
 #include <curses.h>
+#include <signal.h>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <csignal>
+#include <cstdarg>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -25,13 +30,24 @@
 // Use the servo constants namespace for easier access to constants
 using namespace perseus::servo;
 
-// Global variables for cleanup
-static ST3215ServoReader* reader1_ptr = nullptr;
-static ST3215ServoReader* reader2_ptr = nullptr;
 static WINDOW* ncurses_win = nullptr;
 
+// Cleared by the SIGINT/SIGTERM/SIGHUP handler. The handler only stores to
+// this flag (async-signal-safe because the atomic is lock-free); the main
+// loop notices it, then disables torque and tears down ncurses itself.
 static std::atomic<bool> running(true);
+static_assert(std::atomic<bool>::is_always_lock_free, "signal flag must be lock-free");
 static std::atomic<bool> torque_protection(false);  // Global flag for torque protection
+
+// Thrown when a shutdown signal interrupts interactive start-up.
+class ShutdownRequested : public std::runtime_error
+{
+public:
+    ShutdownRequested()
+        : std::runtime_error("Interrupted by signal")
+    {
+    }
+};
 
 // Find available serial ports
 std::vector<std::string> find_serial_ports()
@@ -97,6 +113,10 @@ std::pair<std::string, std::string> select_serial_ports(const std::vector<std::s
         std::cout << "Select port for ARM 1 (0 to rescan, 1-" << ports.size() << " to select): ";
         if (!(std::cin >> selection1))
         {
+            if (!running.load() || std::cin.eof())
+            {
+                throw ShutdownRequested();
+            }
             std::cin.clear();
             std::cin.ignore(10000, '\n');
             std::cout << "Invalid input. Please enter a number.\n";
@@ -126,6 +146,10 @@ std::pair<std::string, std::string> select_serial_ports(const std::vector<std::s
         std::cout << "Select port for ARM 2 (0 to rescan, 1-" << ports.size() << " to select): ";
         if (!(std::cin >> selection2))
         {
+            if (!running.load() || std::cin.eof())
+            {
+                throw ShutdownRequested();
+            }
             std::cin.clear();
             std::cin.ignore(10000, '\n');
             std::cout << "Invalid input. Please enter a number.\n";
@@ -157,6 +181,10 @@ std::pair<std::string, std::string> select_serial_ports(const std::vector<std::s
     std::cout << "\nPress Enter to continue...";
     std::cin.ignore(10000, '\n');
     std::cin.get();
+    if (!running.load())
+    {
+        throw ShutdownRequested();
+    }
 
     return {port1, port2};
 }
@@ -314,9 +342,12 @@ uint16_t scale_position(uint16_t pos, uint16_t src_min, uint16_t src_max, uint16
     if (src_max == src_min)
         return dest_min;
 
-    // Calculate the scaling factor and apply it
-    double scale = static_cast<double>(dest_max - dest_min) / static_cast<double>(src_max - src_min);
-    return static_cast<uint16_t>(dest_min + (pos - src_min) * scale);
+    // Calculate the scaling factor and apply it (in double, so a reversed or
+    // out-of-range input can't wrap around the uint16_t result)
+    const double scale = (static_cast<double>(dest_max) - dest_min) / (static_cast<double>(src_max) - src_min);
+    const double scaled = dest_min + (static_cast<double>(pos) - src_min) * scale;
+    return static_cast<uint16_t>(std::clamp(scaled, static_cast<double>(limits::MIN_POSITION),
+                                            static_cast<double>(limits::MAX_POSITION)));
 }
 
 std::string get_working_directory()
@@ -325,8 +356,7 @@ std::string get_working_directory()
 }
 
 // Display servo values in ncurses window for both arms
-// Display servo values in ncurses window for both arms
-void display_servo_values([[maybe_unused]] WINDOW* win,
+void display_servo_values(WINDOW* win,
                           const std::vector<ServoData>& arm1_data,
                           const std::vector<ServoData>& arm2_data)
 {
@@ -342,7 +372,7 @@ void display_servo_values([[maybe_unused]] WINDOW* win,
 
     // Display first arm's servos
     mvwprintw(win, 4, 0, "Arm 1:");
-    for (size_t i = 0; i < 6; ++i)
+    for (size_t i = 0; i < arm::SERVO_COUNT; ++i)
     {
         int row = i + 5;
         const auto& servo = arm1_data[i];
@@ -370,11 +400,11 @@ void display_servo_values([[maybe_unused]] WINDOW* win,
         }
     }
 
-    mvwprintw(ncurses_win, 11, 0, "--------------------------------------------------------");
+    mvwprintw(win, 11, 0, "--------------------------------------------------------");
 
     // Display second arm's servos
-    mvwprintw(ncurses_win, 12, 0, "Arm 2:");
-    for (size_t i = 0; i < 6; ++i)
+    mvwprintw(win, 12, 0, "Arm 2:");
+    for (size_t i = 0; i < arm::SERVO_COUNT; ++i)
     {
         int row = i + 13;
         const auto& servo = arm2_data[i];
@@ -383,10 +413,10 @@ void display_servo_values([[maybe_unused]] WINDOW* win,
         {
             if (servo.mirroring && has_colors())
             {
-                wattron(ncurses_win, COLOR_PAIR(4) | A_BOLD);
+                wattron(win, COLOR_PAIR(4) | A_BOLD);
             }
 
-            mvwprintw(ncurses_win, row, 2, "%-8d %8u  %8u  %8u  [Torque: %5d] ",
+            mvwprintw(win, row, 2, "%-8d %8u  %8u  %8u  [Torque: %5d] ",
                       static_cast<int>(i + 1),
                       servo.current,
                       servo.min,
@@ -394,47 +424,47 @@ void display_servo_values([[maybe_unused]] WINDOW* win,
                       servo.torque);
 
             // Display torque bar
-            display_torque_bar(ncurses_win, row, 42, servo.torque);
+            display_torque_bar(win, row, 42, servo.torque);
 
             // Display position bar with adjusted x position to make room for torque
-            display_progress_bar(ncurses_win, row, 49, servo.current, servo.min, servo.max);
+            display_progress_bar(win, row, 49, servo.current, servo.min, servo.max);
 
             if (servo.mirroring && has_colors())
             {
-                wattroff(ncurses_win, COLOR_PAIR(4) | A_BOLD);
+                wattroff(win, COLOR_PAIR(4) | A_BOLD);
             }
         }
         else
         {
-            mvwprintw(ncurses_win, row, 2, "%-8d Error: %s",
+            mvwprintw(win, row, 2, "%-8d Error: %s",
                       static_cast<int>(i + 1),
                       servo.error.c_str());
         }
     }
 
-    mvwprintw(ncurses_win, 19, 0, "--------------------------------------------------------");
+    mvwprintw(win, 19, 0, "--------------------------------------------------------");
 
     // Add instructions and working directory
-    mvwprintw(ncurses_win, 20, 0, "Instructions:");
-    mvwprintw(ncurses_win, 21, 0, "1. Move both arms through their full range of motion");
-    mvwprintw(ncurses_win, 22, 0, "2. Press 's' to save calibration when done");
-    mvwprintw(ncurses_win, 23, 0, "3. Press keys 1-6 to toggle mirroring for each servo");
-    mvwprintw(ncurses_win, 24, 0, "4. Press 't' to toggle torque protection (%s)",
+    mvwprintw(win, 20, 0, "Instructions:");
+    mvwprintw(win, 21, 0, "1. Move both arms through their full range of motion");
+    mvwprintw(win, 22, 0, "2. Press 's' to save calibration when done");
+    mvwprintw(win, 23, 0, "3. Press keys 1-6 to toggle mirroring for each servo");
+    mvwprintw(win, 24, 0, "4. Press 't' to toggle torque protection (%s)",
               torque_protection.load() ? "ON" : "OFF");
-    mvwprintw(ncurses_win, 25, 0, "5. Press 'l' to load calibration from file");
-    mvwprintw(ncurses_win, 26, 0, "6. Press Ctrl+C to exit");
+    mvwprintw(win, 25, 0, "5. Press 'l' to load calibration from file");
+    mvwprintw(win, 26, 0, "6. Press Ctrl+C to exit");
 
     // Add color legend if colors are available
     if (has_colors())
     {
-        mvwprintw(ncurses_win, 27, 0, "Legend: ");
-        wattron(ncurses_win, COLOR_PAIR(4) | A_BOLD);
-        wprintw(ncurses_win, "Yellow rows = Mirrored servos");
-        wattroff(ncurses_win, COLOR_PAIR(4) | A_BOLD);
+        mvwprintw(win, 27, 0, "Legend: ");
+        wattron(win, COLOR_PAIR(4) | A_BOLD);
+        wprintw(win, "Yellow rows = Mirrored servos");
+        wattroff(win, COLOR_PAIR(4) | A_BOLD);
     }
-    mvwprintw(ncurses_win, 28, 0, "Save directory: %s", get_working_directory().c_str());
+    mvwprintw(win, 28, 0, "Save directory: %s", get_working_directory().c_str());
 
-    wrefresh(ncurses_win);
+    wrefresh(win);
 }
 
 void export_calibration_data(const std::vector<ServoData>& arm1_data,
@@ -588,38 +618,27 @@ void load_calibration_data(std::vector<ServoData>& arm1_data,
     }
 }
 
-void disable_torque_and_cleanup()
+// Disable torque on every servo of both arms, then tear down ncurses. Must
+// only be called from normal (non-signal) context while the readers are alive.
+void disable_torque_and_cleanup(ST3215ServoReader* reader1, ST3215ServoReader* reader2)
 {
-    // First disable ncurses if it's active
     if (ncurses_win != nullptr)
     {
-        mvwprintw(ncurses_win, 27, 0, "Disabling servo torque...");
+        mvwprintw(ncurses_win, ui::STATUS_ROW, 0, "Disabling servo torque...");
         wrefresh(ncurses_win);
     }
 
-    // Disable torque for all servos on both arms
-    if (reader1_ptr != nullptr)
+    for (ST3215ServoReader* reader : {reader1, reader2})
     {
-        for (uint8_t i = 1; i <= 6; ++i)
+        if (reader == nullptr)
         {
-            try
-            {
-                reader1_ptr->write_control_register(i, register_addr::TORQUE_ENABLE, 0);
-            }
-            catch (...)
-            {
-                // Ignore errors during shutdown
-            }
+            continue;
         }
-    }
-
-    if (reader2_ptr != nullptr)
-    {
-        for (uint8_t i = 1; i <= 6; ++i)
+        for (uint8_t id = arm::FIRST_SERVO_ID; id < arm::FIRST_SERVO_ID + arm::SERVO_COUNT; ++id)
         {
             try
             {
-                reader2_ptr->write_control_register(i, register_addr::TORQUE_ENABLE, 0);
+                reader->write_control_register(id, register_addr::TORQUE_ENABLE, torque_switch::OFF);
             }
             catch (...)
             {
@@ -636,29 +655,180 @@ void disable_torque_and_cleanup()
     }
 }
 
-void signal_handler([[maybe_unused]] int signum)
+// Async-signal-safe: only stores to a lock-free atomic.
+extern "C" void handle_shutdown_signal(int /*signum*/)
 {
-    running = false;
-    disable_torque_and_cleanup();
+    running.store(false);
+}
+
+void install_signal_handlers()
+{
+    struct sigaction action{};
+    action.sa_handler = handle_shutdown_signal;
+    sigemptyset(&action.sa_mask);
+    // No SA_RESTART: blocking reads (the std::cin port prompts) return EINTR
+    // so start-up can be aborted with Ctrl+C.
+    action.sa_flags = 0;
+    for (const int signum : {SIGINT, SIGTERM, SIGHUP})
+    {
+        if (sigaction(signum, &action, nullptr) != 0)
+        {
+            throw std::runtime_error("Failed to install signal handler");
+        }
+    }
+}
+
+// Print a status line, hold it on screen for `duration`, then clear it.
+void flash_status(int row, std::chrono::milliseconds duration, int color_pair, const char* format, ...)
+    __attribute__((format(printf, 4, 5)));
+
+void flash_status(int row, std::chrono::milliseconds duration, int color_pair, const char* format, ...)
+{
+    wmove(ncurses_win, row, 0);
+    wclrtoeol(ncurses_win);
+    if (color_pair != 0 && has_colors())
+    {
+        wattron(ncurses_win, COLOR_PAIR(color_pair) | A_BOLD);
+    }
+    va_list args;
+    va_start(args, format);
+    vw_printw(ncurses_win, format, args);
+    va_end(args);
+    if (color_pair != 0 && has_colors())
+    {
+        wattroff(ncurses_win, COLOR_PAIR(color_pair) | A_BOLD);
+    }
+    wrefresh(ncurses_win);
+    std::this_thread::sleep_for(duration);
+    wmove(ncurses_win, row, 0);
+    wclrtoeol(ncurses_win);
+    wrefresh(ncurses_win);
+}
+
+// Block until a key is pressed or a shutdown signal arrives.
+void wait_for_key()
+{
+    wtimeout(ncurses_win, ui::KEY_WAIT_POLL_MS);
+    while (running.load() && wgetch(ncurses_win) == ERR)
+    {
+    }
+    nodelay(ncurses_win, TRUE);  // Back to non-blocking for the main loop
+}
+
+struct Options
+{
+    std::string port1;
+    std::string port2;
+    unsigned int baud_rate = communication::DEFAULT_BAUD_RATE;
+};
+
+void print_usage(const char* program)
+{
+    std::cout << "Usage: " << program << " [--baud <rate>] [<arm1-port> <arm2-port>]\n"
+              << "  --baud <rate>  Serial baud rate for both arms (default "
+              << communication::DEFAULT_BAUD_RATE << ", the ST3215 factory default)\n"
+              << "  Without ports, available serial ports are listed for selection.\n";
+}
+
+// Returns false if the program should exit (eg --help).
+bool parse_options(int argc, char* argv[], Options& options)
+{
+    std::vector<std::string> positional;
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        std::string baud_text;
+        if (arg == "-h" || arg == "--help")
+        {
+            print_usage(argv[0]);
+            return false;
+        }
+        if (arg == "--baud" || arg == "-b")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::invalid_argument("--baud requires a value");
+            }
+            baud_text = argv[++i];
+        }
+        else if (arg.rfind("--baud=", 0) == 0)
+        {
+            baud_text = arg.substr(std::string("--baud=").size());
+        }
+        else if (!arg.empty() && arg[0] == '-')
+        {
+            throw std::invalid_argument("Unknown option: " + arg);
+        }
+        else
+        {
+            positional.push_back(arg);
+            continue;
+        }
+
+        std::size_t consumed = 0;
+        unsigned long baud = 0;
+        try
+        {
+            baud = std::stoul(baud_text, &consumed);
+        }
+        catch (const std::exception&)
+        {
+            consumed = 0;
+        }
+        if (consumed != baud_text.size() || baud == 0 || baud > std::numeric_limits<unsigned int>::max())
+        {
+            throw std::invalid_argument("Invalid baud rate: " + baud_text);
+        }
+        options.baud_rate = static_cast<unsigned int>(baud);
+    }
+
+    if (positional.size() == 2)
+    {
+        options.port1 = positional[0];
+        options.port2 = positional[1];
+    }
+    else if (!positional.empty())
+    {
+        throw std::invalid_argument("Expected either no ports or exactly two (arm 1 and arm 2)");
+    }
+    return true;
 }
 
 int main(int argc, char* argv[])
 {
-    std::vector<ServoData> arm1_data(6);
-    std::vector<ServoData> arm2_data(6);
+    std::vector<ServoData> arm1_data(arm::SERVO_COUNT);
+    std::vector<ServoData> arm2_data(arm::SERVO_COUNT);
+
+    // Declared outside the try so the error path can still disable torque
+    // through live readers (they used to be destroyed before the catch ran).
+    std::unique_ptr<ST3215ServoReader> reader1;
+    std::unique_ptr<ST3215ServoReader> reader2;
+
     try
     {
-        // Set up signal handling
-        signal(SIGINT, signal_handler);
+        Options options;
+        try
+        {
+            if (!parse_options(argc, argv, options))
+            {
+                return 0;
+            }
+        }
+        catch (const std::invalid_argument& e)
+        {
+            std::cerr << "Error: " << e.what() << "\n";
+            print_usage(argv[0]);
+            return 2;
+        }
+
+        // Install before initscr() so ncurses does not install its own
+        // SIGINT/SIGTERM handlers (which would exit without torque-off).
+        install_signal_handlers();
 
         // Get port paths
-        std::string port_path1, port_path2;
-        if (argc > 2)
-        {
-            port_path1 = argv[1];
-            port_path2 = argv[2];
-        }
-        else
+        std::string port_path1 = options.port1;
+        std::string port_path2 = options.port2;
+        if (port_path1.empty())
         {
             auto available_ports = find_serial_ports();
             auto [p1, p2] = select_serial_ports(available_ports);
@@ -667,8 +837,13 @@ int main(int argc, char* argv[])
         }
 
         std::cout << "Using serial ports:\nArm 1: " << port_path1
-                  << "\nArm 2: " << port_path2 << std::endl;
+                  << "\nArm 2: " << port_path2
+                  << "\nBaud rate: " << options.baud_rate << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(1));
+        if (!running.load())
+        {
+            throw ShutdownRequested();
+        }
 
         // Initialize ncurses
         ncurses_win = initscr();
@@ -678,6 +853,12 @@ int main(int argc, char* argv[])
         nodelay(ncurses_win, TRUE);
         keypad(ncurses_win, TRUE);
 
+        // Initialize servo readers for both arms
+        reader1 = std::make_unique<ST3215ServoReader>(port_path1, options.baud_rate,
+                                                      communication::DEFAULT_ACCELERATION);
+        reader2 = std::make_unique<ST3215ServoReader>(port_path2, options.baud_rate,
+                                                      communication::DEFAULT_ACCELERATION);
+
         // Initialize colors if terminal supports them
         if (has_colors())
         {
@@ -685,49 +866,34 @@ int main(int argc, char* argv[])
             init_pair(1, COLOR_BLUE, COLOR_BLACK);    // For min value
             init_pair(2, COLOR_GREEN, COLOR_BLACK);   // For max value
             init_pair(3, COLOR_WHITE, COLOR_BLACK);   // For current value
-            init_pair(4, COLOR_YELLOW, COLOR_BLACK);  // For mirrored servos
-        }
-
-        // Initialize servo readers and data storage for both arms
-        ST3215ServoReader reader1(port_path1, communication::DEFAULT_BAUD_RATE, communication::DEFAULT_ACCELERATION);
-        ST3215ServoReader reader2(port_path2, communication::DEFAULT_BAUD_RATE, communication::DEFAULT_ACCELERATION);
-        reader1_ptr = &reader1;
-        reader2_ptr = &reader2;
-
-        // Initialize colors for torque display
-        if (has_colors())
-        {
-            start_color();
-            init_pair(1, COLOR_BLUE, COLOR_BLACK);    // For min value
-            init_pair(2, COLOR_GREEN, COLOR_BLACK);   // For max value
-            init_pair(3, COLOR_WHITE, COLOR_BLACK);   // For current value
-            init_pair(4, COLOR_YELLOW, COLOR_BLACK);  // For medium torque
+            init_pair(4, COLOR_YELLOW, COLOR_BLACK);  // For mirrored servos / medium torque
             init_pair(5, COLOR_RED, COLOR_BLACK);     // For high torque
             init_pair(6, COLOR_WHITE, COLOR_BLACK);   // For low torque (grey)
         }
 
         // Main loop
-        while (running)
+        while (running.load())
         {
             // Read all servo positions and torque from first arm
-            for (uint8_t i = 0; i < 6; ++i)
+            for (size_t i = 0; i < arm::SERVO_COUNT && running.load(); ++i)
             {
+                const auto id = static_cast<uint8_t>(arm::FIRST_SERVO_ID + i);
                 try
                 {
                     auto& servo = arm1_data[i];
-                    servo.current = reader1.read_position(i + 1);
+                    servo.current = reader1->read_position(id);
                     servo.min = std::min(servo.min, servo.current);
                     servo.max = std::max(servo.max, servo.current);
 
                     // Read torque value
-                    int16_t torque = reader1.read_load(i + 1);
+                    int16_t torque = reader1->read_load(id);
                     servo.torque = torque;
 
                     // Check if torque exceeds safety threshold
                     if (torque_protection.load() && std::abs(torque) > limits::TORQUE_SAFETY_THRESHOLD)
                     {
                         // Disable torque
-                        reader1.write_control_register(i + 1, register_addr::TORQUE_ENABLE, 0);
+                        reader1->write_control_register(id, register_addr::TORQUE_ENABLE, torque_switch::OFF);
                         servo.error = "Torque limit exceeded - disabled";
                     }
                     else if (!servo.error.empty())
@@ -743,26 +909,27 @@ int main(int argc, char* argv[])
             }
 
             // Read all servo positions and torque from second arm
-            for (uint8_t i = 0; i < 6; ++i)
+            for (size_t i = 0; i < arm::SERVO_COUNT && running.load(); ++i)
             {
+                const auto id = static_cast<uint8_t>(arm::FIRST_SERVO_ID + i);
                 try
                 {
                     auto& servo = arm2_data[i];
-                    servo.current = reader2.read_position(i + 1);
+                    servo.current = reader2->read_position(id);
                     servo.min = std::min(servo.min, servo.current);
                     servo.max = std::max(servo.max, servo.current);
 
                     // Read torque value if servo is enabled (mirroring)
                     if (servo.mirroring)
                     {
-                        int16_t torque = reader2.read_load(i + 1);
+                        int16_t torque = reader2->read_load(id);
                         servo.torque = torque;
 
                         // Only apply software torque protection if enabled
                         if (torque_protection.load() && std::abs(torque) > limits::TORQUE_SAFETY_THRESHOLD)
                         {
                             // Disable torque
-                            reader2.write_control_register(i + 1, register_addr::TORQUE_ENABLE, 0);
+                            reader2->write_control_register(id, register_addr::TORQUE_ENABLE, torque_switch::OFF);
                             servo.error = "Torque limit exceeded - disabled";
                             servo.mirroring = false;  // Disable mirroring when torque limit is exceeded
                         }
@@ -771,7 +938,7 @@ int main(int argc, char* argv[])
                             // If we have an overload error but torque protection is off, try to re-enable
                             try
                             {
-                                reader2.write_control_register(i + 1, register_addr::TORQUE_ENABLE, 1);  // Re-enable torque
+                                reader2->write_control_register(id, register_addr::TORQUE_ENABLE, torque_switch::ON);
                                 servo.error.clear();
                             }
                             catch (const std::exception& e)
@@ -806,15 +973,153 @@ int main(int argc, char* argv[])
                 }
             }
 
+            if (!running.load())
+            {
+                break;
+            }
+
+            // Update display with both arms' data
+            display_servo_values(ncurses_win, arm1_data, arm2_data);
+
+            // Handle keyboard input
+            const int ch = wgetch(ncurses_win);
+            if (ch == 't' || ch == 'T')
+            {
+                const bool new_state = !torque_protection.load();
+                torque_protection.store(new_state);
+                flash_status(ui::STATUS_ROW, ui::STATUS_MESSAGE_TIME, new_state ? 2 : 5,
+                             "Torque protection %s", new_state ? "ENABLED" : "DISABLED");
+            }
+            else if (ch == 'l' || ch == 'L')
+            {
+                mvwprintw(ncurses_win, ui::LOAD_STATUS_ROW, 0, "Loading calibration data...");
+                wrefresh(ncurses_win);
+
+                try
+                {
+                    load_calibration_data(arm1_data, arm2_data);
+                    flash_status(ui::LOAD_STATUS_ROW, ui::STATUS_MESSAGE_TIME, 0,
+                                 "Calibration data loaded successfully!");
+                }
+                catch (const std::exception& e)
+                {
+                    flash_status(ui::LOAD_STATUS_ROW, ui::ERROR_MESSAGE_TIME, 0,
+                                 "Error loading calibration: %s", e.what());
+                }
+
+                // Apply the loaded mirroring states to arm 2's torque
+                for (size_t i = 0; i < arm::SERVO_COUNT; ++i)
+                {
+                    try
+                    {
+                        reader2->write_control_register(static_cast<uint8_t>(arm::FIRST_SERVO_ID + i),
+                                                        register_addr::TORQUE_ENABLE,
+                                                        arm2_data[i].mirroring ? torque_switch::ON
+                                                                               : torque_switch::OFF);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        arm2_data[i].error = std::string("Failed to set torque: ") + e.what();
+                        arm2_data[i].mirroring = false;
+                    }
+                }
+            }
+            else if (ch == 's' || ch == 'S')
+            {
+                mvwprintw(ncurses_win, ui::SAVE_STATUS_ROW, 0, "Saving calibration data...");
+                wrefresh(ncurses_win);
+
+                try
+                {
+                    export_calibration_data(arm1_data, arm2_data, port_path1, port_path2);
+                    wmove(ncurses_win, ui::SAVE_STATUS_ROW, 0);
+                    wclrtoeol(ncurses_win);
+                    mvwprintw(ncurses_win, ui::SAVE_STATUS_ROW, 0,
+                              "Calibration data saved successfully! Press any key to continue");
+                    wrefresh(ncurses_win);
+                    wait_for_key();
+                    wmove(ncurses_win, ui::SAVE_STATUS_ROW, 0);
+                    wclrtoeol(ncurses_win);
+                    wrefresh(ncurses_win);
+                }
+                catch (const std::exception& e)
+                {
+                    flash_status(ui::SAVE_STATUS_ROW, ui::ERROR_MESSAGE_TIME, 0,
+                                 "Error saving calibration: %s", e.what());
+                }
+            }
+            else if (ch >= '1' && ch < '1' + static_cast<int>(arm::SERVO_COUNT))
+            {
+                const auto servo_idx = static_cast<size_t>(ch - '1');
+                const auto id = static_cast<uint8_t>(arm::FIRST_SERVO_ID + servo_idx);
+                const bool new_mirror_state = !arm2_data[servo_idx].mirroring;
+                arm2_data[servo_idx].mirroring = new_mirror_state;
+
+                try
+                {
+                    // Follower torque is on exactly while the servo is mirroring
+                    reader2->write_control_register(id, register_addr::TORQUE_ENABLE,
+                                                    new_mirror_state ? torque_switch::ON : torque_switch::OFF);
+                    flash_status(ui::STATUS_ROW, ui::STATUS_MESSAGE_TIME, 4,
+                                 "Servo %d mirroring %s, torque %s", static_cast<int>(id),
+                                 new_mirror_state ? "enabled" : "disabled",
+                                 new_mirror_state ? "enabled" : "disabled");
+                }
+                catch (const std::exception& e)
+                {
+                    arm2_data[servo_idx].mirroring = !new_mirror_state;  // Revert mirroring state on error
+                    flash_status(ui::STATUS_ROW, ui::STATUS_MESSAGE_TIME, 0,
+                                 "Error controlling torque for servo %d: %s", static_cast<int>(id), e.what());
+                }
+            }
+
+            // Leader-follower: drive each mirrored arm 2 servo to arm 1's
+            // position, scaled from arm 1's calibrated range to arm 2's.
+            for (size_t i = 0; i < arm::SERVO_COUNT && running.load(); ++i)
+            {
+                if (arm2_data[i].mirroring && arm1_data[i].error.empty() && arm2_data[i].error.empty())
+                {
+                    try
+                    {
+                        const uint16_t scaled_pos = scale_position(
+                            arm1_data[i].current,
+                            arm1_data[i].min,
+                            arm1_data[i].max,
+                            arm2_data[i].min,
+                            arm2_data[i].max);
+
+                        reader2->write_position(static_cast<uint8_t>(arm::FIRST_SERVO_ID + i), scaled_pos);
+
+                        // Update the current position in our data structure
+                        arm2_data[i].current = scaled_pos;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        arm2_data[i].error = std::string("Mirror error: ") + e.what();
+                        arm2_data[i].mirroring = false;  // Disable mirroring on error
+                        arm2_data[i].torque = 0;         // Clear torque when mirroring fails
+                    }
+                }
+            }
+
             // Delay to prevent overwhelming servos
             std::this_thread::sleep_for(std::chrono::milliseconds(ui::SERVO_REFRESH_DELAY_MS));
         }
 
-        // ... end of function ...
+        // Shutdown requested (signal): torque off while the readers are alive
+        disable_torque_and_cleanup(reader1.get(), reader2.get());
+        std::cout << "Program terminated by user." << std::endl;
+        return 0;
+    }
+    catch (const ShutdownRequested&)
+    {
+        disable_torque_and_cleanup(reader1.get(), reader2.get());
+        std::cout << "\nProgram terminated by user." << std::endl;
+        return 0;
     }
     catch (const std::exception& e)
     {
-        disable_torque_and_cleanup();
+        disable_torque_and_cleanup(reader1.get(), reader2.get());
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }

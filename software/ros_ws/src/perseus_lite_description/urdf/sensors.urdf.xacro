@@ -27,7 +27,8 @@
     <joint name="${prefix}c1_lidar_joint" type="fixed">
         <parent link="${prefix}chassis"/>
         <child link="${prefix}c1_lidar_frame"/>
-        <origin xyz="0.0 0.22 0.0" rpy="0 0 0"/>
+        <!-- Centred under the chassis and mounted upside down (as on the robot) -->
+        <origin xyz="0.0 0.0 -0.04" rpy="${pi} 0 0"/>
     </joint>
 
     <gazebo reference="${prefix}c1_lidar_frame">

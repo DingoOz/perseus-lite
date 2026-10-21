@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -172,6 +173,10 @@ namespace perseus_vision
         RCLCPP_INFO(get_logger(), "Model loaded — input: %s  output: %s",
                     _input_name.c_str(), _output_name.c_str());
 
+        // Fail at load time (not with out-of-bounds reads per frame) if the
+        // model's I/O doesn't match what preprocess/postprocess assume.
+        validate_model_io();
+
         // ── subscribers ──────────────────────────────────────────────────────────────
         _sub_image = create_subscription<sensor_msgs::msg::Image>(
             camera_topic, kQosDepth,
@@ -299,19 +304,20 @@ namespace perseus_vision
         _orig_w = bgr_image.cols;
 
         // ── letterbox (preserve aspect ratio) ───────────────────────────────
-        float scale = std::min(640.0f / _orig_w, 640.0f / _orig_h);
-        int new_w = static_cast<int>(_orig_w * scale);
-        int new_h = static_cast<int>(_orig_h * scale);
+        float scale = std::min(static_cast<float>(_input_w) / _orig_w,
+                               static_cast<float>(_input_h) / _orig_h);
+        int new_w = std::min(_input_w, static_cast<int>(_orig_w * scale));
+        int new_h = std::min(_input_h, static_cast<int>(_orig_h * scale));
 
-        _pad_x = (640 - new_w) / 2;
-        _pad_y = (640 - new_h) / 2;
+        _pad_x = (_input_w - new_w) / 2;
+        _pad_y = (_input_h - new_h) / 2;
         _letterbox_scale = scale;
 
         cv::Mat resized;
         cv::resize(bgr_image, resized, cv::Size(new_w, new_h));
 
-        // pad to 640x640 with grey (114 = YOLOv8 default padding value)
-        cv::Mat padded(640, 640, CV_8UC3, cv::Scalar(114, 114, 114));
+        // pad to the model input size with grey (114 = YOLOv8 default padding value)
+        cv::Mat padded(_input_h, _input_w, CV_8UC3, cv::Scalar(114, 114, 114));
         resized.copyTo(padded(cv::Rect(_pad_x, _pad_y, new_w, new_h)));
 
         // ── BGR → RGB → float → CHW ─────────────────────────────────────────
@@ -323,32 +329,40 @@ namespace perseus_vision
         cv::split(rgb, channels);
 
         std::vector<float> blob;
-        blob.reserve(3 * 640 * 640);
+        const size_t plane = static_cast<size_t>(_input_w) * static_cast<size_t>(_input_h);
+        blob.reserve(3 * plane);
         for (auto& ch : channels)
             blob.insert(blob.end(),
                         reinterpret_cast<float*>(ch.data),
-                        reinterpret_cast<float*>(ch.data) + 640 * 640);
+                        reinterpret_cast<float*>(ch.data) + plane);
         return blob;
     }
     // ── postprocess ───────────────────────────────────────────────────────────────
-    std::vector<Detection> CubeDetector::postprocess(const float* data, size_t num_boxes)
+    std::vector<Detection> CubeDetector::postprocess(const float* data, size_t num_boxes, bool transposed)
     {
         std::vector<cv::Rect> boxes;
         std::vector<float> scores;
         std::vector<int> class_ids;
 
+        const size_t num_channels = 4 + static_cast<size_t>(_num_classes);
+        // Value of channel c (0-3 box, 4.. class scores) for box i.
+        auto at = [&](size_t c, size_t i)
+        {
+            return transposed ? data[i * num_channels + c] : data[c * num_boxes + i];
+        };
+
         for (size_t i = 0; i < num_boxes; ++i)
         {
-            const float xc = data[0 * num_boxes + i];
-            const float yc = data[1 * num_boxes + i];
-            const float w = data[2 * num_boxes + i];
-            const float h = data[3 * num_boxes + i];
+            const float xc = at(0, i);
+            const float yc = at(1, i);
+            const float w = at(2, i);
+            const float h = at(3, i);
 
             int best_class = 0;
             float best_score = 0.0f;
             for (int c = 0; c < _num_classes; ++c)
             {
-                float score = data[(4 + c) * num_boxes + i];
+                float score = at(4 + static_cast<size_t>(c), i);
                 if (score > best_score)
                 {
                     best_score = score;
@@ -358,7 +372,7 @@ namespace perseus_vision
 
             if (best_score < _confidence_threshold)
                 continue;
-            // YOLOv8 outputs box coordinates in the letterboxed 640x640 space, so we need to reverse the letterbox transformation to get back to original image coordinates
+            // YOLOv8 outputs box coordinates in the letterboxed model-input space, so we need to reverse the letterbox transformation to get back to original image coordinates
             const int x1 = std::clamp(static_cast<int>((xc - w / 2.0f - _pad_x) / _letterbox_scale), 0, _orig_w);
             const int y1 = std::clamp(static_cast<int>((yc - h / 2.0f - _pad_y) / _letterbox_scale), 0, _orig_h);
             const int x2 = std::clamp(static_cast<int>((xc + w / 2.0f - _pad_x) / _letterbox_scale), 0, _orig_w);
@@ -812,13 +826,65 @@ namespace perseus_vision
         }
     }
 
+    void CubeDetector::validate_model_io()
+    {
+        auto fail = [this](const std::string& what)
+        {
+            RCLCPP_FATAL(get_logger(), "Incompatible ONNX model '%s': %s", _model_path.c_str(), what.c_str());
+            throw std::runtime_error("Incompatible ONNX model: " + what);
+        };
+        auto shape_str = [](const std::vector<int64_t>& shape)
+        {
+            std::ostringstream ss;
+            ss << "[";
+            for (size_t i = 0; i < shape.size(); ++i)
+                ss << (i ? ", " : "") << shape[i];
+            ss << "]";
+            return ss.str();
+        };
+
+        // Input: [1, 3, H, W]. Dynamic (<= 0) H/W fall back to 640x640.
+        Ort::TypeInfo input_type = _ort_session->GetInputTypeInfo(0);
+        const auto in_shape = input_type.GetTensorTypeAndShapeInfo().GetShape();
+        if (in_shape.size() != 4 || (in_shape[1] > 0 && in_shape[1] != 3))
+            fail("input shape " + shape_str(in_shape) + " is not [1, 3, H, W]");
+        if (in_shape[2] > 0 && in_shape[3] > 0)
+        {
+            _input_h = static_cast<int>(in_shape[2]);
+            _input_w = static_cast<int>(in_shape[3]);
+        }
+        else
+        {
+            RCLCPP_WARN(get_logger(), "Model input %s has dynamic H/W; using %dx%d",
+                        shape_str(in_shape).c_str(), _input_w, _input_h);
+        }
+
+        // Output: [1, 4 + num_classes, N] or [1, N, 4 + num_classes]. Dynamic
+        // dims are re-checked per frame in run_inference_pipeline.
+        const int64_t expected_channels = 4 + _num_classes;
+        Ort::TypeInfo output_type = _ort_session->GetOutputTypeInfo(0);
+        const auto out_shape = output_type.GetTensorTypeAndShapeInfo().GetShape();
+        if (out_shape.size() != 3)
+            fail("output shape " + shape_str(out_shape) + " is not rank 3 (YOLOv8 detect head)");
+        const bool dims_known = out_shape[1] > 0 && out_shape[2] > 0;
+        if (dims_known && out_shape[1] != expected_channels && out_shape[2] != expected_channels)
+            fail("output shape " + shape_str(out_shape) + " has no dimension of " +
+                 std::to_string(expected_channels) + " (4 box values + " + std::to_string(_num_classes) +
+                 " class scores)");
+        const bool transposed = dims_known && out_shape[1] != expected_channels;
+
+        RCLCPP_INFO(get_logger(), "Model I/O: input %dx%d, output %s%s",
+                    _input_w, _input_h, shape_str(out_shape).c_str(),
+                    transposed ? " (transposed [1, N, C] layout)" : "");
+    }
+
     void CubeDetector::run_inference_pipeline(
         const cv::Mat& bgr_image,
         const std_msgs::msg::Header& header)
     {
         auto blob = preprocess(bgr_image);
 
-        std::array<int64_t, 4> input_shape = {1, 3, 640, 640};
+        std::array<int64_t, 4> input_shape = {1, 3, _input_h, _input_w};
         Ort::MemoryInfo mem_info =
             Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
@@ -835,10 +901,37 @@ namespace perseus_vision
             output_names, 1);
 
         const float* out_data = output_tensors[0].GetTensorData<float>();
-        const auto out_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
-        const size_t num_boxes = static_cast<size_t>(out_shape[2]);
+        const auto out_info = output_tensors[0].GetTensorTypeAndShapeInfo();
+        const auto out_shape = out_info.GetShape();
 
-        auto detections = postprocess(out_data, num_boxes);
+        // Expect [1, C, N] (Ultralytics default) or transposed [1, N, C], with
+        // C = 4 box values + one score per class. Never index past the tensor.
+        const int64_t expected_channels = 4 + _num_classes;
+        if (out_shape.size() != 3 || out_shape[0] != 1)
+        {
+            RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
+                                  "Unexpected model output rank/batch (need [1, %ld, N]); skipping frame",
+                                  static_cast<long>(expected_channels));
+            return;
+        }
+        const bool transposed = out_shape[1] != expected_channels && out_shape[2] == expected_channels;
+        if (out_shape[1] != expected_channels && !transposed)
+        {
+            RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
+                                  "Model output [1, %ld, %ld] doesn't match %d classes (need %ld channels); skipping frame",
+                                  static_cast<long>(out_shape[1]), static_cast<long>(out_shape[2]),
+                                  _num_classes, static_cast<long>(expected_channels));
+            return;
+        }
+        const size_t num_boxes = static_cast<size_t>(transposed ? out_shape[1] : out_shape[2]);
+        if (out_info.GetElementCount() != num_boxes * static_cast<size_t>(expected_channels))
+        {
+            RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
+                                  "Model output element count mismatch; skipping frame");
+            return;
+        }
+
+        auto detections = postprocess(out_data, num_boxes, transposed);
         publish_annotated_image(bgr_image, detections, header);
 
         if (_depth_estimation_mode == "depth_image")

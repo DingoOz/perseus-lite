@@ -83,11 +83,11 @@ digraph perseus_lite_arch {
 
     // ---- Perception → EKF ----
     imu      -> ekf       [label="/imu/data"];
-    hwif     -> ekf       [label="/odom"];
+    diffdrive -> ekf      [label="/diff_drive_base_controller/odom"];
     camera   -> bt        [label="markers / cubes", style=dashed];
 
     // ---- Control path ----
-    twistmux  -> diffdrive [label="/cmd_vel_out", penwidth=2.2, color="#ec407a"];
+    twistmux  -> diffdrive [label="/cmd_vel", penwidth=2.2, color="#ec407a"];
     diffdrive -> hwif      [label="wheel cmds", penwidth=2.2, color="#ec407a"];
     hwif      -> serial    [label="SYNC_WRITE\n@ ~50 Hz", penwidth=2.2, color="#ec407a"];
     serial    -> fl;
@@ -103,7 +103,7 @@ Internally, the code is split into several sections:
 
 - {file}`software/native/`: Programs which run natively, independent of ROS
 - [`software/ros_ws/`](project:#dir_software_ros_ws): Workspace containing ROS2 code
-- [`software/shared/`](project:#dir_software_shared): Shared libraries between native and ROS2 code, and sometimes firmware too
+- [`software/shared/`](project:#dir_software_shared): Shared libraries between native and ROS2 code
 
 ## Native Programs
 
@@ -149,7 +149,7 @@ To ensure that this doesn't happen at all, run a clean after every git pull or a
 
 :::{tip}
 Shared libraries that are packaged for RoboStack/conda-forge can be made available to your ROS2 package by adding them as a `<depend>` in your package's `package.xml`, then adding the corresponding `ros-jazzy-<pkg>` (or conda-forge) entry to `pixi.toml`'s `[dependencies]` and re-running `pixi install` to re-solve the lock file.
-Bespoke libraries under `software/shared/` that aren't packaged for RoboStack (e.g. `simple-networking`, `fd-wrapper`) are instead consumed via a CMake `add_subdirectory` fallback - see `perseus_sensors/CMakeLists.txt` for an example.
+Bespoke libraries under `software/shared/` that aren't packaged for RoboStack can instead be consumed via a CMake `add_subdirectory` fallback. No workspace package currently links one (perseus_sensors dropped `simple-networking` with the unused M2M2 lidar driver), so these libraries are not built or tested by CI.
 :::
 
 ### Simple-networking

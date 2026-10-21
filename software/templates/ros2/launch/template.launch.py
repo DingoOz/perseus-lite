@@ -22,7 +22,8 @@ def generate_launch_description():
 
     # XACRO FILES
     robot_description_xacro = PathJoinSubstitution(
-        [FindPackageShare("perseus"), "urdf", "perseus.urdf.xacro"]
+        # TODO: replace with the package + xacro this launch file describes
+        [FindPackageShare("package_name"), "urdf", "robot.urdf.xacro"]
     )
     robot_description_content = Command(
         [

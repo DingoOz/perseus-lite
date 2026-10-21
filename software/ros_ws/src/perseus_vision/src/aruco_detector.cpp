@@ -230,15 +230,20 @@ namespace perseus_vision
             bool has_camera_matrix = false;
             {
                 std::lock_guard<std::mutex> lock(camera_matrix_mutex_);
-                if (!camera_matrix_.empty())
+                if (should_use_camera_info_ && !has_camera_info_)
+                {
+                    // Don't pose markers with the parameter-default intrinsics
+                    // while waiting for the real calibration.
+                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                                         "use_camera_info is true but no valid camera_info received yet on '%s'; "
+                                         "skipping pose estimation",
+                                         camera_info_topic_.c_str());
+                }
+                else if (!camera_matrix_.empty())
                 {
                     local_camera_matrix = camera_matrix_.clone();
                     local_dist_coeffs = dist_coeffs_.clone();
                     has_camera_matrix = true;
-                }
-                else
-                {
-                    RCLCPP_WARN_ONCE(this->get_logger(), "Camera matrix not initialized, skipping pose estimation");
                 }
             }
 
@@ -248,7 +253,10 @@ namespace perseus_vision
 
                 cv::aruco::drawDetectedMarkers(annotated_frame, corners, ids);
 
-                // Marker corner points in 3D (square marker with given length)
+                // Marker corner points in 3D (square marker with given length).
+                // This exact order (TL, TR, BR, BL, marker frame centred, y up)
+                // is what SOLVEPNP_IPPE_SQUARE requires, and matches the corner
+                // order cv::aruco returns.
                 std::vector<cv::Point3f> marker_obj_points;
                 float half_length = marker_length_ / 2.0f;
                 marker_obj_points.push_back(cv::Point3f(-half_length, half_length, 0));
@@ -261,7 +269,8 @@ namespace perseus_vision
                     cv::Vec3d rvec, tvec;
                     std::vector<cv::Point2f> image_points(corners[i].begin(), corners[i].end());
 
-                    cv::solvePnP(marker_obj_points, image_points, local_camera_matrix, local_dist_coeffs, rvec, tvec);
+                    cv::solvePnP(marker_obj_points, image_points, local_camera_matrix, local_dist_coeffs, rvec, tvec,
+                                 false, cv::SOLVEPNP_IPPE_SQUARE);
                     rvecs.push_back(rvec);
                     tvecs.push_back(tvec);
 
@@ -378,7 +387,9 @@ namespace perseus_vision
         {
             geometry_msgs::msg::PoseStamped marker_pose_camera;
             marker_pose_camera.header.stamp = header.stamp;
-            marker_pose_camera.header.frame_id = camera_frame_;
+            // The image's own optical frame; the camera_frame parameter is
+            // only a fallback for publishers that leave frame_id empty.
+            marker_pose_camera.header.frame_id = header.frame_id.empty() ? camera_frame_ : header.frame_id;
 
             marker_pose_camera.pose.position.x = tvec[0];
             marker_pose_camera.pose.position.y = tvec[1];
@@ -569,6 +580,13 @@ namespace perseus_vision
 
     void ArucoDetector::camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
     {
+        if (msg->k[0] <= 0.0 || msg->k[4] <= 0.0)
+        {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                                 "Ignoring camera_info with invalid intrinsics (fx=%f, fy=%f)", msg->k[0], msg->k[4]);
+            return;
+        }
+
         std::lock_guard<std::mutex> lock(camera_matrix_mutex_);
 
         // Extract camera matrix K (3x3)
@@ -590,6 +608,11 @@ namespace perseus_vision
             dist_coeffs_.at<double>(i, 0) = msg->d[i];
         }
 
+        if (!has_camera_info_)
+        {
+            RCLCPP_INFO(this->get_logger(), "Received camera calibration from camera_info; pose estimation enabled");
+        }
+        has_camera_info_ = true;
         RCLCPP_DEBUG(this->get_logger(), "Updated camera calibration from camera_info topic");
     }
 

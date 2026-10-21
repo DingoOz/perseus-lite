@@ -1,39 +1,23 @@
 # partially taken from Articubot One project by Articulated Robotics
 # see: https://github.com/joshnewans/articubot_one/tree/new_gazebo
+#
+# TF is NOT bridged: robot_state_publisher, the EKF (odom -> base_link) and
+# slam_toolbox (map -> odom) own it, exactly as on the robot. Joint states
+# come from ros2_control's joint_state_broadcaster.
 - ros_topic_name: "clock"
   gz_topic_name: "clock"
   ros_type_name: "rosgraph_msgs/msg/Clock"
   gz_type_name: "gz.msgs.Clock"
   direction: GZ_TO_ROS
-- ros_topic_name: "tf"
-  gz_topic_name: "tf"
-  ros_type_name: "tf2_msgs/msg/TFMessage"
-  gz_type_name: "gz.msgs.Pose_V"
-  direction: GZ_TO_ROS
-- ros_topic_name: "gazebo_odom"
-  gz_topic_name: "odom"
-  ros_type_name: "nav_msgs/msg/Odometry"
-  gz_type_name: "gz.msgs.Odometry"
-  direction: GZ_TO_ROS
-- ros_topic_name: "joint_states"
-  gz_topic_name: "joint_state"
-  ros_type_name: "sensor_msgs/msg/JointState"
-  gz_type_name: "gz.msgs.Model"
-  direction: GZ_TO_ROS
-# 2D lidar
+# 2D lidar (republished as /scan_filtered by scan_range_filter)
 - ros_topic_name: "scan"
   gz_topic_name: "scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
-# 3D lidar
-- ros_topic_name: "scan_3d"
-  gz_topic_name: "scan_3d"
-  ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "gz.msgs.LaserScan"
-  direction: GZ_TO_ROS
-- ros_topic_name: "imu"
-  gz_topic_name: "imu"
+# IMU (the URDF's gz sensor publishes on imu/data, matching the real i2c_imu)
+- ros_topic_name: "imu/data"
+  gz_topic_name: "imu/data"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
@@ -91,15 +75,4 @@
   gz_topic_name: "/camera/camera/infra2/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
-  direction: GZ_TO_ROS
-# ─── Livox MID-360 ───────────────────────────────────────────────────────────
-- ros_topic_name: "/livox/lidar"
-  gz_topic_name: "/scan_3d/points"
-  ros_type_name: "sensor_msgs/msg/PointCloud2"
-  gz_type_name: "gz.msgs.PointCloudPacked"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/livox/imu"
-  gz_topic_name: "/scan_3d/imu"
-  ros_type_name: "sensor_msgs/msg/Imu"
-  gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS

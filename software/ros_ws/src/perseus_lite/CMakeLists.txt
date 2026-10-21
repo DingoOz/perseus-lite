@@ -75,6 +75,9 @@ if(BUILD_TESTING)
   include(GoogleTest)
   gtest_discover_tests(controller_config_test)
 
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(scan_range_filter_test tests/test_scan_range_filter.py)
+
   ament_lint_auto_find_test_dependencies()
 endif()
 
@@ -83,6 +86,8 @@ install(
   DIRECTORY config launch maps rviz urdf worlds
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL)
+
+install(PROGRAMS scripts/scan_range_filter.py DESTINATION lib/${PROJECT_NAME})
 
 # ROS FINALISATION
 ament_package()

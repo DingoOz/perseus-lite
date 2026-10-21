@@ -32,23 +32,39 @@ ssize_t Client::transmit(const string& message)
 }
 ssize_t Client::transmit(const std::vector<uint8_t>& buffer)
 {
-    const ssize_t bytes_written = send(static_cast<int>(_socket), buffer.data(), buffer.size(), 0);
-    if (bytes_written < 0)
+    // Loop until the whole buffer is sent: a stream socket may accept only part
+    // of it, and a signal may interrupt the call (EINTR). MSG_NOSIGNAL turns a
+    // peer reset into an EPIPE error instead of a process-killing SIGPIPE.
+    size_t total_written = 0;
+    while (total_written < buffer.size())
     {
-        string err = std::strerror(errno);
-        throw std::runtime_error("Failed to transmit data: " + err);
+        const ssize_t bytes_written = send(static_cast<int>(_socket), buffer.data() + total_written,
+                                           buffer.size() - total_written, MSG_NOSIGNAL);
+        if (bytes_written < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            string err = std::strerror(errno);
+            throw std::runtime_error(std::format("Failed to transmit data to {} ({} of {} bytes sent): {}",
+                                                 _get_full_address_string(), total_written, buffer.size(), err));
+        }
+        if (bytes_written == 0)
+        {
+            throw std::runtime_error("Connection closed: 0 bytes transmitted");
+        }
+        total_written += static_cast<size_t>(bytes_written);
     }
-    if (bytes_written == 0 && buffer.size() > 0)
-    {
-        throw std::runtime_error("Connection closed: 0 bytes transmitted");
-    }
-    return bytes_written;
+    return static_cast<ssize_t>(total_written);
 }
 
 std::optional<std::vector<uint8_t>> Client::receive(size_t len, bool blocking)
 {
     std::vector<uint8_t> buffer(len);
-    const ssize_t bytes_read = recv(static_cast<int>(_socket), buffer.data(), len, blocking ? 0 : MSG_DONTWAIT);
+    ssize_t bytes_read;
+    do
+    {
+        bytes_read = recv(static_cast<int>(_socket), buffer.data(), len, blocking ? 0 : MSG_DONTWAIT);
+    } while (bytes_read < 0 && errno == EINTR);
     if (bytes_read < 0)
     {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -126,7 +142,6 @@ int Client::_create_bound_socket(struct addrinfo*& current_addr, struct addrinfo
     return -1;
 }
 
-#include <iostream>
 int Client::_create_socket(const socket_config_handlers_t& config_handlers)
 {
     // perform address resolution
@@ -175,14 +190,17 @@ int Client::_create_socket(const socket_config_handlers_t& config_handlers)
                 continue;
             }
         }
-        if (connect(socket_fd, _destination_addrinfo->ai_addr, _destination_addrinfo->ai_addrlen) < 0)
+        // connect to the address currently being tried (not the list head), so that
+        // falling back from e.g. IPv6 to IPv4 actually uses the IPv4 address
+        if (connect(socket_fd, current_addr->ai_addr, current_addr->ai_addrlen) < 0)
         {
+            const int connect_errno = errno;  // close() may overwrite errno
             close(socket_fd);
             // if we've run out of addresses to try, it's failed
             if (!current_addr->ai_next)
             {
                 throw std::runtime_error(std::format("Failed to connect to {}: {}",
-                                                     _get_full_address_string(), std::strerror(errno)));
+                                                     _get_full_address_string(), std::strerror(connect_errno)));
             }
             continue;
         }
