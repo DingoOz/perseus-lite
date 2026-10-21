@@ -1,51 +1,64 @@
+<!--
+  Lighter variant of navigate_through_poses_sequential_v2.xml (no per-waypoint
+  Spin/Wait/BackUp recovery, 2 s dwell). Same result semantics:
+    SUCCESS - every waypoint in {goals} was reached (queue exhausted).
+    FAILURE - a waypoint could not be reached; it and the waypoints after it
+              stay in {goals}.
+
+  Requires the perseus_bt_nodes plugin (GetGoalFromGoals, PopFirstGoal,
+  IsGoalQueueEmpty) in bt_navigator's plugin_lib_names.
+-->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <Sequence name="SequentialWaypointNav">
 
-      <!-- Loop through waypoints until goals array is empty -->
-      <!-- Use Fallback to catch GetGoalFromGoals failure (empty array = success) -->
-      <Fallback name="LoopWaypoints">
-        <Sequence name="ProcessWaypoint">
+      <!-- Loop through waypoints until one fails or the queue is empty;
+           IsGoalQueueEmpty below decides which of the two ended the loop. -->
+      <ForceSuccess name="RunUntilQueueEmptyOrWaypointFails">
+        <KeepRunningUntilFailure name="LoopWaypoints">
+          <Sequence name="ProcessWaypoint">
 
-          <!-- Extract first goal from remaining goals (fails when array is empty, which triggers fallback) -->
-          <GetGoalFromGoals goals="{goals}" index="0" goal="{current_goal}"/>
+            <!-- Extract first goal from remaining goals (fails when the array is empty) -->
+            <GetGoalFromGoals goals="{goals}" index="0" goal="{current_goal}"/>
 
-          <!-- Navigate to single goal -->
-          <PipelineSequence name="NavigateToPose">
-            <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
-            <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+            <!-- Navigate to single goal -->
+            <PipelineSequence name="NavigateToPose">
+              <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+              <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
 
-            <!-- Plan to this single goal -->
-            <RateController hz="1.0">
-              <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-                <ComputePathToPose goal="{current_goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+              <!-- Plan to this single goal -->
+              <RateController hz="1.0">
+                <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+                  <ComputePathToPose goal="{current_goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+                  <Sequence>
+                    <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                    <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+                  </Sequence>
+                </RecoveryNode>
+              </RateController>
+
+              <!-- Follow path to goal -->
+              <RecoveryNode number_of_retries="1" name="FollowPath">
+                <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
                 <Sequence>
-                  <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
-                  <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+                  <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                  <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
                 </Sequence>
               </RecoveryNode>
-            </RateController>
+            </PipelineSequence>
 
-            <!-- Follow path to goal -->
-            <RecoveryNode number_of_retries="1" name="FollowPath">
-              <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
-              <Sequence>
-                <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
-                <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
-              </Sequence>
-            </RecoveryNode>
-          </PipelineSequence>
+            <!-- Wait at waypoint after reaching it -->
+            <Wait name="WaitAtWaypoint" wait_duration="2.0"/>
 
-          <!-- Wait at waypoint after reaching it -->
-          <Wait name="WaitAtWaypoint" wait_duration="2.0"/>
+            <!-- Remove the first goal only AFTER it was reached -->
+            <PopFirstGoal input_goals="{goals}" output_goals="{goals}"/>
 
-          <!-- Remove the first goal from the array and shift remaining goals forward -->
-          <PopFirstGoal input_goals="{goals}" output_goals="{goals}"/>
+          </Sequence>
+        </KeepRunningUntilFailure>
+      </ForceSuccess>
 
-        </Sequence>
-        <!-- When ProcessWaypoint fails (no more goals), return SUCCESS to complete navigation -->
-        <Sequence name="AllGoalsCompleted"/>
-      </Fallback>
+      <!-- Empty queue: all reached (SUCCESS). Otherwise a waypoint failed (FAILURE). -->
+      <IsGoalQueueEmpty name="AllWaypointsCompleted" goals="{goals}"/>
 
     </Sequence>
   </BehaviorTree>

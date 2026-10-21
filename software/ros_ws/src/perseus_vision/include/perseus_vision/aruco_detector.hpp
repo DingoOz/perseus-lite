@@ -94,9 +94,13 @@ namespace perseus_vision
         std::string output_topic_{"/detection/aruco/detections"};
         std::string camera_info_topic_{"/camera/camera/color/camera_info"};
 
-        // Camera intrinsics
+        // Camera intrinsics. Filled from parameters at startup; replaced by
+        // camera_info when use_camera_info is true (guarded by camera_matrix_mutex_).
         cv::Mat camera_matrix_;
         cv::Mat dist_coeffs_;
+        // True once a valid camera_info arrived. With use_camera_info, poses are
+        // not estimated before that (the parameter defaults are not this camera).
+        bool has_camera_info_{false};
 
         // ArUco
         cv::aruco::ArucoDetector detector_;

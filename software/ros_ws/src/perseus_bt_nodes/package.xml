@@ -13,6 +13,9 @@
   <depend>behaviortree_cpp</depend>
   <depend>geometry_msgs</depend>
   <depend>builtin_interfaces</depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>nav2_behavior_tree</test_depend>
+  <test_depend>tinyxml2_vendor</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

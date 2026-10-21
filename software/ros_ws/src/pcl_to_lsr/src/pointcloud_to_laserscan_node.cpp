@@ -58,13 +58,16 @@ namespace pointcloud_to_laserscan
     PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions& options)
         : rclcpp::Node("pointcloud_to_laserscan", options)
     {
-        target_frame_ = this->declare_parameter("target_frame", "livox_frame");
+        // Empty target_frame: publish the scan in the input cloud's own frame.
+        target_frame_ = this->declare_parameter("target_frame", "");
         tolerance_ = this->declare_parameter("transform_tolerance", 0.01);
         // TODO(hidmic): adjust default input queue size based on actual concurrency levels
         // achievable by the associated executor
         input_queue_size_ = this->declare_parameter(
             "queue_size", static_cast<int>(std::thread::hardware_concurrency()));
-        min_height_ = this->declare_parameter("min_height", std::numeric_limits<double>::min());
+        // lowest() (not min(), which is the smallest *positive* double) so that by
+        // default points at or below z = 0 are kept.
+        min_height_ = this->declare_parameter("min_height", std::numeric_limits<double>::lowest());
         max_height_ = this->declare_parameter("max_height", std::numeric_limits<double>::max());
         angle_min_ = this->declare_parameter("angle_min", -M_PI);
         angle_max_ = this->declare_parameter("angle_max", M_PI);
@@ -74,8 +77,11 @@ namespace pointcloud_to_laserscan
         range_max_ = this->declare_parameter("range_max", std::numeric_limits<double>::max());
         inf_epsilon_ = this->declare_parameter("inf_epsilon", 1.0);
         use_inf_ = this->declare_parameter("use_inf", true);
-        cloud_in_ = this->declare_parameter("cloud_in", "/livox/lidar");
-        scan_out_ = this->declare_parameter("scan_out", "/livox/scan");
+        // Relative defaults so launch-file remappings (cloud_in:=..., scan_out:=...)
+        // take effect; absolute defaults made remaps silently do nothing. The
+        // output is NOT "scan" so it never collides with a real 2D lidar's /scan.
+        cloud_in_ = this->declare_parameter("cloud_in", "cloud_in");
+        scan_out_ = this->declare_parameter("scan_out", "scan_out");
         pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_out_, rclcpp::SensorDataQoS());
 
         using std::placeholders::_1;
