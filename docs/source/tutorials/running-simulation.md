@@ -82,8 +82,12 @@ Once the simulation is running and the controller is active, you can control the
 pixi shell -e simulation
 cd software/ros_ws
 source install/setup.bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r /cmd_vel:=/cmd_vel_out -p stamped:=true
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=key_vel -p stamped:=true
 ```
+
+Keyboard commands go to `/key_vel`; `twist_mux` forwards the highest-priority
+active source (gamepad `/joy_vel` > keyboard `/key_vel` > web `/web_vel` > Nav2)
+to `/cmd_vel`, which the base controller subscribes to.
 
 ## Troubleshooting
 
@@ -118,14 +122,14 @@ This sets the state directly.
 2. **Verify topic connections**:
 
    ```bash
-   ros2 topic info /cmd_vel_out
+   ros2 topic info /cmd_vel
    ```
 
-   This should show both publishers and subscribers.
+   This should show `twist_mux` as the publisher and `diff_drive_base_controller` as the subscriber.
 
 3. **Test topic communication**:
    ```bash
-   ros2 topic echo /cmd_vel_out
+   ros2 topic echo /cmd_vel
    ```
    You should see messages when pressing keys in the teleop terminal.
 

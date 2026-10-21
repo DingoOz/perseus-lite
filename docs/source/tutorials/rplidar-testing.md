@@ -82,6 +82,14 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ### Basic Driver Launch
 
+:::{note}
+`rplidar_ros` is vendored in the colcon workspace (RoboStack's 2.1.0 package
+has no C1 support), so build the workspace first (`pixi run -e default build`)
+then run the commands below from `pixi shell` after
+`source software/ros_ws/install/setup.bash`, without the `pixi run -e default`
+prefix.
+:::
+
 Launch the RPLidar driver with default settings:
 
 ```console

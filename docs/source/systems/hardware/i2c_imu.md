@@ -1,6 +1,6 @@
 # I2C IMU
 
-Perseus-Lite includes an I2C IMU (Inertial Measurement Unit) driver that provides orientation, angular velocity, and linear acceleration data through ROS2.
+Perseus-Lite includes an I2C IMU (Inertial Measurement Unit) driver that provides angular velocity and linear acceleration on `/imu/data` (no orientation: `orientation_covariance[0]` is `-1`, so consumers such as the EKF must not fuse orientation from it).
 
 ## Supported IMU Types
 
@@ -46,7 +46,7 @@ To use a different IMU type, modify the config file at `src/perseus_sensors/i2c_
 Example configuration for MPU6050:
 
 ```yaml
-i2c_imu:
+i2c_imu_node:
   ros__parameters:
     device_type: "mpu6050"
     i2c_bus: "/dev/i2c-7"
@@ -91,4 +91,4 @@ To verify the IMU is working correctly:
 ros2 topic echo /imu/data
 ```
 
-The node publishes sensor_msgs/Imu messages containing orientation, angular velocity, and linear acceleration data.
+The node publishes `sensor_msgs/Imu` messages on `/imu/data` containing angular velocity and linear acceleration (orientation is marked unavailable). A failed I2C read publishes nothing for that cycle; after repeated failures the node re-initialises the device.
