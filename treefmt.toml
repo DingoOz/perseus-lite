@@ -4,6 +4,8 @@ excludes = [
     # web_ui is a self-contained Svelte app with its own prettier + plugins (yarn);
     # format it via its own tooling, not the global treefmt prettier.
     "software/web_ui/**",
+    # Vendored third-party driver; keep byte-identical to upstream.
+    "software/ros_ws/src/rplidar_ros/**",
     "build/**",
     "result/**",
     "generated/**",
