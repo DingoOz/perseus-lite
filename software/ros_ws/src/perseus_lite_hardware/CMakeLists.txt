@@ -129,8 +129,16 @@ if(BUILD_TESTING)
     PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_link_libraries(st3215_protocol_test GTest::gtest_main)
 
+  # Drives the real plugin against a fake servo bus on a pseudo-terminal
+  add_executable(st3215_system_test tests/st3215_system_test.cpp)
+  target_link_libraries(st3215_system_test ${PROJECT_NAME} GTest::gtest util)
+
   include(GoogleTest)
   gtest_discover_tests(st3215_protocol_test)
+  gtest_discover_tests(
+    st3215_system_test
+    PROPERTIES
+    TIMEOUT 60)
 
   ament_lint_auto_find_test_dependencies()
 endif()

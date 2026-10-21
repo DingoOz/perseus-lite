@@ -38,49 +38,50 @@ Feetech ST3215 Continuous Servo (12-bit encoder, Serial communication interface)
 
 ## Configuration
 
-Serial Port Configuration
-The hardware interface requires two key parameters in the robot configuration:
+The hardware parameters are set by
+`perseus_lite_description/ros2_control/perseus_lite.ros2_control.xacro`:
 
-serial_port: Path to the serial device (e.g., /dev/ttyACM0)
-baud_rate: Communication speed (recommended: 115200)
+| Parameter            | Default        | Meaning                                                                           |
+| -------------------- | -------------- | --------------------------------------------------------------------------------- |
+| `serial_port`        | `/dev/ttyACM0` | Serial device of the servo bus adapter                                            |
+| `baud_rate`          | `1000000`      | Bus speed (ST3215 factory default is 1 Mbps)                                      |
+| `inverted_servo_ids` | `2,3`          | Servos mounted mirrored (left side); commands **and** feedback are negated        |
+| `servo_max_rpm`      | `485.1`        | RPM represented by a full-scale (32767) wheel-mode speed; calibrated on the robot |
+| `acceleration`       | `0`            | Servo `ACC` register; 0 disables the on-servo speed ramp                          |
 
-Servo ID Configuration
-Each joint must have a unique id parameter specifying the servo's address.
+Servo IDs are set per joint with an `id` parameter. The wiring on the robot is:
 
-Example YAML Configuration:
-
-```yaml
-serial_port: /dev/ttyACM0
-baud_rate: 115200
-joints:
-  front_left_wheel:
-    id: 1
-  front_right_wheel:
-    id: 2
-```
+| Joint                     | Servo ID | Side (inverted) |
+| ------------------------- | -------- | --------------- |
+| `front_left_wheel_joint`  | 3        | left (yes)      |
+| `front_right_wheel_joint` | 4        | right           |
+| `rear_left_wheel_joint`   | 2        | left (yes)      |
+| `rear_right_wheel_joint`  | 1        | right           |
 
 ## Communication Protocol
 
-Packet Structure: Header (0xFF 0xFF), ID, Length, Command, Data, Checksum
-Supports velocity and position commands
-Asynchronous read/write operations
-Configurable timeouts for read and write operations
+- Packet structure: header (`0xFF 0xFF`), ID, length, instruction, parameters, checksum
+- Wheel-mode speed is sign-magnitude: bit 15 is the direction, the low 15 bits the
+  magnitude (nominally one encoder step per second)
+- Wheel-mode position wraps every revolution (0-4095); the driver unwraps it into a
+  continuous joint angle
+- A background thread polls each servo's status (position, speed, temperature); a
+  servo whose status has not been received for 1 s reports zero velocity. Write
+  acknowledgements are discarded and never count as feedback.
 
-## Error Handling
+## Safety behaviour
 
-Includes:
+The ST3215 has no communication watchdog: it keeps running at its last goal speed
+if the host stops talking to it. The driver therefore:
 
-- Comprehensive error logging
-- Graceful handling of serial port disconnections
-- Safe thread management with RAII principles
+- zeroes the goal speed before enabling torque at configure time
+- writes zero speed on deactivate, and zero speed plus torque-off on cleanup,
+  shutdown and on any ros2_control error transition (`on_error`)
+- relies on `diff_drive_base_controller`'s `cmd_vel_timeout` (0.5 s) to zero the
+  command when velocity input stops
 
-## Performance Characteristics
-
-Maximum Velocity: ±1000 RPM
-Communication Timeout:
-
-- Read: 10 ms
-- Write: 1 ms
+A crash or `SIGKILL` of the controller manager while driving still leaves the servos
+running until the next configure; cut power to stop them in that case.
 
 ## Threading Model
 
