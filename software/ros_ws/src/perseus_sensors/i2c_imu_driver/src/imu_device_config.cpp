@@ -18,6 +18,11 @@ namespace i2c_imu_driver
     const double MPU_TEMP_SCALE_FACTOR = 1.0 / 340.0;                       // 340 LSB/°C
     const double MPU_TEMP_OFFSET = 36.53;                                   // 36.53°C offset
 
+    // MPU9250 temperature (datasheet: TEMP_degC = TEMP_OUT / 333.87 + 21 with a
+    // ~0 room-temperature offset); differs from the MPU6050's 340 LSB/°C + 36.53
+    const double MPU9250_TEMP_SCALE_FACTOR = 1.0 / 333.87;  // 333.87 LSB/°C
+    const double MPU9250_TEMP_OFFSET = 21.0;                // 21°C offset
+
     // LSM6DS3 Constants (same as LSM6DSOX)
     const double LSM6DS3_ACCEL_SCALE_FACTOR = 0.061e-3 * 9.81;        // ±2g range: 0.061 mg/LSB to m/s²
     const double LSM6DS3_GYRO_SCALE_FACTOR = 8.75e-3 * M_PI / 180.0;  // ±250 dps range: 8.75 mdps/LSB to rad/s
@@ -99,8 +104,8 @@ namespace i2c_imu_driver
             .ctrl_value = 0x07,          // Sample rate divider (1kHz / (1 + 7) = 125 Hz)
             .accel_scale_factor = MPU_ACCEL_SCALE_FACTOR,
             .gyro_scale_factor = MPU_GYRO_SCALE_FACTOR,
-            .temp_scale_factor = MPU_TEMP_SCALE_FACTOR,
-            .temp_offset = MPU_TEMP_OFFSET,
+            .temp_scale_factor = MPU9250_TEMP_SCALE_FACTOR,
+            .temp_offset = MPU9250_TEMP_OFFSET,
             .little_endian = false,  // Big-endian format
             .data_bytes_per_axis = 2};
 

@@ -1,13 +1,21 @@
+# Loaded by launch/i2c_imu.launch.py. Launch arguments given a non-empty value
+# (i2c_bus, device_type, device_address, update_rate, frame_id, required,
+# retry_count) override the values here.
 i2c_imu_node:
   ros__parameters:
     # I2C Configuration
     i2c_bus: "/dev/i2c-7"
     device_type: "lsm6dsox" # Supported devices: lsm6dsox, mpu6050, mpu9250, lsm6ds3
-    device_address: 0x6A # Will use device default if not specified
-    update_rate: 100.0
+    device_address: 106 # 0x6A (7-bit address, 0-127)
+    update_rate: 100.0 # Hz, (0, 1000]
     frame_id: "imu_link"
     required: false # Optional hardware
-    retry_count: 3
+    retry_count: 3 # Initialisation attempts (>= 1; 0 is treated as 1)
+    # Runtime fault handling: failed reads are never published. After this many
+    # consecutive failed reads the device is reopened and re-initialised, at
+    # most once every reinit_interval seconds until it recovers.
+    max_consecutive_failures: 10
+    reinit_interval: 1.0
     # Calibration parameters
     # Accelerometer calibration
     accel_scale_x: 1.0
@@ -23,21 +31,24 @@ i2c_imu_node:
     gyro_offset_x: 0.0
     gyro_offset_y: 0.0
     gyro_offset_z: 0.0
-    # Covariance matrices
+    # Covariance matrices: either a 3-element diagonal [xx, yy, zz] or a full
+    # row-major 3x3 (9 elements). Any other length is rejected and the default
+    # diagonal is used. Orientation is not estimated (orientation_covariance[0]
+    # is published as -1).
     # Angular velocity covariance (adjust based on sensor specs)
     angular_velocity_covariance: [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
     # Linear acceleration covariance (adjust based on sensor specs)
     linear_acceleration_covariance: [0.1, 0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.1]
 # Example configurations for different IMU devices
-# To use a different IMU, simply change the device_type parameter above.
-# The device_address will automatically use the default for the selected device type.
+# To use a different IMU, change device_type above AND set device_address to match:
+# device_address does NOT follow device_type automatically.
 
 # Examples:
 # For MPU6050:
 # i2c_imu_node:
 #   ros__parameters:
 #     device_type: "mpu6050"
-#     device_address: 0x68  # Default MPU6050 address
+#     device_address: 104  # 0x68, default MPU6050 address
 #     i2c_bus: "/dev/i2c-1"
 #     update_rate: 100.0
 
@@ -45,7 +56,7 @@ i2c_imu_node:
 # i2c_imu_node:
 #   ros__parameters:
 #     device_type: "mpu9250"
-#     device_address: 0x68  # Default MPU9250 address
+#     device_address: 104  # 0x68, default MPU9250 address
 #     i2c_bus: "/dev/i2c-1"
 #     update_rate: 100.0
 
@@ -53,7 +64,7 @@ i2c_imu_node:
 # i2c_imu_node:
 #   ros__parameters:
 #     device_type: "lsm6ds3"
-#     device_address: 0x6A  # Default LSM6DS3 address
+#     device_address: 106  # 0x6A, default LSM6DS3 address
 #     i2c_bus: "/dev/i2c-1"
 #     update_rate: 100.0
 
@@ -61,6 +72,6 @@ i2c_imu_node:
 # i2c_imu_node:
 #   ros__parameters:
 #     device_type: "lsm6dsox"
-#     device_address: 0x6A  # Default LSM6DSOX address
+#     device_address: 106  # 0x6A, default LSM6DSOX address
 #     i2c_bus: "/dev/i2c-7"
 #     update_rate: 100.0

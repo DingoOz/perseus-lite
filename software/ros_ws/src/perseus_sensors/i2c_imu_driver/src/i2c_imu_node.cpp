@@ -1,10 +1,34 @@
 #include "i2c_imu_driver/i2c_imu_node.hpp"
 
+#include <cmath>
+#include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 
 namespace i2c_imu_driver
 {
+    namespace
+    {
+        /// Highest supported publish rate. Each cycle is three blocking I2C
+        /// transactions, so rates above this cannot be met and would turn the
+        /// timer into a busy loop.
+        constexpr double MAX_UPDATE_RATE_HZ = 1000.0;
+
+        std::string to_hex(uint8_t value)
+        {
+            char buffer[5];
+            std::snprintf(buffer, sizeof(buffer), "0x%02X", value);
+            return std::string(buffer);
+        }
+
+        int16_t decode_int16(const uint8_t* bytes, bool little_endian)
+        {
+            const uint16_t lo = little_endian ? bytes[0] : bytes[1];
+            const uint16_t hi = little_endian ? bytes[1] : bytes[0];
+            return static_cast<int16_t>(static_cast<uint16_t>((hi << 8) | lo));
+        }
+    }  // anonymous namespace
 
     I2cImuNode::I2cImuNode(const rclcpp::NodeOptions& options)
         : Node("i2c_imu_node", options),
@@ -30,8 +54,10 @@ namespace i2c_imu_driver
             }
         }
 
-        // Start timer for periodic reading
-        auto timer_period = std::chrono::milliseconds(static_cast<int>(1000.0 / _update_rate));
+        // Start timer for periodic reading. Use a nanosecond period so rates that
+        // don't divide 1000 evenly aren't truncated (and >1 kHz can't become 0 ms).
+        const auto timer_period = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::duration<double>(1.0 / _update_rate));
         _timer = create_wall_timer(timer_period, std::bind(&I2cImuNode::_timer_callback, this));
 
         RCLCPP_INFO(get_logger(), "I2C IMU node initialized successfully with device: %s", _device_type.c_str());
@@ -55,6 +81,10 @@ namespace i2c_imu_driver
         declare_parameter("frame_id", "imu_link");
         declare_parameter("required", false);
         declare_parameter("retry_count", 3);
+        // Consecutive failed reads before the device is torn down and re-initialised
+        declare_parameter("max_consecutive_failures", 10);
+        // Minimum time between re-initialisation attempts (seconds)
+        declare_parameter("reinit_interval", 1.0);
 
         // Calibration parameters
         declare_parameter("accel_scale_x", 1.0);
@@ -71,7 +101,8 @@ namespace i2c_imu_driver
         declare_parameter("gyro_offset_y", 0.0);
         declare_parameter("gyro_offset_z", 0.0);
 
-        // Covariance matrices (orientation is not estimated, so no parameter for it)
+        // Covariance matrices (orientation is not estimated, so no parameter for it).
+        // Either a 3-element diagonal or a 9-element row-major 3x3 matrix.
         declare_parameter("angular_velocity_covariance", std::vector<double>{
                                                              0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01});
         declare_parameter("linear_acceleration_covariance", std::vector<double>{
@@ -93,7 +124,9 @@ namespace i2c_imu_driver
         _update_rate = get_parameter("update_rate").as_double();
         _frame_id = get_parameter("frame_id").as_string();
         _required = get_parameter("required").as_bool();
-        _retry_count = get_parameter("retry_count").as_int();
+        _retry_count = static_cast<int>(get_parameter("retry_count").as_int());
+        _max_consecutive_failures = static_cast<int>(get_parameter("max_consecutive_failures").as_int());
+        _reinit_interval = get_parameter("reinit_interval").as_double();
 
         // Get device configuration
         auto config_opt = ImuDeviceRegistry::get_device_config(_device_type);
@@ -134,24 +167,52 @@ namespace i2c_imu_driver
         auto angular_cov = get_parameter("angular_velocity_covariance").as_double_array();
         auto linear_cov = get_parameter("linear_acceleration_covariance").as_double_array();
 
-        if (angular_cov.size() == 9)
-        {
-            std::copy(angular_cov.begin(), angular_cov.end(), _angular_velocity_covariance.begin());
-        }
-        if (linear_cov.size() == 9)
-        {
-            std::copy(linear_cov.begin(), linear_cov.end(), _linear_acceleration_covariance.begin());
-        }
+        _angular_velocity_covariance = _parse_covariance(
+            "angular_velocity_covariance", angular_cov, DEFAULT_ANGULAR_VELOCITY_COVARIANCE);
+        _linear_acceleration_covariance = _parse_covariance(
+            "linear_acceleration_covariance", linear_cov, DEFAULT_LINEAR_ACCELERATION_COVARIANCE);
 
         // Validate parameters
-        if (_update_rate <= 0.0)
+        if (!std::isfinite(_update_rate) || _update_rate <= 0.0 || _update_rate > MAX_UPDATE_RATE_HZ)
         {
-            throw std::invalid_argument("Update rate must be positive");
+            throw std::invalid_argument("Update rate must be in (0, " + std::to_string(MAX_UPDATE_RATE_HZ) +
+                                        "] Hz, got: " + std::to_string(_update_rate));
         }
         if (_retry_count < 0)
         {
             throw std::invalid_argument("Retry count must be non-negative");
         }
+        if (_retry_count == 0)
+        {
+            // The init loop counts attempts, so 0 would mean "never try" and always fail.
+            RCLCPP_WARN(get_logger(), "retry_count=0 would never attempt initialisation; using 1");
+            _retry_count = 1;
+        }
+        if (_max_consecutive_failures < 1)
+        {
+            throw std::invalid_argument("max_consecutive_failures must be >= 1");
+        }
+        if (!std::isfinite(_reinit_interval) || _reinit_interval < 0.0)
+        {
+            throw std::invalid_argument("reinit_interval must be a non-negative number of seconds");
+        }
+    }
+
+    std::array<double, 9> I2cImuNode::_parse_covariance(const std::string& name,
+                                                        const std::vector<double>& values,
+                                                        const std::array<double, 9>& fallback)
+    {
+        auto matrix = covariance_from_param(values);
+        if (!matrix)
+        {
+            RCLCPP_ERROR(get_logger(),
+                         "Parameter '%s' must be a 3-element diagonal or a 9-element row-major 3x3 "
+                         "matrix of finite values with a non-negative diagonal (got %zu elements); "
+                         "using the default diagonal [%g, %g, %g]",
+                         name.c_str(), values.size(), fallback[0], fallback[4], fallback[8]);
+            return fallback;
+        }
+        return *matrix;
     }
 
     void I2cImuNode::_initialize_publishers()
@@ -191,17 +252,31 @@ namespace i2c_imu_driver
     {
         if (!_device_initialized || !_i2c_device || !_i2c_device->is_connected())
         {
+            // Only reachable after a runtime failure tore the device down (if the
+            // startup init fails no timer is created), so keep trying to recover.
+            _attempt_reinitialize();
             return;
         }
 
         try
         {
-            // Read sensor data
-            ImuData raw_data = _read_sensor_data();
+            // Read sensor data. A failed read publishes nothing this cycle: a
+            // zero-filled message would look like a valid free-fall reading.
+            const std::optional<ImuData> raw_data = _read_sensor_data();
+            if (!raw_data)
+            {
+                _handle_read_failure();
+                return;
+            }
+            if (_consecutive_failures > 0)
+            {
+                RCLCPP_INFO(get_logger(), "IMU reads recovered after %d failed attempt(s)", _consecutive_failures);
+                _consecutive_failures = 0;
+            }
 
             // Apply calibration using shared function
             ImuData calibrated_data = apply_calibration(
-                raw_data,
+                *raw_data,
                 _accel_scale_x, _accel_scale_y, _accel_scale_z,
                 _accel_offset_x, _accel_offset_y, _accel_offset_z,
                 _gyro_scale_x, _gyro_scale_y, _gyro_scale_z,
@@ -220,90 +295,89 @@ namespace i2c_imu_driver
         }
     }
 
-    ImuData I2cImuNode::_read_sensor_data()
+    void I2cImuNode::_handle_read_failure()
     {
-        ImuData data;
-        data.timestamp = std::chrono::steady_clock::now();
+        ++_consecutive_failures;
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                             "Failed to read IMU data from %s:%s (%d consecutive failure(s)); not publishing",
+                             _i2c_bus_path.c_str(), to_hex(_device_address).c_str(), _consecutive_failures);
 
+        if (_consecutive_failures >= _max_consecutive_failures)
+        {
+            RCLCPP_ERROR(get_logger(), "%d consecutive IMU read failures, re-initialising the device",
+                         _consecutive_failures);
+            // Don't delay the first attempt after a run of failures
+            _last_reinit_attempt = std::chrono::steady_clock::time_point{};
+            _attempt_reinitialize();
+        }
+    }
+
+    void I2cImuNode::_attempt_reinitialize()
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (_last_reinit_attempt != std::chrono::steady_clock::time_point{} &&
+            now - _last_reinit_attempt < std::chrono::duration<double>(_reinit_interval))
+        {
+            return;
+        }
+        _last_reinit_attempt = now;
+
+        // Tear down and reopen the bus so a stale file descriptor is replaced too
+        _device_initialized = false;
+        _i2c_device.reset();
+        if (_initialize_device())
+        {
+            RCLCPP_INFO(get_logger(), "IMU re-initialised after %d failed read(s)", _consecutive_failures);
+            _consecutive_failures = 0;
+        }
+    }
+
+    std::optional<ImuData> I2cImuNode::_read_sensor_data()
+    {
         if (!_i2c_device || !_i2c_device->is_connected() || !_device_config)
         {
-            return data;
+            return std::nullopt;
         }
+
+        ImuData data;
+        data.timestamp = std::chrono::steady_clock::now();
 
         uint8_t accel_data[6];
         uint8_t gyro_data[6];
         uint8_t temp_data[2];
+        const bool little_endian = _device_config->little_endian;
 
-        // Read accelerometer data using device-specific register
-        if (_i2c_device->read_registers(_device_config->accel_data_register, accel_data, 6))
+        // Accelerometer and gyroscope are mandatory: if either block fails the
+        // whole sample is discarded rather than published half-filled.
+        if (!_i2c_device->read_registers(_device_config->accel_data_register, accel_data, sizeof(accel_data)))
         {
-            int16_t accel_x_raw, accel_y_raw, accel_z_raw;
-
-            if (_device_config->little_endian)
-            {
-                // Little-endian format (LSB first)
-                accel_x_raw = (accel_data[1] << 8) | accel_data[0];
-                accel_y_raw = (accel_data[3] << 8) | accel_data[2];
-                accel_z_raw = (accel_data[5] << 8) | accel_data[4];
-            }
-            else
-            {
-                // Big-endian format (MSB first)
-                accel_x_raw = (accel_data[0] << 8) | accel_data[1];
-                accel_y_raw = (accel_data[2] << 8) | accel_data[3];
-                accel_z_raw = (accel_data[4] << 8) | accel_data[5];
-            }
-
-            // Convert to m/s² using device-specific scale factor
-            data.accel_x = accel_x_raw * _device_config->accel_scale_factor;
-            data.accel_y = accel_y_raw * _device_config->accel_scale_factor;
-            data.accel_z = accel_z_raw * _device_config->accel_scale_factor;
+            return std::nullopt;
+        }
+        if (!_i2c_device->read_registers(_device_config->gyro_data_register, gyro_data, sizeof(gyro_data)))
+        {
+            return std::nullopt;
         }
 
-        // Read gyroscope data using device-specific register
-        if (_i2c_device->read_registers(_device_config->gyro_data_register, gyro_data, 6))
+        // Convert to m/s² using device-specific scale factor
+        data.accel_x = decode_int16(&accel_data[0], little_endian) * _device_config->accel_scale_factor;
+        data.accel_y = decode_int16(&accel_data[2], little_endian) * _device_config->accel_scale_factor;
+        data.accel_z = decode_int16(&accel_data[4], little_endian) * _device_config->accel_scale_factor;
+
+        // Convert to rad/s using device-specific scale factor
+        data.gyro_x = decode_int16(&gyro_data[0], little_endian) * _device_config->gyro_scale_factor;
+        data.gyro_y = decode_int16(&gyro_data[2], little_endian) * _device_config->gyro_scale_factor;
+        data.gyro_z = decode_int16(&gyro_data[4], little_endian) * _device_config->gyro_scale_factor;
+
+        // Temperature is informational only (not part of sensor_msgs/Imu), so a
+        // failed read marks it unknown instead of discarding the sample.
+        if (_i2c_device->read_registers(_device_config->temp_data_register, temp_data, sizeof(temp_data)))
         {
-            int16_t gyro_x_raw, gyro_y_raw, gyro_z_raw;
-
-            if (_device_config->little_endian)
-            {
-                // Little-endian format (LSB first)
-                gyro_x_raw = (gyro_data[1] << 8) | gyro_data[0];
-                gyro_y_raw = (gyro_data[3] << 8) | gyro_data[2];
-                gyro_z_raw = (gyro_data[5] << 8) | gyro_data[4];
-            }
-            else
-            {
-                // Big-endian format (MSB first)
-                gyro_x_raw = (gyro_data[0] << 8) | gyro_data[1];
-                gyro_y_raw = (gyro_data[2] << 8) | gyro_data[3];
-                gyro_z_raw = (gyro_data[4] << 8) | gyro_data[5];
-            }
-
-            // Convert to rad/s using device-specific scale factor
-            data.gyro_x = gyro_x_raw * _device_config->gyro_scale_factor;
-            data.gyro_y = gyro_y_raw * _device_config->gyro_scale_factor;
-            data.gyro_z = gyro_z_raw * _device_config->gyro_scale_factor;
+            data.temperature = (decode_int16(temp_data, little_endian) * _device_config->temp_scale_factor) +
+                               _device_config->temp_offset;
         }
-
-        // Read temperature data using device-specific register
-        if (_i2c_device->read_registers(_device_config->temp_data_register, temp_data, 2))
+        else
         {
-            int16_t temp_raw;
-
-            if (_device_config->little_endian)
-            {
-                // Little-endian format (LSB first)
-                temp_raw = (temp_data[1] << 8) | temp_data[0];
-            }
-            else
-            {
-                // Big-endian format (MSB first)
-                temp_raw = (temp_data[0] << 8) | temp_data[1];
-            }
-
-            // Convert to Celsius using device-specific scale factor and offset
-            data.temperature = (temp_raw * _device_config->temp_scale_factor) + _device_config->temp_offset;
+            data.temperature = std::numeric_limits<double>::quiet_NaN();
         }
 
         return data;
@@ -327,7 +401,8 @@ namespace i2c_imu_driver
         imu_msg.angular_velocity.y = imu_data.gyro_y;
         imu_msg.angular_velocity.z = imu_data.gyro_z;
 
-        // Orientation (not provided by most IMUs, set to unknown)
+        // Orientation is not estimated by this driver. Per the sensor_msgs/Imu
+        // convention, orientation_covariance[0] = -1 (set below) marks it unknown.
         imu_msg.orientation.x = 0.0;
         imu_msg.orientation.y = 0.0;
         imu_msg.orientation.z = 0.0;
@@ -373,9 +448,9 @@ namespace i2c_imu_driver
                 }
                 if (who_am_i != _device_config->who_am_i_value)
                 {
-                    throw std::runtime_error("Invalid WHO_AM_I value: expected 0x" +
-                                             std::to_string(_device_config->who_am_i_value) +
-                                             ", got 0x" + std::to_string(who_am_i));
+                    throw std::runtime_error("Invalid WHO_AM_I value: expected " +
+                                             to_hex(_device_config->who_am_i_value) +
+                                             ", got " + to_hex(who_am_i));
                 }
 
                 // Reset device
