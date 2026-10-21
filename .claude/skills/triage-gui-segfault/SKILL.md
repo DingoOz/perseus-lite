@@ -36,7 +36,9 @@ env | grep -iE 'GZ_CONFIG_PATH|LD_LIBRARY_PATH|AMENT_PREFIX_PATH|CMAKE_PREFIX_PA
   reading a cache written by the other version corrupts an `FcCharSet`
   traversal. Fixed by pointing `XDG_CACHE_HOME` at `$CONDA_PREFIX/var/cache`
   (env-private) in the GUI `ExecuteProcess`'s `additional_env` (done in
-  `gazebo.launch.py`, `perseus_sim.launch.py`, `mapping_using_slam_toolbox.launch.py`).
+  `gazebo.launch.py`, `perseus_sim.launch.py`, `mapping_using_slam_toolbox.launch.py`,
+  `perseus_lite/launch/nav2.launch.py`). Any new launch file that starts RViz
+  or `gz sim` needs it too.
   Same "two installs, one shared mutable resource" pattern as `GZ_CONFIG_PATH`.
 
 ## General method

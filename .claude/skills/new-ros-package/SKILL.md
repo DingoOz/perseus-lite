@@ -46,7 +46,9 @@ Create `software/ros_ws/src/<pkg>/` with:
    ```
    The env's `launch_testing`/`launch_ros` pytest plugins are incompatible with
    its pytest 9 and abort EVERY pytest run before collection. These disable them
-   (colcon honours addopts via rootdir discovery).
+   (colcon honours addopts via rootdir discovery). An **ament_cmake** package
+   that runs pytest via `ament_add_pytest_test` needs the same file in its
+   package root (e.g. `perseus_lite/pytest.ini`).
 
 5. **`ruff.toml`** (only if the package's tests run `ament_flake8`):
    ```toml
@@ -80,9 +82,11 @@ Create `software/ros_ws/src/<pkg>/` with:
 ## Wire it in
 
 - **pixi test task**: add `<pkg>` to the default `test` task's
-  `--packages-select` in `pixi.toml` (the `-R 'Test\.'` ctest filter doesn't
-  affect ament_python — pytest runs unfiltered). CI (`all.yaml` →
-  `pixi run -e default test`) then covers it on x86 + ARM.
+  `--packages-select` in `pixi.toml` (and the `simulation` env's, if the package
+  only builds there). The task's `-LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$'`
+  ctest label filter only applies to ament_cmake packages — ament_python
+  pytest suites run unfiltered. CI (`all.yaml` → `pixi run -e default test`)
+  then covers it on x86 + ARM.
 - **CLAUDE.md**: add a KEEP-table row (§4) and bump the `colcon list` count in
   the first-time checklist (§8).
 

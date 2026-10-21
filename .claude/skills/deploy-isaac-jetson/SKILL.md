@@ -12,6 +12,11 @@ Scaffold: `software/docker/isaac-ros/`. Full reference:
 `docs/source/systems/software/isaac-ros.md`. As of scaffold time this is **not
 yet GPU-validated on hardware** — this skill is the bring-up path.
 
+**Check the JetPack version first.** This Docker path needs JetPack 6.x. The
+robot's Jetson has since moved to JetPack 7, where Isaac ROS 3.2 doesn't run;
+on JetPack 7 use the native from-source build in `software/isaac-ros-native/`
+(`-e isaac-nitros`, see its README) instead.
+
 ## Host prep (once)
 
 1. Confirm JetPack 6.x: `cat /etc/nv_tegra_release`.
@@ -34,8 +39,10 @@ docker compose up -d
 docker compose logs -f
 ```
 
-First run builds the arch-specific TensorRT engine into the `isaac-models`
-volume (minutes, memory-hungry) — cached thereafter. The TUI also exposes
+Models are synced into the `isaac-models` volume on start. The TensorRT engine
+build for the (not yet wired) YOLOv8 detector is **opt-in**: set
+`ISAAC_BUILD_ENGINE=1` (minutes, memory-hungry; cached thereafter, a failure is
+not retried until `ISAAC_REBUILD_ENGINE=1`). The TUI also exposes
 `isaac_build/up/down/logs/status` tasks.
 
 ## Verify the bridge

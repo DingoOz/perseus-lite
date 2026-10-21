@@ -11,7 +11,7 @@ reading prevention rules before touching a file. This skill is both halves.
 ## Before editing (prevention check)
 
 When about to modify a file, scan `ERRORS.md` for entries whose **File(s)** or
-**Pattern** touch it, and follow their **Prevention rule**. There are 15+ entries;
+**Pattern** touch it, and follow their **Prevention rule**. There are 50+ entries;
 common load-bearing ones:
 
 - New ament_python package → `-p no:launch_testing` + `extras_require['test']`
@@ -24,6 +24,13 @@ common load-bearing ones:
   verify with a fully clean rebuild (2026-07-06).
 - Rename/delete migration → `grep -rn` the exact old identifier across the WHOLE
   repo, not just the directory you're in (2026-07-04).
+- Velocity/TF changes → exactly one `/cmd_vel` publisher (twist_mux) and one
+  publisher per TF edge (EKF `odom→base_link`, SLAM or AMCL `map→odom`)
+  (2026-10-21).
+- Anything a hardware launch file starts must be a `default`-env dependency;
+  check with `pixi run -e default bringup-mock` (2026-10-21).
+- Vendored third-party code → exclude it from treefmt, the CI cppcheck and
+  Doxygen (2026-10-21).
 
 ## After fixing (append an entry)
 

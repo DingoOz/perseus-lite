@@ -17,6 +17,10 @@ rm -rf build install log
 pixi run -e default build-test
 ```
 
+Don't build in one env and run in another (e.g. a `default`-built `install/`
+under `-e simulation`): the overlay pins the build env's prefix and you get
+spurious failures. `pixi run clean` when switching.
+
 The clean wipe is a rule, not a nicety: a stale `install/` from prior env
 switching masks missing-dependency bugs (ERRORS.md 2026-07-06 — a package with a
 cross-package `exec_depend` built only because an earlier env had left the dep in
@@ -35,6 +39,15 @@ If you touched simulation or vision, also:
 pixi run -e simulation build-test && pixi run -e simulation test   # linux-64 only
 ```
 
+If you touched `software/arm-teleop-direct/`: `pixi run -e default build-arm-teleop`
+(plain CMake build + ctest, outside colcon).
+
+If you touched a launch file, controller/twist_mux/EKF config or a dependency a
+launch file starts: `pixi run -e default bringup-mock` and confirm
+`ros2 control list_controllers` shows both controllers `active` and
+`ros2 topic info /cmd_vel -v` shows twist_mux as the only publisher (a green
+build doesn't prove a launch can start — ERRORS.md 2026-10-21).
+
 For a new ament_python package, confirm its test COUNT is non-zero
 (`colcon test-result --verbose`) — see the `new-ros-package` skill; a green
 summary can hide a silent unittest fallback.
@@ -46,7 +59,14 @@ pixi run -e format fmt-check      # treefmt --ci: ruff, clang-format, yamlfmt,
                                   # shellcheck, taplo, prettier, actionlint
 ```
 
-If it flags files, `pixi run -e format fmt` to fix, then re-check.
+If it flags files, `pixi run -e format fmt` to fix, then re-check (some
+Markdown needs two passes to converge).
+
+CI also runs a repo-wide cppcheck (`all.yaml` → "Static analysis") that the
+colcon tests don't cover. Copy its command from `all.yaml` and run it with
+`pixi run -e default cppcheck ...`. Vendored third-party code (`rplidar_ros`)
+must stay excluded from it, from treefmt and from the Doxygen
+`EXCLUDE_PATTERNS` in `docs/source/conf.py`.
 
 ## 4. Docs (if you added/changed a page)
 
