@@ -28,7 +28,7 @@ This will create a file structure slightly different from the template, however,
 Make sure you are in the root directory before completing the below steps
 :::
 
-Before building the node, you need to enter the Pixi dev shell, as per [the core software specifications](https://roar-qutrc.github.io/systems/software/core.html).
+Before building the node, you need to enter the Pixi dev shell, as per [the core software specifications](project:/systems/software/core.md).
 
 ```
 pixi shell
@@ -105,5 +105,5 @@ In-house packages use a simple scheme in `package.xml` (and `setup.py` for
 - Vendored or forked external packages (e.g. `pcl_to_lsr`) keep their
   upstream version untouched.
 
-Keep the version in the matching `software/ros_ws/nix-packages/*.nix` recipe
-in sync — CI regenerates these recipes when `package.xml` changes.
+For `ament_python` packages, keep the `version` in `setup.py` in sync with
+`package.xml` by hand — nothing generates or checks it.

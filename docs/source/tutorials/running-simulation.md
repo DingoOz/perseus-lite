@@ -18,19 +18,22 @@ pixi shell -e simulation
 
 This command enters the specialised Pixi environment configured for simulation (Gazebo, `ros_gz_*`, `gz_ros2_control`) with all necessary dependencies.
 
-### 2. Navigate to the ROS Workspace
+### 2. Build the Workspace
+
+From the repository root:
+
+```bash
+pixi run -e simulation build
+```
+
+This builds every ROS2 package the simulation environment can build, including the simulation components.
+It skips `perseus_vision`, which needs the `machine-learning` environment's CUDA `onnxruntime-cpp` - a bare `colcon build` would try to build it and fail.
+
+### 3. Navigate to the ROS Workspace
 
 ```bash
 cd software/ros_ws
 ```
-
-### 3. Build the Workspace
-
-```bash
-colcon build
-```
-
-This builds all ROS2 packages in the workspace, including the simulation components.
 
 ### 4. Source the Workspace
 

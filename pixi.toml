@@ -15,7 +15,7 @@
 #   pixi install                       # resolve + fetch (large first time)
 #   pixi shell                         # enter default env (ROS auto-sourced)
 #   pixi run -e default build          # colcon build the workspace
-#   pixi run -e default test           # run the CI unit-test subset
+#   pixi run -e default test           # run the CI test set
 # (the bare `pixi run build`/`test` are ambiguous — build/test exist in
 # multiple environments; always pass -e/--environment)
 
@@ -199,8 +199,8 @@ version = "*"
 # Tasks (replace documented `nix develop -c ...` / colcon invocations)
 # ---------------------------------------------------------------------------
 [tasks]
-# Core workspace build — 14/17 packages build cleanly in the default env today.
-# Skipped (pending migration phases, see conda-recipes/README.md):
+# Core workspace build — 15 of the 18 workspace packages build in the default env.
+# Skipped:
 #   perseus_lite_simulation -> Gazebo deps (use the `simulation` env)
 #   perseus_vision          -> needs onnxruntime-cpp (CUDA) (use the `machine-learning` env)
 #   perseus_lite_missions   -> exec_depends on perseus_lite_simulation, so it can
@@ -208,12 +208,35 @@ version = "*"
 #                              the `simulation` env)
 # perseus_sensors builds here: its CMake add_subdirectory fallback compiles the
 # software/shared/{simple-networking,fd-wrapper,ptr-wrapper} libs in-tree.
+#
+# Build type: software/ros_ws/colcon_defaults.yaml sets
+# CMAKE_BUILD_TYPE=RelWithDebInfo (optimised, keeps debug info for backtraces,
+# and turns on the CMakeLists' `Rel.*` -Werror). `build-test` passes its own
+# --cmake-args, which REPLACES the defaults-file list, so it repeats the type.
 build = { cmd = "colcon build --symlink-install --packages-skip perseus_lite_simulation perseus_vision perseus_lite_missions", cwd = "software/ros_ws" }
 # Build with tests enabled
-build-test = { cmd = "colcon build --symlink-install --cmake-args -DBUILD_TESTING=ON --packages-skip perseus_lite_simulation perseus_vision perseus_lite_missions", cwd = "software/ros_ws" }
-# CI unit-test subset (mirrors CLAUDE.md pattern: Test.* prefix only).
-# perseus_lite_simulation tests run in the simulation env (see its tasks).
-test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_tui --return-code-on-test-failure --ctest-args -R 'Test\\.' && colcon test-result --verbose", cwd = "software/ros_ws" }
+build-test = { cmd = "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON --packages-skip perseus_lite_simulation perseus_vision perseus_lite_missions", cwd = "software/ros_ws" }
+# CI test set. Lint/test policy (same in every env's `test` task):
+#  - ctest runs EVERY test a package registers (gtest suites, whatever their
+#    name, plus the ament_lint_auto linters), EXCEPT the ament_lint_common
+#    style linters that duplicate or contradict the repo's treefmt formatters
+#    (CI `format` job): uncrustify + cpplint (vs clang-format), lint_cmake (vs
+#    cmake-format), flake8 (vs ruff format's quote style) and copyright (the
+#    repo is licensed via LICENSE, no per-file headers). Those are excluded by
+#    ctest label; cppcheck, xmllint and pep257 still run.
+#  - ament_python packages run their whole pytest suite, lint tests included
+#    (such a package needs a package-local ruff.toml pinning single quotes so
+#    ruff format and ament_flake8 agree, see ERRORS.md).
+# The old `--ctest-args -R 'Test\.'` filter excluded every ament_lint test, so
+# lint-only packages (pcl_to_lsr, perseus_vision) ran nothing.
+# Full ament lint on demand: colcon test --packages-select <pkg> --ctest-args -L linter
+# perseus_lite_simulation / perseus_lite_missions tests run in the simulation
+# env, perseus_vision's in the machine-learning env (see their tasks).
+test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_tui input_devices teleop_diagnostics twist_stamper pcl_to_lsr --return-code-on-test-failure --ctest-args -LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$' && colcon test-result --verbose", cwd = "software/ros_ws" }
+# software/arm-teleop-direct is a plain CMake project outside the colcon
+# workspace. Build it explicitly so toolchain bumps (eg Boost) can't silently
+# break it (see ERRORS.md). Same RelWithDebInfo/-Werror policy as the workspace.
+build-arm-teleop = "cmake -S software/arm-teleop-direct -B software/arm-teleop-direct/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build software/arm-teleop-direct/build"
 # Convenience launchers. `ros2 launch` only sees ROS's own AMENT_PREFIX_PATH
 # entries, not the colcon workspace overlay, so source install/setup.bash first.
 bringup = { cmd = "bash -c 'source install/setup.bash && ros2 launch perseus_lite perseus_lite.launch.py'", cwd = "software/ros_ws" }
@@ -247,8 +270,10 @@ cbor2 = "*"                       # rosbridge_server (ros-jazzy-rosbridge-suite)
 # Sim env builds perseus_lite_simulation (Gazebo) but skips perseus_vision,
 # which needs onnxruntime-cpp from the machine-learning env.
 build = { cmd = "colcon build --symlink-install --packages-skip perseus_vision", cwd = "software/ros_ws" }
-build-test = { cmd = "colcon build --symlink-install --cmake-args -DBUILD_TESTING=ON --packages-skip perseus_vision", cwd = "software/ros_ws" }
-test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_simulation --return-code-on-test-failure --ctest-args -R 'Test\\.' && colcon test-result --verbose", cwd = "software/ros_ws" }
+build-test = { cmd = "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON --packages-skip perseus_vision", cwd = "software/ros_ws" }
+# Sim-only packages plus the core hardware/bringup tests (same lint/test policy
+# as the default `test` task).
+test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_simulation perseus_lite_missions --return-code-on-test-failure --ctest-args -LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$' && colcon test-result --verbose", cwd = "software/ros_ws" }
 # Rebuild first (fast, incremental) so perseus_lite_simulation is always in
 # install/, then source the overlay before launching — ros2 launch otherwise
 # only sees ROS's own packages, not the colcon workspace.
@@ -276,8 +301,8 @@ onnxruntime-cpp = "*" # C++ ONNX Runtime (CUDA build) for perseus_vision
 # perseus_lite_missions is skipped too: it exec_depends on perseus_lite_simulation,
 # which this env doesn't build (see the `default` feature's build task comment).
 build = { cmd = "colcon build --symlink-install --packages-skip perseus_lite_simulation perseus_lite_missions", cwd = "software/ros_ws" }
-build-test = { cmd = "colcon build --symlink-install --cmake-args -DBUILD_TESTING=ON --packages-skip perseus_lite_simulation perseus_lite_missions", cwd = "software/ros_ws" }
-test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_vision --return-code-on-test-failure --ctest-args -R 'Test\\.' && colcon test-result --verbose", cwd = "software/ros_ws" }
+build-test = { cmd = "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON --packages-skip perseus_lite_simulation perseus_lite_missions", cwd = "software/ros_ws" }
+test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_vision --return-code-on-test-failure --ctest-args -LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$' && colcon test-result --verbose", cwd = "software/ros_ws" }
 # Known gap (documented, not implemented): perseus_vision is not built in CI.
 # CI runners don't have the machine-learning env's CUDA toolkit/onnxruntime-cpp
 # GPU build available, so no CI job currently builds/tests perseus_vision.
@@ -300,7 +325,9 @@ graphviz = "*"    # `dot` binary for the {graphviz} directives sphinx_immaterial
 
 [feature.docs.tasks]
 # uv reads docs/pyproject/{pyproject.toml,uv.lock}; sphinx source is docs/source.
-docs = { cmd = "uv run --project pyproject sphinx-build -b html source build/html", cwd = "docs" }
+# `-d build/doctrees` keeps Sphinx's doctree cache (incl. the ~6 MB
+# environment.pickle) out of build/html so it isn't published to Pages.
+docs = { cmd = "uv run --project pyproject sphinx-build -b html -d build/doctrees source build/html", cwd = "docs" }
 
 # ---------------------------------------------------------------------------
 # Feature: format (treefmt + formatters) — replaces `nix fmt`
