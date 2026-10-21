@@ -7,10 +7,10 @@
   //
   // Republishes the /perseus_isaac/* topics received over zenoh into the host
   // graph. Same allow-list as the other side so nothing else is bridged.
+  //
+  // The connect endpoint (tcp/127.0.0.1:${ZENOH_PORT}) is passed on the command
+  // line by compose.yaml (`-e`), so the port lives only in .env.
   mode: "peer",
-  connect: {
-    endpoints: ["tcp/127.0.0.1:7447"],
-  },
   scouting: {
     multicast: {
       enabled: false,
