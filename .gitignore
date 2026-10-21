@@ -371,3 +371,40 @@ Temporary Items
 
 # pixi/agent session data
 .claude/
+
+# NITROS/GXF from-source build experiment: cloned NVIDIA repos + build output.
+# Source-available/proprietary-licensed, not ours to redistribute — see
+# docs/source/systems/software/isaac-ros-nitros-source-build.md. Everything
+# else under isaac-ros-native/ (our own README/scripts) IS committed.
+/software/isaac-ros-native/isaac_ros_common/
+/software/isaac-ros-native/isaac_ros_nitros/
+/software/isaac-ros-native/gxf/
+/software/isaac-ros-native/negotiated/
+/software/isaac-ros-native/isaac_ros_apriltag/
+/software/isaac-ros-native/isaac_ros_image_pipeline/
+/software/isaac-ros-native/isaac_ros_dnn_inference/
+/software/isaac-ros-native/isaac_ros_object_detection/
+/software/isaac-ros-native/isaac_ros_visual_slam/
+/software/isaac-ros-native/isaac_ros_image_segmentation/
+/software/isaac-ros-native/isaac_ros_pose_estimation/
+/software/isaac-ros-native/isaac_ros_compression/
+/software/isaac-ros-native/isaac_ros_dnn_stereo_depth/
+/software/isaac-ros-native/isaac_ros_mapping_and_localization/
+
+# LaTeX build artifacts + regenerable chart PDFs for the report under
+# isaac-ros-native/report/ -- only the .tex source, make_charts.py, and the
+# final isaac_ros_report.pdf are tracked (see report/README.md).
+/software/isaac-ros-native/report/*.aux
+/software/isaac-ros-native/report/*.log
+/software/isaac-ros-native/report/*.out
+/software/isaac-ros-native/report/*.toc
+/software/isaac-ros-native/report/stage_status.pdf
+/software/isaac-ros-native/report/map_breakdown.pdf
+/software/isaac-ros-native/report/engine_build_times.pdf
+/software/isaac-ros-native/models/
+/software/isaac-ros-native/__pycache__/
+/software/isaac-ros-native/build/
+/software/isaac-ros-native/install/
+/software/isaac-ros-native/log/
+/software/isaac-ros-native/ws/
+/software/isaac-ros-native/gxf_smoke_test
