@@ -143,11 +143,8 @@ install(
   RUNTIME DESTINATION bin)
 
 # Install launch
-install(
-  DIRECTORY launch config i2c_imu_driver/launch i2c_imu_driver/config
-            i2c_imu_driver/urdf
-  DESTINATION share/${PROJECT_NAME}
-  OPTIONAL)
+install(DIRECTORY launch config i2c_imu_driver/launch i2c_imu_driver/config
+        DESTINATION share/${PROJECT_NAME})
 
 # TESTING
 if(BUILD_TESTING)
