@@ -4,7 +4,7 @@
 	export const name = 'Start/Stop';
 	export const description =
 		'Start/Stop autonomy by calling ROS2 services + show waypoint table.';
-	export const group: WidgetGroupType = 'Autonomy UI';
+	export const group: WidgetGroupType = 'Autonomy';
 	export const isRosDependent = true;
 
 	// YAMLs are served by the Svelte app (HTTP paths)
@@ -32,8 +32,15 @@
 	import { browser } from '$app/environment';
 
 	// ---------------- ROS (Services) ----------------
-	let runSrv = $state<ROSLIB.Service | null>(null);
-	let cancelSrv = $state<ROSLIB.Service | null>(null);
+	// perseus_interfaces/srv/RunWaypoints (used for both run and cancel)
+	type WaypointMsg = { name: string; x: number; y: number; yaw: number };
+	type RunWaypointsRequest = { waypoints: WaypointMsg[] };
+	type RunWaypointsResponse = { success: boolean; message: string };
+	// perseus_interfaces/msg/NavigationData (only the field used here)
+	type NavigationDataMsg = { navigation_active?: boolean };
+
+	let runSrv = $state<ROSLIB.Service<RunWaypointsRequest, RunWaypointsResponse> | null>(null);
+	let cancelSrv = $state<ROSLIB.Service<RunWaypointsRequest, RunWaypointsResponse> | null>(null);
 
 	// ---------------- UI state ----------------
 	let isStarted = $state(false);
@@ -42,8 +49,6 @@
 	let srvStatus = $state<string>('ROS disconnected');
 	let srvBusy = $state(false);
 
-	// Navigation info subscription (internal, not exposed as state)
-	let navInfoSub: ROSLIB.Topic | null = null;
 
 	// ---------------- Hold-to-stop ----------------
 	const HOLD_MS = 3000;
@@ -222,15 +227,16 @@
 		srvStatus = 'Sending run request...';
 
 		runSrv.callService(
-			new ROSLIB.ServiceRequest({ 
+			// roslib 2 takes the request as a plain object (ROSLIB.ServiceRequest no longer exists)
+			{
 				waypoints: waypoints.map((wp) => ({
 					name: wp.name,
 					x: wp.x,
 					y: wp.y,
 					yaw: wp.yaw ?? 0.0
 				}))
-			}),
-			(resp: any) => {
+			},
+			(resp) => {
 				srvBusy = false;
 				srvStatus = resp?.message ?? 'Run response received';
 				if (resp?.success) isStarted = true;
@@ -261,8 +267,8 @@
 			srvStatus = 'Cancelling...';
 
 			cancelSrv.callService(
-				new ROSLIB.ServiceRequest({}),
-				(resp: any) => {
+				{ waypoints: [] },
+				(resp) => {
 					srvBusy = false;
 					srvStatus = resp?.message ?? 'Cancel response received';
 					isStarted = false;
@@ -281,38 +287,32 @@
 		}, PROGRESS_UPDATE_INTERVAL_MS) as unknown as number;
 	};
 
-	// Set up persistent subscription to navigation_info
+	// Subscription to navigation_info. The effect re-runs whenever the ROS connection changes
+	// (getRosConnection() is reactive), so no retry timer is needed; the cleanup always
+	// unsubscribes, so reconnects and unmounts never leave duplicate subscriptions.
 	$effect(() => {
-		const setupNavInfoSub = () => {
-			const ros = getRosConnection();
-			if (!ros) {
-				// Try again later if ROS isn't ready yet
-				setTimeout(setupNavInfoSub, 1000);
-				return;
+		const ros = getRosConnection();
+		if (!ros) return () => clearHold();
+
+		const navInfoSub = new ROSLIB.Topic<NavigationDataMsg>({
+			ros,
+			name: '/autonomy/navigation_info',
+			messageType: 'perseus_interfaces/msg/NavigationData',
+			throttle_rate: 200,
+			queue_length: 1
+		});
+
+		navInfoSub.subscribe((msg) => {
+			// Sync button state with actual navigation state
+			const navActive = msg.navigation_active ?? false;
+			if (navActive !== isStarted) {
+				isStarted = navActive;
 			}
-
-			navInfoSub = new ROSLIB.Topic({
-				ros,
-				name: '/autonomy/navigation_info',
-				messageType: 'perseus_interfaces/msg/NavigationData'
-			});
-
-			navInfoSub.subscribe((msg: any) => {
-				// Sync button state with actual navigation state
-				const navActive = msg.navigation_active ?? false;
-				if (navActive !== isStarted) {
-					isStarted = navActive;
-				}
-			});
-		};
-
-		setupNavInfoSub();
+		});
 
 		return () => {
 			clearHold();
-			if (navInfoSub) {
-				navInfoSub.unsubscribe();
-			}
+			navInfoSub.unsubscribe();
 		};
 	});
 
@@ -432,7 +432,7 @@
 		<Button
 			class="relative w-full font-bold bg-red-600 text-white overflow-hidden h-12 shrink-0"
 			disabled={!isStarted || !cancelSrv || srvBusy}
-			onpointerdown={(e) => e.button === 0 && startHoldStop()}
+			onpointerdown={(e: PointerEvent) => e.button === 0 && startHoldStop()}
 			onpointerup={clearHold}
 			onpointerleave={clearHold}
 			onpointercancel={clearHold}
