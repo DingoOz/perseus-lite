@@ -3,27 +3,27 @@
 <package format="3">
   <name>perseus_sensors</name>
   <version>0.1.0</version>
-  <description>ROS 2 package for managing and processing point-cloud data from the Slamtec M2M2 lidar device which is accessed by TCP ethernet. Handles network access, data processing and provides ROS sensor message information.</description>
+  <description>Perseus-lite sensor drivers and processing: I2C IMU driver (/imu/data), IMU gyro bias estimator/remover components, a generic topic rate remapper, and the RPLidar C1 runtime dependency.</description>
   <maintainer email="1388693+DingoOz@users.noreply.github.com">DingoOz</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>simple-networking</depend>
+  <!-- fd_wrapper comes from software/shared and is built in-tree via add_subdirectory -->
   <depend>rclcpp</depend>
-  <depend>rclcpp_lifecycle</depend>
-  <depend>hardware_interface</depend>
+  <depend>rclcpp_components</depend>
   <depend>backward_ros</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>tf2</depend>
-  <depend>tf2_geometry_msgs</depend>
-  <depend>openssl</depend>
-  <depend>nlohmann-json-dev</depend>
+  <depend>nav_msgs</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>rplidar_ros</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
-  
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
