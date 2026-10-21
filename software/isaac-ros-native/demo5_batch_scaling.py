@@ -36,31 +36,40 @@ the full discussion of why (the Orin Nano's iGPU is compute-bound per
 image at this model size, not launch/dispatch-overhead-bound, so
 there's no idle throughput for batching to reclaim).
 """
+
 import json
 import pathlib
 import sys
 import time
 
-sys.path.insert(0, '/usr/lib/python3.12/dist-packages')
+sys.path.insert(0, "/usr/lib/python3.12/dist-packages")
 
 import cv2
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorrt as trt
 from cuda.bindings import runtime as cudart
 
 THIS_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = THIS_DIR / 'models' / 'model.dummy.onnx'
-ENGINE_PATH = THIS_DIR / 'models' / 'unet_dummy_demo5.plan'
-IMAGE_PATH = (THIS_DIR / 'isaac_ros_image_segmentation' / 'isaac_ros_unet' /
-              'test' / 'test_cases' / 'unet_sample' / 'image.jpg')
+MODEL_PATH = THIS_DIR / "models" / "model.dummy.onnx"
+ENGINE_PATH = THIS_DIR / "models" / "unet_dummy_demo5.plan"
+IMAGE_PATH = (
+    THIS_DIR
+    / "isaac_ros_image_segmentation"
+    / "isaac_ros_unet"
+    / "test"
+    / "test_cases"
+    / "unet_sample"
+    / "image.jpg"
+)
 
 NETWORK_WIDTH = 960
 NETWORK_HEIGHT = 544
-INPUT_NAME = 'input_1'
-OUTPUT_NAME = 'softmax_1'
+INPUT_NAME = "input_1"
+OUTPUT_NAME = "softmax_1"
 
 BATCH_SIZES = [1, 2, 4, 8]
 MAX_BATCH = max(BATCH_SIZES)
@@ -89,21 +98,25 @@ def make_batch(single_chw, batch_size):
 def build_or_load_engine():
     logger = trt.Logger(trt.Logger.WARNING)
     if ENGINE_PATH.exists():
-        print(f'Loading cached engine: {ENGINE_PATH}')
+        print(f"Loading cached engine: {ENGINE_PATH}")
         runtime = trt.Runtime(logger)
-        with open(ENGINE_PATH, 'rb') as f:
+        with open(ENGINE_PATH, "rb") as f:
             return runtime.deserialize_cuda_engine(f.read())
 
-    print(f'Building TensorRT engine with batch profile 1..{MAX_BATCH} '
-          '(first run only, cached after)...')
+    print(
+        f"Building TensorRT engine with batch profile 1..{MAX_BATCH} "
+        "(first run only, cached after)..."
+    )
     builder = trt.Builder(logger)
-    network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+    network = builder.create_network(
+        1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    )
     parser = trt.OnnxParser(network, logger)
-    with open(MODEL_PATH, 'rb') as f:
+    with open(MODEL_PATH, "rb") as f:
         if not parser.parse(f.read()):
             for i in range(parser.num_errors):
                 print(parser.get_error(i))
-            raise RuntimeError('Failed to parse ONNX model')
+            raise RuntimeError("Failed to parse ONNX model")
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1024 * 1024 * 1024)
@@ -117,9 +130,9 @@ def build_or_load_engine():
 
     t0 = time.time()
     serialized = builder.build_serialized_network(network, config)
-    print(f'Engine built in {time.time() - t0:.1f}s')
+    print(f"Engine built in {time.time() - t0:.1f}s")
 
-    with open(ENGINE_PATH, 'wb') as f:
+    with open(ENGINE_PATH, "wb") as f:
         f.write(serialized)
 
     runtime = trt.Runtime(logger)
@@ -138,36 +151,44 @@ def benchmark_tensorrt_at_batch(engine, batch_size, single_chw):
 
     err, d_input = cudart.cudaMalloc(input_nbytes)
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaMalloc(input) failed: {err}')
+        raise RuntimeError(f"cudaMalloc(input) failed: {err}")
     err, d_output = cudart.cudaMalloc(output_nbytes)
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaMalloc(output) failed: {err}')
+        raise RuntimeError(f"cudaMalloc(output) failed: {err}")
 
     context.set_tensor_address(INPUT_NAME, d_input)
     context.set_tensor_address(OUTPUT_NAME, d_output)
 
     err, stream = cudart.cudaStreamCreate()
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaStreamCreate failed: {err}')
+        raise RuntimeError(f"cudaStreamCreate failed: {err}")
 
     host_input = make_batch(single_chw, batch_size)
     host_output = np.empty(output_shape, dtype=np.float32)
 
     def run_once():
         (err,) = cudart.cudaMemcpyAsync(
-            d_input, host_input.ctypes.data, input_nbytes,
-            cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
+            d_input,
+            host_input.ctypes.data,
+            input_nbytes,
+            cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+            stream,
+        )
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'H2D memcpy failed: {err}')
+            raise RuntimeError(f"H2D memcpy failed: {err}")
         context.execute_async_v3(stream_handle=stream)
         (err,) = cudart.cudaMemcpyAsync(
-            host_output.ctypes.data, d_output, output_nbytes,
-            cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, stream)
+            host_output.ctypes.data,
+            d_output,
+            output_nbytes,
+            cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+            stream,
+        )
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'D2H memcpy failed: {err}')
+            raise RuntimeError(f"D2H memcpy failed: {err}")
         (err,) = cudart.cudaStreamSynchronize(stream)
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'stream sync failed: {err}')
+            raise RuntimeError(f"stream sync failed: {err}")
 
     for _ in range(NUM_WARMUP_GPU):
         run_once()
@@ -206,38 +227,45 @@ def summarize_batch(batch_size, times):
     arr = np.array(times) * 1000.0
     mean_ms = float(arr.mean())
     images_per_sec = (batch_size * 1000.0) / mean_ms if mean_ms > 0 else 0.0
-    print(f'  batch={batch_size:2d}: mean={mean_ms:8.2f} ms/call -> '
-          f'{images_per_sec:7.1f} images/sec')
-    return {'batch_size': batch_size, 'mean_ms_per_call': mean_ms,
-            'images_per_sec': images_per_sec}
+    print(
+        f"  batch={batch_size:2d}: mean={mean_ms:8.2f} ms/call -> "
+        f"{images_per_sec:7.1f} images/sec"
+    )
+    return {
+        "batch_size": batch_size,
+        "mean_ms_per_call": mean_ms,
+        "images_per_sec": images_per_sec,
+    }
 
 
 def build_chart_image(gpu_results, cpu_results):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5))
 
-    gpu_batches = [r['batch_size'] for r in gpu_results]
-    gpu_fps = [r['images_per_sec'] for r in gpu_results]
-    cpu_batches = [r['batch_size'] for r in cpu_results]
-    cpu_fps = [r['images_per_sec'] for r in cpu_results]
+    gpu_batches = [r["batch_size"] for r in gpu_results]
+    gpu_fps = [r["images_per_sec"] for r in gpu_results]
+    cpu_batches = [r["batch_size"] for r in cpu_results]
+    cpu_fps = [r["images_per_sec"] for r in cpu_results]
 
-    ax1.plot(gpu_batches, gpu_fps, 'o-', color='#3f8a6f', label='TensorRT (GPU)')
-    ax1.plot(cpu_batches, cpu_fps, 's-', color='#c9822f', label='ONNX Runtime (CPU)')
-    ax1.set_xlabel('batch size')
-    ax1.set_ylabel('throughput (images/sec)')
-    ax1.set_title('U-Net throughput vs batch size')
+    ax1.plot(gpu_batches, gpu_fps, "o-", color="#3f8a6f", label="TensorRT (GPU)")
+    ax1.plot(cpu_batches, cpu_fps, "s-", color="#c9822f", label="ONNX Runtime (CPU)")
+    ax1.set_xlabel("batch size")
+    ax1.set_ylabel("throughput (images/sec)")
+    ax1.set_title("U-Net throughput vs batch size")
     ax1.set_xticks(BATCH_SIZES)
     ax1.legend()
     ax1.grid(alpha=0.3)
 
-    ax2.plot(gpu_batches, gpu_fps, 'o-', color='#3f8a6f', label='TensorRT (GPU)')
-    ax2.plot(cpu_batches, cpu_fps, 's-', color='#c9822f', label='ONNX Runtime (CPU)')
-    ax2.set_yscale('log')
-    ax2.set_xlabel('batch size')
-    ax2.set_ylabel('throughput (images/sec, log scale)')
-    ax2.set_title('Same data, log scale\n(neither backend gains throughput from batching here)')
+    ax2.plot(gpu_batches, gpu_fps, "o-", color="#3f8a6f", label="TensorRT (GPU)")
+    ax2.plot(cpu_batches, cpu_fps, "s-", color="#c9822f", label="ONNX Runtime (CPU)")
+    ax2.set_yscale("log")
+    ax2.set_xlabel("batch size")
+    ax2.set_ylabel("throughput (images/sec, log scale)")
+    ax2.set_title(
+        "Same data, log scale\n(neither backend gains throughput from batching here)"
+    )
     ax2.set_xticks(BATCH_SIZES)
     ax2.legend()
-    ax2.grid(alpha=0.3, which='both')
+    ax2.grid(alpha=0.3, which="both")
 
     fig.tight_layout()
     fig.canvas.draw()
@@ -255,15 +283,16 @@ def publish_result(image_bgr, duration_sec=120):
 
     class ResultPublisher(Node):
         def __init__(self):
-            super().__init__('demo5_batch_scaling_result_publisher')
-            self.pub = self.create_publisher(RosImage, 'demo5_batch_scaling', 10)
+            super().__init__("demo5_batch_scaling_result_publisher")
+            self.pub = self.create_publisher(RosImage, "demo5_batch_scaling", 10)
             self.bridge = CvBridge()
-            self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding='bgr8')
+            self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding="bgr8")
             self.create_timer(1.0, self.publish_once)
             self.get_logger().info(
-                f'Publishing result to /demo5_batch_scaling for {duration_sec}s -- '
-                'view with RViz2 (Image display) or rqt_image_view on a laptop on this '
-                'ROS domain')
+                f"Publishing result to /demo5_batch_scaling for {duration_sec}s -- "
+                "view with RViz2 (Image display) or rqt_image_view on a laptop on this "
+                "ROS domain"
+            )
 
         def publish_once(self):
             self.msg.header.stamp = self.get_clock().now().to_msg()
@@ -283,40 +312,53 @@ def main():
 
     single_chw = load_single_image()
 
-    print(f'--- TensorRT GPU: batch sweep {BATCH_SIZES} '
-          f'({NUM_WARMUP_GPU} warmup + {NUM_TIMED_GPU} timed per batch) ---')
+    print(
+        f"--- TensorRT GPU: batch sweep {BATCH_SIZES} "
+        f"({NUM_WARMUP_GPU} warmup + {NUM_TIMED_GPU} timed per batch) ---"
+    )
     engine = build_or_load_engine()
     gpu_results = []
     for batch_size in BATCH_SIZES:
         times = benchmark_tensorrt_at_batch(engine, batch_size, single_chw)
         gpu_results.append(summarize_batch(batch_size, times))
 
-    print(f'--- ONNX Runtime CPU: batch sweep {BATCH_SIZES} '
-          f'({NUM_WARMUP_CPU} warmup + {NUM_TIMED_CPU} timed per batch) ---')
-    session = ort.InferenceSession(str(MODEL_PATH), providers=['CPUExecutionProvider'])
+    print(
+        f"--- ONNX Runtime CPU: batch sweep {BATCH_SIZES} "
+        f"({NUM_WARMUP_CPU} warmup + {NUM_TIMED_CPU} timed per batch) ---"
+    )
+    session = ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
     cpu_results = []
     for batch_size in BATCH_SIZES:
         times = benchmark_onnxruntime_at_batch(session, batch_size, single_chw)
         cpu_results.append(summarize_batch(batch_size, times))
 
-    gpu_best = max(r['images_per_sec'] for r in gpu_results)
-    cpu_best = max(r['images_per_sec'] for r in cpu_results)
-    print(f'\nBest throughput -- TensorRT: {gpu_best:.1f} img/s (batch scaling: '
-          f'{gpu_best / gpu_results[0]["images_per_sec"]:.2f}x from batch=1), '
-          f'ONNX Runtime CPU: {cpu_best:.1f} img/s (batch scaling: '
-          f'{cpu_best / cpu_results[0]["images_per_sec"]:.2f}x from batch=1)')
+    gpu_best = max(r["images_per_sec"] for r in gpu_results)
+    cpu_best = max(r["images_per_sec"] for r in cpu_results)
+    print(
+        f"\nBest throughput -- TensorRT: {gpu_best:.1f} img/s (batch scaling: "
+        f"{gpu_best / gpu_results[0]['images_per_sec']:.2f}x from batch=1), "
+        f"ONNX Runtime CPU: {cpu_best:.1f} img/s (batch scaling: "
+        f"{cpu_best / cpu_results[0]['images_per_sec']:.2f}x from batch=1)"
+    )
 
-    with open(THIS_DIR / 'demo5_result.json', 'w') as f:
-        json.dump({'tensorrt_gpu': gpu_results, 'onnxruntime_cpu': cpu_results,
-                    'batch_sizes': BATCH_SIZES}, f, indent=2)
-    print(f'Saved {THIS_DIR / "demo5_result.json"}')
+    with open(THIS_DIR / "demo5_result.json", "w") as f:
+        json.dump(
+            {
+                "tensorrt_gpu": gpu_results,
+                "onnxruntime_cpu": cpu_results,
+                "batch_sizes": BATCH_SIZES,
+            },
+            f,
+            indent=2,
+        )
+    print(f"Saved {THIS_DIR / 'demo5_result.json'}")
 
     chart = build_chart_image(gpu_results, cpu_results)
-    cv2.imwrite(str(THIS_DIR / 'demo5_result.png'), chart)
-    print(f'Saved {THIS_DIR / "demo5_result.png"}')
+    cv2.imwrite(str(THIS_DIR / "demo5_result.png"), chart)
+    print(f"Saved {THIS_DIR / 'demo5_result.png'}")
 
     publish_result(chart)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -65,6 +65,7 @@ too, which is itself the finding, not a bug -- raise it back up if you
 want to see how long it actually takes to finish (untested how much
 longer than 900s that would be).
 """
+
 import json
 import math
 import os
@@ -84,25 +85,32 @@ from sensor_msgs.msg import Image
 from std_srvs.srv import Empty
 
 THIS_DIR = pathlib.Path(__file__).parent
-OGL_DIR = THIS_DIR / 'isaac_ros_mapping_and_localization' / 'isaac_ros_occupancy_grid_localizer'
-BAG_PATH = OGL_DIR / 'data' / 'rosbags' / 'flatscan'
-MAP_PNG_PATH = OGL_DIR / 'maps' / 'map.png'
-LAUNCH_FILE = THIS_DIR / 'ogl_launch.py'
+OGL_DIR = (
+    THIS_DIR
+    / "isaac_ros_mapping_and_localization"
+    / "isaac_ros_occupancy_grid_localizer"
+)
+BAG_PATH = OGL_DIR / "data" / "rosbags" / "flatscan"
+MAP_PNG_PATH = OGL_DIR / "maps" / "map.png"
+LAUNCH_FILE = THIS_DIR / "ogl_launch.py"
 
 MAP_RESOLUTION = 0.05  # meters/pixel, from maps/map.yaml
 MAP_ORIGIN = (0.0, 0.0, 0.0)  # from maps/map.yaml
 
-TRIGGER_TIMEOUT_SEC = 180  # generous, but see note below -- CPU may not finish even in 900s
+TRIGGER_TIMEOUT_SEC = (
+    180  # generous, but see note below -- CPU may not finish even in 900s
+)
 RESULT_PUBLISH_DURATION_SEC = 180
 
 
 class LocalizeClient(Node):
     def __init__(self):
-        super().__init__('demo2_ogl_client')
+        super().__init__("demo2_ogl_client")
         self.received = None
         self.sub = self.create_subscription(
-            PoseWithCovarianceStamped, '/localization_result', self.on_msg, 10)
-        self.cli = self.create_client(Empty, '/trigger_grid_search_localization')
+            PoseWithCovarianceStamped, "/localization_result", self.on_msg, 10
+        )
+        self.cli = self.create_client(Empty, "/trigger_grid_search_localization")
 
     def on_msg(self, msg):
         if self.received is None:
@@ -112,13 +120,16 @@ class LocalizeClient(Node):
 def run_localization_pass(mode):
     """mode: 'gpu' or 'cpu'. Returns (elapsed_sec, (x, y, qz, qw)) or (None, None)."""
     env = os.environ.copy()
-    if mode == 'cpu':
-        env['CUDA_VISIBLE_DEVICES'] = ''
+    if mode == "cpu":
+        env["CUDA_VISIBLE_DEVICES"] = ""
 
-    print(f'--- {mode.upper()} pass: launching localizer ---', flush=True)
+    print(f"--- {mode.upper()} pass: launching localizer ---", flush=True)
     launch_proc = subprocess.Popen(
-        ['ros2', 'launch', str(LAUNCH_FILE)],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ["ros2", "launch", str(LAUNCH_FILE)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     time.sleep(6)  # let the container + node (incl. GPU init attempt) come up
 
     rclpy.init()
@@ -128,12 +139,16 @@ def run_localization_pass(mode):
     elapsed = None
     pose = None
     if not have_service:
-        print(f'{mode.upper()}: trigger_grid_search_localization service never appeared',
-              flush=True)
+        print(
+            f"{mode.upper()}: trigger_grid_search_localization service never appeared",
+            flush=True,
+        )
     else:
         bag_proc = subprocess.Popen(
-            ['ros2', 'bag', 'play', str(BAG_PATH)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ["ros2", "bag", "play", str(BAG_PATH)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         t_start = time.time()
         end_time = t_start + TRIGGER_TIMEOUT_SEC
         last_progress = t_start
@@ -143,8 +158,10 @@ def run_localization_pass(mode):
             rclpy.spin_once(node, timeout_sec=0.2)
             now = time.time()
             if now - last_progress > 10.0:
-                print(f'{mode.upper()}: still searching... {now - t_start:.0f}s elapsed',
-                      flush=True)
+                print(
+                    f"{mode.upper()}: still searching... {now - t_start:.0f}s elapsed",
+                    flush=True,
+                )
                 last_progress = now
 
         if node.received is not None:
@@ -152,11 +169,16 @@ def run_localization_pass(mode):
             p = node.received.pose.pose.position
             q = node.received.pose.pose.orientation
             pose = (p.x, p.y, q.z, q.w)
-            print(f'{mode.upper()}: localized in {elapsed:.2f}s -> '
-                  f'({p.x:.2f}, {p.y:.2f})', flush=True)
+            print(
+                f"{mode.upper()}: localized in {elapsed:.2f}s -> "
+                f"({p.x:.2f}, {p.y:.2f})",
+                flush=True,
+            )
         else:
-            print(f'{mode.upper()}: timed out after {TRIGGER_TIMEOUT_SEC}s with no result',
-                  flush=True)
+            print(
+                f"{mode.upper()}: timed out after {TRIGGER_TIMEOUT_SEC}s with no result",
+                flush=True,
+            )
 
         bag_proc.terminate()
         try:
@@ -172,7 +194,9 @@ def run_localization_pass(mode):
         launch_proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         launch_proc.kill()
-    subprocess.run(['pkill', '-9', '-f', '__node:=ogl_container'], stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["pkill", "-9", "-f", "__node:=ogl_container"], stderr=subprocess.DEVNULL
+    )
     time.sleep(2)
 
     return elapsed, pose
@@ -198,45 +222,63 @@ def draw_pose(img, pose, color, label):
 
 def build_result_image(gpu_elapsed, gpu_pose, cpu_elapsed, cpu_pose):
     map_bgr = cv2.cvtColor(
-        cv2.imread(str(MAP_PNG_PATH), cv2.IMREAD_GRAYSCALE), cv2.COLOR_GRAY2BGR)
-    draw_pose(map_bgr, gpu_pose, (90, 220, 130), 'GPU')
-    draw_pose(map_bgr, cpu_pose, (60, 140, 235), 'CPU')
+        cv2.imread(str(MAP_PNG_PATH), cv2.IMREAD_GRAYSCALE), cv2.COLOR_GRAY2BGR
+    )
+    draw_pose(map_bgr, gpu_pose, (90, 220, 130), "GPU")
+    draw_pose(map_bgr, cpu_pose, (60, 140, 235), "CPU")
 
     # Scale the (small) map image up so the banner text is legible.
     scale = 2
-    map_bgr = cv2.resize(map_bgr, (map_bgr.shape[1] * scale, map_bgr.shape[0] * scale),
-                          interpolation=cv2.INTER_NEAREST)
+    map_bgr = cv2.resize(
+        map_bgr,
+        (map_bgr.shape[1] * scale, map_bgr.shape[0] * scale),
+        interpolation=cv2.INTER_NEAREST,
+    )
 
     banner_h = 90
-    canvas = np.zeros((map_bgr.shape[0] + banner_h, map_bgr.shape[1], 3), dtype=np.uint8)
+    canvas = np.zeros(
+        (map_bgr.shape[0] + banner_h, map_bgr.shape[1], 3), dtype=np.uint8
+    )
     canvas[banner_h:, :, :] = map_bgr
 
     def fmt(elapsed):
-        return f'{elapsed:.2f}s' if elapsed is not None else 'FAILED/TIMED OUT'
+        return f"{elapsed:.2f}s" if elapsed is not None else "FAILED/TIMED OUT"
 
-    gpu_line = f'GPU (real CUDA kernel):  {fmt(gpu_elapsed)}'
-    cpu_line = f'CPU (real fallback path): {fmt(cpu_elapsed)}'
-    cv2.putText(canvas, gpu_line, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (90, 220, 130), 2)
-    cv2.putText(canvas, cpu_line, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (60, 140, 235), 2)
+    gpu_line = f"GPU (real CUDA kernel):  {fmt(gpu_elapsed)}"
+    cpu_line = f"CPU (real fallback path): {fmt(cpu_elapsed)}"
+    cv2.putText(
+        canvas, gpu_line, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (90, 220, 130), 2
+    )
+    cv2.putText(
+        canvas, cpu_line, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (60, 140, 235), 2
+    )
 
     if gpu_elapsed and cpu_elapsed:
         speedup = cpu_elapsed / gpu_elapsed
-        cv2.putText(canvas, f'{speedup:.1f}x', (canvas.shape[1] - 160, 45),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3)
+        cv2.putText(
+            canvas,
+            f"{speedup:.1f}x",
+            (canvas.shape[1] - 160, 45),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.1,
+            (255, 255, 255),
+            3,
+        )
 
     return canvas
 
 
 class ResultPublisher(Node):
     def __init__(self, image_bgr):
-        super().__init__('demo2_ogl_result_publisher')
-        self.pub = self.create_publisher(Image, 'demo2_ogl_comparison', 10)
+        super().__init__("demo2_ogl_result_publisher")
+        self.pub = self.create_publisher(Image, "demo2_ogl_comparison", 10)
         self.bridge = CvBridge()
-        self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding='bgr8')
+        self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding="bgr8")
         self.create_timer(1.0, self.publish_once)
         self.get_logger().info(
-            f'Publishing result to /demo2_ogl_comparison for {RESULT_PUBLISH_DURATION_SEC}s '
-            '-- view with RViz2 (Image display) or rqt_image_view on a laptop on this ROS domain')
+            f"Publishing result to /demo2_ogl_comparison for {RESULT_PUBLISH_DURATION_SEC}s "
+            "-- view with RViz2 (Image display) or rqt_image_view on a laptop on this ROS domain"
+        )
 
     def publish_once(self):
         self.msg.header.stamp = self.get_clock().now().to_msg()
@@ -244,25 +286,31 @@ class ResultPublisher(Node):
 
 
 def main():
-    gpu_elapsed, gpu_pose = run_localization_pass('gpu')
-    cpu_elapsed, cpu_pose = run_localization_pass('cpu')
+    gpu_elapsed, gpu_pose = run_localization_pass("gpu")
+    cpu_elapsed, cpu_pose = run_localization_pass("cpu")
 
-    print('\n=== Demo 2 result ===')
-    print(f'GPU: {gpu_elapsed}')
-    print(f'CPU: {cpu_elapsed}')
+    print("\n=== Demo 2 result ===")
+    print(f"GPU: {gpu_elapsed}")
+    print(f"CPU: {cpu_elapsed}")
     if gpu_elapsed and cpu_elapsed:
-        print(f'Speedup: {cpu_elapsed / gpu_elapsed:.1f}x')
+        print(f"Speedup: {cpu_elapsed / gpu_elapsed:.1f}x")
 
     result_image = build_result_image(gpu_elapsed, gpu_pose, cpu_elapsed, cpu_pose)
-    out_path = THIS_DIR / 'demo2_result.png'
+    out_path = THIS_DIR / "demo2_result.png"
     cv2.imwrite(str(out_path), result_image)
-    print(f'Saved {out_path}')
+    print(f"Saved {out_path}")
 
-    with open(THIS_DIR / 'demo2_result.json', 'w') as f:
-        json.dump({
-            'gpu_elapsed_sec': gpu_elapsed, 'gpu_pose': gpu_pose,
-            'cpu_elapsed_sec': cpu_elapsed, 'cpu_pose': cpu_pose,
-        }, f, indent=2)
+    with open(THIS_DIR / "demo2_result.json", "w") as f:
+        json.dump(
+            {
+                "gpu_elapsed_sec": gpu_elapsed,
+                "gpu_pose": gpu_pose,
+                "cpu_elapsed_sec": cpu_elapsed,
+                "cpu_pose": cpu_pose,
+            },
+            f,
+            indent=2,
+        )
 
     rclpy.init()
     pub_node = ResultPublisher(result_image)
@@ -273,5 +321,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

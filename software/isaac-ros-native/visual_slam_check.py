@@ -5,6 +5,7 @@ plays, and checks it has a finite, non-degenerate pose (real tracking
 happened, not a zeroed/garbage message) plus a valid orientation
 quaternion (norm ~1).
 """
+
 import math
 import sys
 import time
@@ -18,10 +19,11 @@ TIMEOUT_SEC = 30.0
 
 class VisualSlamCheck(Node):
     def __init__(self):
-        super().__init__('visual_slam_check')
+        super().__init__("visual_slam_check")
         self.received = []
         self.sub = self.create_subscription(
-            Odometry, '/visual_slam/tracking/odometry', self.on_msg, 10)
+            Odometry, "/visual_slam/tracking/odometry", self.on_msg, 10
+        )
 
     def on_msg(self, msg):
         self.received.append(msg)
@@ -45,18 +47,18 @@ def main():
         quat_ok = finite and abs(quat_norm - 1.0) < 0.05
         ok = finite and quat_ok
         node.get_logger().info(
-            f'received {len(node.received)} odometry messages; last: '
-            f'position=({p.x:.4f},{p.y:.4f},{p.z:.4f}) '
-            f'orientation_norm={quat_norm:.4f}'
+            f"received {len(node.received)} odometry messages; last: "
+            f"position=({p.x:.4f},{p.y:.4f},{p.z:.4f}) "
+            f"orientation_norm={quat_norm:.4f}"
         )
     else:
-        node.get_logger().info('no odometry message received before timeout')
+        node.get_logger().info("no odometry message received before timeout")
 
-    print('VISUAL_SLAM OK' if ok else 'VISUAL_SLAM FAILED')
+    print("VISUAL_SLAM OK" if ok else "VISUAL_SLAM FAILED")
     node.destroy_node()
     rclpy.shutdown()
     sys.exit(0 if ok else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

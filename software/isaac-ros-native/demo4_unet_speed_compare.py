@@ -14,33 +14,42 @@ profile (min=opt=max=1) at engine-build time and a per-context
 set_input_shape() call before inference -- YOLOv8's model didn't need
 either.
 """
+
 import json
 import pathlib
 import sys
 import time
 
-sys.path.insert(0, '/usr/lib/python3.12/dist-packages')
+sys.path.insert(0, "/usr/lib/python3.12/dist-packages")
 
 import cv2
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorrt as trt
 from cuda.bindings import runtime as cudart
 
 THIS_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = THIS_DIR / 'models' / 'model.dummy.onnx'
-ENGINE_PATH = THIS_DIR / 'models' / 'unet_dummy_demo4.plan'
-IMAGE_PATH = (THIS_DIR / 'isaac_ros_image_segmentation' / 'isaac_ros_unet' /
-              'test' / 'test_cases' / 'unet_sample' / 'image.jpg')
+MODEL_PATH = THIS_DIR / "models" / "model.dummy.onnx"
+ENGINE_PATH = THIS_DIR / "models" / "unet_dummy_demo4.plan"
+IMAGE_PATH = (
+    THIS_DIR
+    / "isaac_ros_image_segmentation"
+    / "isaac_ros_unet"
+    / "test"
+    / "test_cases"
+    / "unet_sample"
+    / "image.jpg"
+)
 
 NETWORK_WIDTH = 960
 NETWORK_HEIGHT = 544
 INPUT_SHAPE = (1, 3, NETWORK_HEIGHT, NETWORK_WIDTH)
 OUTPUT_SHAPE = (1, NETWORK_HEIGHT, NETWORK_WIDTH, 20)
-INPUT_NAME = 'input_1'
-OUTPUT_NAME = 'softmax_1'
+INPUT_NAME = "input_1"
+OUTPUT_NAME = "softmax_1"
 NUM_WARMUP = 5
 NUM_TIMED = 30  # heavier model than YOLOv8s -- fewer timed iterations
 
@@ -56,20 +65,22 @@ def load_input_tensor():
 def build_or_load_engine():
     logger = trt.Logger(trt.Logger.WARNING)
     if ENGINE_PATH.exists():
-        print(f'Loading cached engine: {ENGINE_PATH}')
+        print(f"Loading cached engine: {ENGINE_PATH}")
         runtime = trt.Runtime(logger)
-        with open(ENGINE_PATH, 'rb') as f:
+        with open(ENGINE_PATH, "rb") as f:
             return runtime.deserialize_cuda_engine(f.read())
 
-    print('Building TensorRT engine (first run only, cached after)...')
+    print("Building TensorRT engine (first run only, cached after)...")
     builder = trt.Builder(logger)
-    network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+    network = builder.create_network(
+        1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    )
     parser = trt.OnnxParser(network, logger)
-    with open(MODEL_PATH, 'rb') as f:
+    with open(MODEL_PATH, "rb") as f:
         if not parser.parse(f.read()):
             for i in range(parser.num_errors):
                 print(parser.get_error(i))
-            raise RuntimeError('Failed to parse ONNX model')
+            raise RuntimeError("Failed to parse ONNX model")
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 512 * 1024 * 1024)
@@ -81,9 +92,9 @@ def build_or_load_engine():
 
     t0 = time.time()
     serialized = builder.build_serialized_network(network, config)
-    print(f'Engine built in {time.time() - t0:.1f}s')
+    print(f"Engine built in {time.time() - t0:.1f}s")
 
-    with open(ENGINE_PATH, 'wb') as f:
+    with open(ENGINE_PATH, "wb") as f:
         f.write(serialized)
 
     runtime = trt.Runtime(logger)
@@ -100,36 +111,44 @@ def benchmark_tensorrt(input_np):
 
     err, d_input = cudart.cudaMalloc(input_nbytes)
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaMalloc(input) failed: {err}')
+        raise RuntimeError(f"cudaMalloc(input) failed: {err}")
     err, d_output = cudart.cudaMalloc(output_nbytes)
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaMalloc(output) failed: {err}')
+        raise RuntimeError(f"cudaMalloc(output) failed: {err}")
 
     context.set_tensor_address(INPUT_NAME, d_input)
     context.set_tensor_address(OUTPUT_NAME, d_output)
 
     err, stream = cudart.cudaStreamCreate()
     if err != cudart.cudaError_t.cudaSuccess:
-        raise RuntimeError(f'cudaStreamCreate failed: {err}')
+        raise RuntimeError(f"cudaStreamCreate failed: {err}")
 
     host_input = np.ascontiguousarray(input_np, dtype=np.float32)
     host_output = np.empty(OUTPUT_SHAPE, dtype=np.float32)
 
     def run_once():
         (err,) = cudart.cudaMemcpyAsync(
-            d_input, host_input.ctypes.data, input_nbytes,
-            cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
+            d_input,
+            host_input.ctypes.data,
+            input_nbytes,
+            cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+            stream,
+        )
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'H2D memcpy failed: {err}')
+            raise RuntimeError(f"H2D memcpy failed: {err}")
         context.execute_async_v3(stream_handle=stream)
         (err,) = cudart.cudaMemcpyAsync(
-            host_output.ctypes.data, d_output, output_nbytes,
-            cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, stream)
+            host_output.ctypes.data,
+            d_output,
+            output_nbytes,
+            cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+            stream,
+        )
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'D2H memcpy failed: {err}')
+            raise RuntimeError(f"D2H memcpy failed: {err}")
         (err,) = cudart.cudaStreamSynchronize(stream)
         if err != cudart.cudaError_t.cudaSuccess:
-            raise RuntimeError(f'stream sync failed: {err}')
+            raise RuntimeError(f"stream sync failed: {err}")
 
     for _ in range(NUM_WARMUP):
         run_once()
@@ -149,7 +168,8 @@ def benchmark_tensorrt(input_np):
 
 def benchmark_onnxruntime(input_np):
     import onnxruntime as ort
-    session = ort.InferenceSession(str(MODEL_PATH), providers=['CPUExecutionProvider'])
+
+    session = ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
     output_name = session.get_outputs()[0].name
 
@@ -174,28 +194,32 @@ def summarize(name, times):
     p50 = float(np.percentile(arr, 50))
     p99 = float(np.percentile(arr, 99))
     fps = 1000.0 / mean_ms if mean_ms > 0 else 0.0
-    print(f'{name}: mean={mean_ms:.3f}ms p50={p50:.3f}ms p99={p99:.3f}ms -> {fps:.1f} fps')
-    return {'mean_ms': mean_ms, 'p50_ms': p50, 'p99_ms': p99, 'fps': fps}
+    print(
+        f"{name}: mean={mean_ms:.3f}ms p50={p50:.3f}ms p99={p99:.3f}ms -> {fps:.1f} fps"
+    )
+    return {"mean_ms": mean_ms, "p50_ms": p50, "p99_ms": p99, "fps": fps}
 
 
 def build_chart_image(trt_stats, ort_stats, speedup):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 4))
 
-    names = ['TensorRT\n(GPU)', 'ONNX Runtime\n(CPU)']
-    means = [trt_stats['mean_ms'], ort_stats['mean_ms']]
-    colors = ['#3f8a6f', '#c9822f']
+    names = ["TensorRT\n(GPU)", "ONNX Runtime\n(CPU)"]
+    means = [trt_stats["mean_ms"], ort_stats["mean_ms"]]
+    colors = ["#3f8a6f", "#c9822f"]
     ax1.bar(names, means, color=colors)
     for i, m in enumerate(means):
-        ax1.text(i, m + max(means) * 0.02, f'{m:.2f}ms', ha='center', fontsize=10)
-    ax1.set_ylabel('mean inference time (ms)')
-    ax1.set_title(f'U-Net: TensorRT vs ONNX Runtime\n{speedup:.1f}x speedup (GPU vs CPU)')
+        ax1.text(i, m + max(means) * 0.02, f"{m:.2f}ms", ha="center", fontsize=10)
+    ax1.set_ylabel("mean inference time (ms)")
+    ax1.set_title(
+        f"U-Net: TensorRT vs ONNX Runtime\n{speedup:.1f}x speedup (GPU vs CPU)"
+    )
 
-    fpss = [trt_stats['fps'], ort_stats['fps']]
+    fpss = [trt_stats["fps"], ort_stats["fps"]]
     ax2.bar(names, fpss, color=colors)
     for i, f in enumerate(fpss):
-        ax2.text(i, f + max(fpss) * 0.02, f'{f:.1f} fps', ha='center', fontsize=10)
-    ax2.set_ylabel('throughput (fps)')
-    ax2.set_title('Direct Python API, no ROS overhead')
+        ax2.text(i, f + max(fpss) * 0.02, f"{f:.1f} fps", ha="center", fontsize=10)
+    ax2.set_ylabel("throughput (fps)")
+    ax2.set_title("Direct Python API, no ROS overhead")
 
     fig.tight_layout()
     fig.canvas.draw()
@@ -213,15 +237,16 @@ def publish_result(image_bgr, duration_sec=120):
 
     class ResultPublisher(Node):
         def __init__(self):
-            super().__init__('demo4_unet_result_publisher')
-            self.pub = self.create_publisher(RosImage, 'demo4_unet_comparison', 10)
+            super().__init__("demo4_unet_result_publisher")
+            self.pub = self.create_publisher(RosImage, "demo4_unet_comparison", 10)
             self.bridge = CvBridge()
-            self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding='bgr8')
+            self.msg = self.bridge.cv2_to_imgmsg(image_bgr, encoding="bgr8")
             self.create_timer(1.0, self.publish_once)
             self.get_logger().info(
-                f'Publishing result to /demo4_unet_comparison for {duration_sec}s -- '
-                'view with RViz2 (Image display) or rqt_image_view on a laptop on this '
-                'ROS domain')
+                f"Publishing result to /demo4_unet_comparison for {duration_sec}s -- "
+                "view with RViz2 (Image display) or rqt_image_view on a laptop on this "
+                "ROS domain"
+            )
 
         def publish_once(self):
             self.msg.header.stamp = self.get_clock().now().to_msg()
@@ -239,28 +264,36 @@ def publish_result(image_bgr, duration_sec=120):
 def main():
     input_np = load_input_tensor()
 
-    print(f'--- TensorRT GPU: {NUM_WARMUP} warmup + {NUM_TIMED} timed calls ---')
+    print(f"--- TensorRT GPU: {NUM_WARMUP} warmup + {NUM_TIMED} timed calls ---")
     trt_times, trt_output = benchmark_tensorrt(input_np)
-    trt_stats = summarize('TensorRT (GPU)', trt_times)
+    trt_stats = summarize("TensorRT (GPU)", trt_times)
 
-    print(f'--- ONNX Runtime CPU: {NUM_WARMUP} warmup + {NUM_TIMED} timed calls ---')
+    print(f"--- ONNX Runtime CPU: {NUM_WARMUP} warmup + {NUM_TIMED} timed calls ---")
     ort_times, ort_output = benchmark_onnxruntime(input_np)
-    ort_stats = summarize('ONNX Runtime (CPU)', ort_times)
+    ort_stats = summarize("ONNX Runtime (CPU)", ort_times)
 
-    speedup = ort_stats['mean_ms'] / trt_stats['mean_ms']
-    print(f'\nSpeedup (GPU vs CPU): {speedup:.1f}x')
+    speedup = ort_stats["mean_ms"] / trt_stats["mean_ms"]
+    print(f"\nSpeedup (GPU vs CPU): {speedup:.1f}x")
 
-    with open(THIS_DIR / 'demo4_result.json', 'w') as f:
-        json.dump({'tensorrt_gpu': trt_stats, 'onnxruntime_cpu': ort_stats,
-                    'speedup': speedup, 'num_timed_calls': NUM_TIMED}, f, indent=2)
-    print(f'Saved {THIS_DIR / "demo4_result.json"}')
+    with open(THIS_DIR / "demo4_result.json", "w") as f:
+        json.dump(
+            {
+                "tensorrt_gpu": trt_stats,
+                "onnxruntime_cpu": ort_stats,
+                "speedup": speedup,
+                "num_timed_calls": NUM_TIMED,
+            },
+            f,
+            indent=2,
+        )
+    print(f"Saved {THIS_DIR / 'demo4_result.json'}")
 
     chart = build_chart_image(trt_stats, ort_stats, speedup)
-    cv2.imwrite(str(THIS_DIR / 'demo4_result.png'), chart)
-    print(f'Saved {THIS_DIR / "demo4_result.png"}')
+    cv2.imwrite(str(THIS_DIR / "demo4_result.png"), chart)
+    print(f"Saved {THIS_DIR / 'demo4_result.png'}")
 
     publish_result(chart)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

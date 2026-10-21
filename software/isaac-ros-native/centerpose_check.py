@@ -13,6 +13,7 @@ message structure. Tolerance is generous (position within 1.0m of ground
 truth) since this proves "the trained model produces a sane real-world
 pose", not bit-exact reproduction of NVIDIA's own TensorRT build.
 """
+
 import json
 import pathlib
 import sys
@@ -25,10 +26,16 @@ from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from vision_msgs.msg import Detection3DArray
 
-TEST_DIR = pathlib.Path(__file__).parent / 'isaac_ros_pose_estimation' / \
-    'isaac_ros_centerpose' / 'test' / 'test_cases' / 'shoe'
-IMAGE_PATH = TEST_DIR / 'image.png'
-GROUND_TRUTH_PATH = TEST_DIR / 'ground_truth.json'
+TEST_DIR = (
+    pathlib.Path(__file__).parent
+    / "isaac_ros_pose_estimation"
+    / "isaac_ros_centerpose"
+    / "test"
+    / "test_cases"
+    / "shoe"
+)
+IMAGE_PATH = TEST_DIR / "image.png"
+GROUND_TRUTH_PATH = TEST_DIR / "ground_truth.json"
 
 EXPECTED_OBJECT_COUNT = 2
 DEPTH_TOLERANCE_M = 1.0
@@ -37,12 +44,13 @@ ENGINE_READY_TIMEOUT_SEC = 300
 
 class CenterPoseCheck(Node):
     def __init__(self):
-        super().__init__('centerpose_check')
+        super().__init__("centerpose_check")
         self.received = None
         self.sub = self.create_subscription(
-            Detection3DArray, 'centerpose/detections', self.on_msg, 10)
-        self.image_pub = self.create_publisher(Image, 'image', 10)
-        self.camera_info_pub = self.create_publisher(CameraInfo, 'camera_info', 10)
+            Detection3DArray, "centerpose/detections", self.on_msg, 10
+        )
+        self.image_pub = self.create_publisher(Image, "image", 10)
+        self.camera_info_pub = self.create_publisher(CameraInfo, "camera_info", 10)
 
     def on_msg(self, msg):
         if self.received is None and len(msg.detections) > 0:
@@ -51,21 +59,27 @@ class CenterPoseCheck(Node):
 
 def main():
     ground_truth = json.loads(GROUND_TRUTH_PATH.read_text())
-    gt_depths = sorted(obj['location'][2] for obj in ground_truth['objects'])
+    gt_depths = sorted(obj["location"][2] for obj in ground_truth["objects"])
 
     cv_image_bgr = cv2.imread(str(IMAGE_PATH))
     cv_image_rgb = cv2.cvtColor(cv_image_bgr, cv2.COLOR_BGR2RGB)
     bridge = CvBridge()
-    image_msg = bridge.cv2_to_imgmsg(cv_image_rgb, encoding='rgb8')
+    image_msg = bridge.cv2_to_imgmsg(cv_image_rgb, encoding="rgb8")
 
     camera_info_msg = CameraInfo()
     camera_info_msg.width = cv_image_rgb.shape[1]
     camera_info_msg.height = cv_image_rgb.shape[0]
-    camera_info_msg.distortion_model = 'plumb_bob'
+    camera_info_msg.distortion_model = "plumb_bob"
     camera_info_msg.k = [
-        651.2994384765625, 0.0, 298.3225504557292,
-        0.0, 651.2994384765625, 392.1635182698568,
-        0.0, 0.0, 1.0,
+        651.2994384765625,
+        0.0,
+        298.3225504557292,
+        0.0,
+        651.2994384765625,
+        392.1635182698568,
+        0.0,
+        0.0,
+        1.0,
     ]
 
     rclpy.init()
@@ -82,16 +96,16 @@ def main():
         node.camera_info_pub.publish(camera_info_msg)
         rclpy.spin_once(node, timeout_sec=0.1)
 
-    node.get_logger().info(f'sent={sent} received={node.received is not None}')
+    node.get_logger().info(f"sent={sent} received={node.received is not None}")
 
     ok = node.received is not None
     if ok:
         dets = node.received.detections
         got_depths = sorted(d.bbox.center.position.z for d in dets)
         node.get_logger().info(
-            f'num_detections={len(dets)} (ground truth: {EXPECTED_OBJECT_COUNT}) '
-            f'depths={[f"{d:.2f}" for d in got_depths]} '
-            f'(ground truth: {[f"{d:.2f}" for d in gt_depths]})'
+            f"num_detections={len(dets)} (ground truth: {EXPECTED_OBJECT_COUNT}) "
+            f"depths={[f'{d:.2f}' for d in got_depths]} "
+            f"(ground truth: {[f'{d:.2f}' for d in gt_depths]})"
         )
 
         ok = len(dets) >= 1
@@ -105,15 +119,15 @@ def main():
                 if closest > DEPTH_TOLERANCE_M:
                     ok = False
                     node.get_logger().info(
-                        f'  depth {depth:.2f}m is {closest:.2f}m from nearest '
-                        f'ground-truth depth -- outside tolerance'
+                        f"  depth {depth:.2f}m is {closest:.2f}m from nearest "
+                        f"ground-truth depth -- outside tolerance"
                     )
 
-    print('CENTERPOSE OK' if ok else 'CENTERPOSE FAILED')
+    print("CENTERPOSE OK" if ok else "CENTERPOSE FAILED")
     node.destroy_node()
     rclpy.shutdown()
     sys.exit(0 if ok else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

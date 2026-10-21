@@ -12,6 +12,7 @@ container, exercising real NITROS negotiation/type-adapter machinery:
 
 Not NVIDIA source -- our own minimal launch file.
 """
+
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -19,30 +20,30 @@ from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
     container = ComposableNodeContainer(
-        name='nitros_roundtrip_container',
-        namespace='',
-        package='rclcpp_components',
-        executable='component_container_mt',
+        name="nitros_roundtrip_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container_mt",
         composable_node_descriptions=[
             ComposableNode(
-                package='isaac_ros_nitros',
-                plugin='nvidia::isaac_ros::nitros::NitrosEmptyForwardNode',
-                name='nitros_stage1',
-                parameters=[{'compatible_format': 'nitros_empty'}],
+                package="isaac_ros_nitros",
+                plugin="nvidia::isaac_ros::nitros::NitrosEmptyForwardNode",
+                name="nitros_stage1",
+                parameters=[{"compatible_format": "nitros_empty"}],
             ),
             ComposableNode(
-                package='isaac_ros_nitros',
-                plugin='nvidia::isaac_ros::nitros::NitrosEmptyForwardNode',
-                name='nitros_stage2',
-                namespace='mid1',
-                parameters=[{'compatible_format': 'nitros_empty'}],
+                package="isaac_ros_nitros",
+                plugin="nvidia::isaac_ros::nitros::NitrosEmptyForwardNode",
+                name="nitros_stage2",
+                namespace="mid1",
+                parameters=[{"compatible_format": "nitros_empty"}],
                 remappings=[
-                    ('/mid1/topic_forward_input', '/topic_forward_output'),
-                    ('/mid1/topic_forward_output', '/final/topic_forward_output'),
+                    ("/mid1/topic_forward_input", "/topic_forward_output"),
+                    ("/mid1/topic_forward_output", "/final/topic_forward_output"),
                 ],
             ),
         ],
-        output='both',
-        arguments=['--ros-args', '--log-level', 'info'],
+        output="both",
+        arguments=["--ros-args", "--log-level", "info"],
     )
     return LaunchDescription([container])

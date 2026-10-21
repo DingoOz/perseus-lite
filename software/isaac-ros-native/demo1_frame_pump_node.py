@@ -66,6 +66,7 @@ way. The live GPU-vs-CPU message-rate comparison is kept and still
 displayed (it's a real, honest measurement of end-to-end pipeline
 throughput), just labeled for what it actually shows.
 """
+
 import cv2
 from cv_bridge import CvBridge
 import rclpy
@@ -81,45 +82,52 @@ PHASE_DURATION_SEC = 10.0
 
 class FramePumpNode(Node):
     def __init__(self):
-        super().__init__('frame_pump')
+        super().__init__("frame_pump")
         self.bridge = CvBridge()
         self.latest_image_msg = None
         self.latest_info_msg = None
 
-        self.phase = 'gpu'
+        self.phase = "gpu"
         self.phase_start = self.get_clock().now()
 
         self.image_sub = self.create_subscription(
-            Image, 'image_rect', self.on_image, 10)
+            Image, "image_rect", self.on_image, 10
+        )
         self.info_sub = self.create_subscription(
-            CameraInfo, 'camera_info_rect', self.on_info, 10)
+            CameraInfo, "camera_info_rect", self.on_info, 10
+        )
 
-        self.gpu_image_pub = self.create_publisher(Image, 'image_gpu_active', 10)
-        self.gpu_info_pub = self.create_publisher(CameraInfo, 'camera_info_gpu_active', 10)
-        self.cpu_image_pub = self.create_publisher(Image, 'image_cpu_active', 10)
-        self.cpu_info_pub = self.create_publisher(CameraInfo, 'camera_info_cpu_active', 10)
+        self.gpu_image_pub = self.create_publisher(Image, "image_gpu_active", 10)
+        self.gpu_info_pub = self.create_publisher(
+            CameraInfo, "camera_info_gpu_active", 10
+        )
+        self.cpu_image_pub = self.create_publisher(Image, "image_cpu_active", 10)
+        self.cpu_info_pub = self.create_publisher(
+            CameraInfo, "camera_info_cpu_active", 10
+        )
 
         self.create_timer(1.0 / PUMP_RATE_HZ, self.pump)
         self.create_timer(0.5, self.check_phase)
         self.get_logger().info(
-            f'Frame pump ready: {PUMP_WIDTH}x{PUMP_HEIGHT} bgr8, alternating GPU/CPU phases '
-            f'every {PHASE_DURATION_SEC:.0f}s, up to {PUMP_RATE_HZ:.0f} Hz within a phase')
-        self.get_logger().info('Phase: GPU (first)')
+            f"Frame pump ready: {PUMP_WIDTH}x{PUMP_HEIGHT} bgr8, alternating GPU/CPU phases "
+            f"every {PHASE_DURATION_SEC:.0f}s, up to {PUMP_RATE_HZ:.0f} Hz within a phase"
+        )
+        self.get_logger().info("Phase: GPU (first)")
 
     def check_phase(self):
         elapsed = (self.get_clock().now() - self.phase_start).nanoseconds / 1e9
         if elapsed >= PHASE_DURATION_SEC:
-            self.phase = 'cpu' if self.phase == 'gpu' else 'gpu'
+            self.phase = "cpu" if self.phase == "gpu" else "gpu"
             self.phase_start = self.get_clock().now()
-            self.get_logger().info(f'Phase: {self.phase.upper()}')
+            self.get_logger().info(f"Phase: {self.phase.upper()}")
 
     def on_image(self, msg):
         # Convert/resize/serialize once per real camera frame (~2-10 Hz),
         # not once per pump tick (up to 500 Hz) -- see module docstring,
         # point 4. bgr8, not mono8 -- see point 2.
-        bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         small = cv2.resize(bgr, (PUMP_WIDTH, PUMP_HEIGHT), interpolation=cv2.INTER_AREA)
-        self.latest_image_msg = self.bridge.cv2_to_imgmsg(small, encoding='bgr8')
+        self.latest_image_msg = self.bridge.cv2_to_imgmsg(small, encoding="bgr8")
         self.latest_image_msg.header.frame_id = msg.header.frame_id
 
     def on_info(self, msg):
@@ -131,13 +139,32 @@ class FramePumpNode(Node):
         scaled.height = PUMP_HEIGHT
         scaled.distortion_model = msg.distortion_model
         scaled.d = msg.d
-        scaled.k = [msg.k[0] * sx, msg.k[1], msg.k[2] * sx,
-                    msg.k[3], msg.k[4] * sy, msg.k[5] * sy,
-                    msg.k[6], msg.k[7], msg.k[8]]
+        scaled.k = [
+            msg.k[0] * sx,
+            msg.k[1],
+            msg.k[2] * sx,
+            msg.k[3],
+            msg.k[4] * sy,
+            msg.k[5] * sy,
+            msg.k[6],
+            msg.k[7],
+            msg.k[8],
+        ]
         scaled.r = msg.r
-        scaled.p = [msg.p[0] * sx, msg.p[1], msg.p[2] * sx, msg.p[3] * sx,
-                    msg.p[4], msg.p[5] * sy, msg.p[6] * sy, msg.p[7] * sy,
-                    msg.p[8], msg.p[9], msg.p[10], msg.p[11]]
+        scaled.p = [
+            msg.p[0] * sx,
+            msg.p[1],
+            msg.p[2] * sx,
+            msg.p[3] * sx,
+            msg.p[4],
+            msg.p[5] * sy,
+            msg.p[6] * sy,
+            msg.p[7] * sy,
+            msg.p[8],
+            msg.p[9],
+            msg.p[10],
+            msg.p[11],
+        ]
         self.latest_info_msg = scaled
 
     def pump(self):
@@ -153,7 +180,7 @@ class FramePumpNode(Node):
         stamp = self.get_clock().now().to_msg()
         self.latest_image_msg.header.stamp = stamp
 
-        if self.phase == 'gpu':
+        if self.phase == "gpu":
             self.gpu_image_pub.publish(self.latest_image_msg)
             if self.latest_info_msg is not None:
                 self.latest_info_msg.header.stamp = stamp
@@ -176,5 +203,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

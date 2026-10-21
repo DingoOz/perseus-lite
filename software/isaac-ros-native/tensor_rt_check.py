@@ -8,6 +8,7 @@ without pulling in isaac_ros_test/IsaacROSBaseTest. First run also has to
 wait out real TensorRT engine-build time (parsing the ONNX graph, engine
 optimization) before the node is ready to infer, hence the long timeout.
 """
+
 import sys
 import time
 
@@ -15,7 +16,7 @@ import rclpy
 from rclpy.node import Node
 from isaac_ros_tensor_list_interfaces.msg import Tensor, TensorList, TensorShape
 
-EXPECTED_NAME = 'output'
+EXPECTED_NAME = "output"
 EXPECTED_DATA_TYPE = 9  # float32
 EXPECTED_DIMS = [1, 1000]
 EXPECTED_RANK = 2
@@ -24,11 +25,10 @@ ENGINE_BUILD_TIMEOUT_SEC = 400
 
 class TensorRTCheck(Node):
     def __init__(self):
-        super().__init__('tensor_rt_check')
+        super().__init__("tensor_rt_check")
         self.received = []
-        self.sub = self.create_subscription(
-            TensorList, 'tensor_sub', self.on_msg, 10)
-        self.pub = self.create_publisher(TensorList, 'tensor_pub', 10)
+        self.sub = self.create_subscription(TensorList, "tensor_sub", self.on_msg, 10)
+        self.pub = self.create_publisher(TensorList, "tensor_pub", 10)
 
     def on_msg(self, msg):
         self.received.append(msg)
@@ -36,7 +36,7 @@ class TensorRTCheck(Node):
     def make_input(self):
         shape = TensorShape(rank=4, dims=[1, 3, 224, 224])
         tensor = Tensor(
-            name='input',
+            name="input",
             shape=shape,
             data_type=EXPECTED_DATA_TYPE,
             strides=[],
@@ -61,22 +61,22 @@ def main():
     if ok:
         tensor = node.received[-1].tensors[0]
         checks = {
-            'name': (tensor.name, EXPECTED_NAME),
-            'data_type': (tensor.data_type, EXPECTED_DATA_TYPE),
-            'rank': (tensor.shape.rank, EXPECTED_RANK),
-            'dims': (list(tensor.shape.dims), EXPECTED_DIMS),
+            "name": (tensor.name, EXPECTED_NAME),
+            "data_type": (tensor.data_type, EXPECTED_DATA_TYPE),
+            "rank": (tensor.shape.rank, EXPECTED_RANK),
+            "dims": (list(tensor.shape.dims), EXPECTED_DIMS),
         }
         for key, (actual, expected) in checks.items():
             if actual != expected:
                 ok = False
-            node.get_logger().info(f'{key}: got={actual} expected={expected}')
+            node.get_logger().info(f"{key}: got={actual} expected={expected}")
 
-    node.get_logger().info(f'sent={sent} received={len(node.received)}')
-    print('TENSOR_RT OK' if ok else 'TENSOR_RT FAILED')
+    node.get_logger().info(f"sent={sent} received={len(node.received)}")
+    print("TENSOR_RT OK" if ok else "TENSOR_RT FAILED")
     node.destroy_node()
     rclpy.shutdown()
     sys.exit(0 if ok else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

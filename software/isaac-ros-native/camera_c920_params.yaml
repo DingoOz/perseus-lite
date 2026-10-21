@@ -12,26 +12,26 @@
 # resolution but usb_cam's yuyv2rgb pixel_format here expects YUYV, not
 # MJPEG). Fine for a "point the camera at a tag and watch it" demo.
 /**:
-    ros__parameters:
-      video_device: "/dev/video0"
-      image_width: 1280
-      image_height: 720
-      framerate: 10.0
-      io_method: "mmap"
-      frame_id: "camera"
-      pixel_format: "yuyv2rgb"
-      camera_name: "c920"
-      # camera_info_url is overridden at launch time by apriltag_camera_launch.py
-      # (needs an absolute file:// path; this directory isn't an installed
-      # ROS package so there's no package:// URL to use).
-      brightness: -1
-      contrast: -1
-      saturation: -1
-      sharpness: -1
-      gain: -1
-      auto_white_balance: true
-      white_balance: 4000
-      autoexposure: true
-      exposure: 100
-      autofocus: false
-      focus: -1
+  ros__parameters:
+    video_device: "/dev/video0"
+    image_width: 1280
+    image_height: 720
+    framerate: 10.0
+    io_method: "mmap"
+    frame_id: "camera"
+    pixel_format: "yuyv2rgb"
+    camera_name: "c920"
+    # camera_info_url is overridden at launch time by apriltag_camera_launch.py
+    # (needs an absolute file:// path; this directory isn't an installed
+    # ROS package so there's no package:// URL to use).
+    brightness: -1
+    contrast: -1
+    saturation: -1
+    sharpness: -1
+    gain: -1
+    auto_white_balance: true
+    white_balance: 4000
+    autoexposure: true
+    exposure: 100
+    autofocus: false
+    focus: -1

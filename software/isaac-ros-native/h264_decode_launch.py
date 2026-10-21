@@ -12,6 +12,7 @@ worth proving: this launch feeds NVIDIA's own pre-encoded
 compressed.h264 test fixture directly, bypassing EncoderNode entirely.
 See h264_decode_check.py.
 """
+
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -19,23 +20,25 @@ from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
     decoder_node = ComposableNode(
-        name='decoder',
-        package='isaac_ros_h264_decoder',
-        plugin='nvidia::isaac_ros::h264_decoder::DecoderNode',
-        namespace='',
-        parameters=[{
-            'output_width': 1920,
-            'output_height': 1200,
-        }],
+        name="decoder",
+        package="isaac_ros_h264_decoder",
+        plugin="nvidia::isaac_ros::h264_decoder::DecoderNode",
+        namespace="",
+        parameters=[
+            {
+                "output_width": 1920,
+                "output_height": 1200,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
-        package='rclcpp_components',
-        name='h264_decode_container',
-        namespace='',
-        executable='component_container_mt',
+        package="rclcpp_components",
+        name="h264_decode_container",
+        namespace="",
+        executable="component_container_mt",
         composable_node_descriptions=[decoder_node],
-        output='both',
-        arguments=['--ros-args', '--log-level', 'info'],
+        output="both",
+        arguments=["--ros-args", "--log-level", "info"],
     )
     return LaunchDescription([container])

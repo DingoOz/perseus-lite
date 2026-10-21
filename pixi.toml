@@ -380,9 +380,9 @@ cxx-compiler = "*"
 cmake = ">=3.22,<4"
 ninja = "*"
 colcon-common-extensions = "*"
-magic_enum = "*" # isaac_ros_gxf/isaac_ros_nitros build dep, not in RoboStack
-ros-jazzy-usb-cam = "*" # Stage 4 live-camera test (test-apriltags task)
-ros-jazzy-vision-msgs = "*" # Stage 5 isaac_ros_yolov8 (Detection2DArray), not in RoboStack by default
+magic_enum = "*"               # isaac_ros_gxf/isaac_ros_nitros build dep, not in RoboStack
+ros-jazzy-usb-cam = "*"        # Stage 4 live-camera test (test-apriltags task)
+ros-jazzy-vision-msgs = "*"    # Stage 5 isaac_ros_yolov8 (Detection2DArray), not in RoboStack by default
 
 [feature.isaac-nitros.pypi-dependencies]
 # CPU-only AprilTag detector for demo-apriltag-speed's GPU-vs-CPU comparison.

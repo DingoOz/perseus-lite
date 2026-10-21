@@ -27,7 +27,7 @@ source as a stopgap.
 
 Full background, findings, and the staged plan: see
 `docs/source/systems/software/isaac-ros-nitros-source-build.md`. Read that
-before running anything here — it explains *why* this is staged the way it
+before running anything here — it explains _why_ this is staged the way it
 is and what the licensing caveats are.
 
 **Nothing cloned here is committed to perseus-lite.** `isaac_ros_common/`,
@@ -71,7 +71,7 @@ real robot hardware, not something scoped to the repo. See the doc page's
 Once a toolchain is available (system CLI, Docker, or a manual bypass), the
 `isaac-nitros` Pixi env provides the plain colcon/cmake/compiler toolchain
 for the actual package builds: `pixi shell -e isaac-nitros`. Success
-criterion for this stage: `colcon build` at least *configures* against
+criterion for this stage: `colcon build` at least _configures_ against
 `isaac_ros_common`'s CMake macros — it is expected to fail at the GXF
 resolution step (that's Stage 1).
 
@@ -229,7 +229,7 @@ pkill -f component_container_mt   # clean up when done
 If you see `sent=N received=0` with the container log showing both nodes
 "Node was started" — check `ros2 topic list` for whether your remap
 `from`/`to` strings are absolute (leading `/`). A relative remap resolves
-*inside the node's own namespace* — `('mid1/x', 'y')` on a node namespaced
+_inside the node's own namespace_ — `('mid1/x', 'y')` on a node namespaced
 `mid1` silently becomes `/mid1/mid1/x`, matching nothing.
 
 ## Stage 4 — real perception: `isaac_ros_apriltag` + `isaac_ros_image_proc`
@@ -416,7 +416,7 @@ and CMake's own CUDA-arch auto-detection needs an explicit answer before
 `test-dnn-classify` runs our own minimal launch/check pair (not NVIDIA's
 `isaac_ros_test`-based suite): a static test image → `dnn_image_encoder`
 (resize/normalize to 224×224) → `tensor_rt` (mobilenetv2-1.0), checking the
-output tensor's shape/dtype/name *and* that it's not degenerate (finite,
+output tensor's shape/dtype/name _and_ that it's not degenerate (finite,
 non-constant — a real inference happened, not garbage). First run builds a
 real TensorRT engine (~40s); later runs reuse the cached
 `/tmp/trt_engine.plan`. Full findings, two real bugs hit while wiring the
@@ -506,7 +506,7 @@ binary's ELF constructor executes `whilewr` — an **SVE2** instruction —
 and Orin's Cortex-A78AE CPU doesn't implement SVE at all
 (`/proc/cpuinfo`'s `Features:` has `asimd`, no `sve`/`sve2`). Confirmed
 `jetpack70`-specific: the sibling `lib_aarch64_jetpack61` binary
-disassembles with zero SVE instructions, but *that* one wants
+disassembles with zero SVE instructions, but _that_ one wants
 `libcusolver.so.11`/`libcublas.so.12` (CUDA 11/12-era, not present on this
 CUDA-13.2-only host). Neither published aarch64 variant works here. Full
 diagnosis: `isaac-ros-nitros-source-build.md`'s "Stage 6" section.
@@ -635,7 +635,7 @@ dependency issue). **Blocked at runtime, both directions**: `EncoderNode`
 can't open `/dev/v4l2-nvenc` — this Jetson **Orin Nano** SKU has no
 hardware video encoder block at all (`ls /dev` shows `v4l2-nvdec` but no
 `v4l2-nvenc`; only Orin NX/AGX have NVENC). `DecoderNode` (the hardware
-this SoC *does* have) gets further — it parses NVIDIA's own test
+this SoC _does_ have) gets further — it parses NVIDIA's own test
 `.h264` fixture and detects resolution (`Decoded video: 460x460`) — but
 then fails inside NVIDIA's closed-source `libnvbufsurface`:
 `NvBufSurfaceMapCudaBufferImpl: API is not supported on this platform`.
@@ -660,7 +660,7 @@ Every capability above had only ever been proven running alone; this is
 the first test of whether they coexist — four TensorRT engines (plus
 VPI/cuAprilTag) sharing one GPU/CUDA context/process.
 
-First attempt found a real bug in the *test harness* (not Isaac ROS): an
+First attempt found a real bug in the _test harness_ (not Isaac ROS): an
 all-zero camera matrix crashed the entire container via an uncaught
 `cv::Exception` inside CenterPose's PnP solve — worth noting as a
 general risk for multi-node containers (one node's unguarded assertion
@@ -752,7 +752,7 @@ had a clean dependency chain.
 
 Build was clean. Found one real bug in our own launch file (not Isaac
 ROS): the map image path only resolves correctly if the `.yaml` file is
-*also* passed as a raw `parameters=[...]` list entry (ROS 2 launch loads
+_also_ passed as a raw `parameters=[...]` list entry (ROS 2 launch loads
 a bare `.yaml` string as a parameters file), not just as a dict value —
 first attempt left the `image` param empty and failed with a truncated
 path. Fixed to match NVIDIA's own test exactly.
@@ -778,11 +778,11 @@ Separate from the Stage 0-12 build effort above: a live demo comparing
 (`pupil-apriltags`, the official AprilTag C library's Python binding —
 no prebuilt aarch64 wheel, builds from source via this env's own
 `c-compiler`/`cxx-compiler`) on the real camera. Runs until Ctrl-C; view
-from a laptop on the same ROS domain — `ros2 run rviz2 rviz2 -d
-demo1_apriltag_speed.rviz` or `ros2 run rqt_image_view rqt_image_view
+from a laptop on the same ROS domain — `ROS2 run rviz2 rviz2 -d
+demo1_apriltag_speed.rviz` or `ROS2 run rqt_image_view rqt_image_view
 /image_comparison`.
 
-Getting a *meaningful* comparison took real iteration — the camera's
+Getting a _meaningful_ comparison took real iteration — the camera's
 fixed 10 fps would trivially cap both detectors at the same rate and
 hide any real difference, so a frame-pump node republishes the latest
 frame at a much higher rate to decouple detector throughput from camera
@@ -814,7 +814,7 @@ pixi run -e isaac-nitros demo-ogl-speed
 
 Reuses Stage 12's real CUDA kernel (`occupancy_grid_localizer_gpu.cu`).
 Rather than reimplement the CPU baseline ourselves (the exact trap Demo
-1's *methodology* fell into), this forces NVIDIA's own compiled node
+1's _methodology_ fell into), this forces NVIDIA's own compiled node
 down its real, already-built CPU fallback path
 (`CUDA_VISIBLE_DEVICES=""` — confirmed this genuinely fails CUDA init
 on this Jetson rather than silently no-op'ing) instead of the GPU path.

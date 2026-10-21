@@ -8,22 +8,26 @@
  * libgxf_core.so via the public C API (gxf/core/gxf.h).
  */
 #include <stdio.h>
+
 #include "gxf/core/gxf.h"
 
-int main(void) {
-  gxf_context_t context;
-  gxf_result_t result = GxfContextCreate(&context);
-  if (result != GXF_SUCCESS) {
-    printf("GxfContextCreate FAILED: result=%d\n", result);
-    return 1;
-  }
-  printf("GxfContextCreate OK: context=%p\n", (void *)context);
+int main(void)
+{
+    gxf_context_t context;
+    gxf_result_t result = GxfContextCreate(&context);
+    if (result != GXF_SUCCESS)
+    {
+        printf("GxfContextCreate FAILED: result=%d\n", result);
+        return 1;
+    }
+    printf("GxfContextCreate OK: context=%p\n", (void*)context);
 
-  result = GxfContextDestroy(context);
-  if (result != GXF_SUCCESS) {
-    printf("GxfContextDestroy FAILED: result=%d\n", result);
-    return 1;
-  }
-  printf("GxfContextDestroy OK\n");
-  return 0;
+    result = GxfContextDestroy(context);
+    if (result != GXF_SUCCESS)
+    {
+        printf("GxfContextDestroy FAILED: result=%d\n", result);
+        return 1;
+    }
+    printf("GxfContextDestroy OK\n");
+    return 0;
 }

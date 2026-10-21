@@ -21,6 +21,7 @@ trigger_grid_search_localization service once a scan is buffered. See
 ogl_check.py for the expected-pose assertions (NVIDIA's own ground
 truth, not chosen by us).
 """
+
 import os
 
 from launch import LaunchDescription
@@ -32,14 +33,18 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def generate_launch_description():
     map_yaml_path = os.path.join(
-        THIS_DIR, 'isaac_ros_mapping_and_localization',
-        'isaac_ros_occupancy_grid_localizer', 'maps', 'map.yaml')
+        THIS_DIR,
+        "isaac_ros_mapping_and_localization",
+        "isaac_ros_occupancy_grid_localizer",
+        "maps",
+        "map.yaml",
+    )
 
     localizer_node = ComposableNode(
-        package='isaac_ros_occupancy_grid_localizer',
-        plugin='nvidia::isaac_ros::occupancy_grid_localizer::OccupancyGridLocalizerNode',
-        name='occupancy_grid_localizer',
-        namespace='',
+        package="isaac_ros_occupancy_grid_localizer",
+        plugin="nvidia::isaac_ros::occupancy_grid_localizer::OccupancyGridLocalizerNode",
+        name="occupancy_grid_localizer",
+        namespace="",
         parameters=[
             # map_yaml_path passed *both* ways, matching NVIDIA's own test:
             # (1) as the raw map.yaml file itself -- ROS 2 launch treats a
@@ -51,19 +56,19 @@ def generate_launch_description():
             # directly to compute map_png_path's directory component.
             map_yaml_path,
             {
-                'loc_result_frame': 'map',
-                'map_yaml_path': map_yaml_path,
+                "loc_result_frame": "map",
+                "map_yaml_path": map_yaml_path,
             },
         ],
     )
 
     container = ComposableNodeContainer(
-        package='rclcpp_components',
-        name='ogl_container',
-        namespace='',
-        executable='component_container_mt',
+        package="rclcpp_components",
+        name="ogl_container",
+        namespace="",
+        executable="component_container_mt",
         composable_node_descriptions=[localizer_node],
-        output='both',
-        arguments=['--ros-args', '--log-level', 'info'],
+        output="both",
+        arguments=["--ros-args", "--log-level", "info"],
     )
     return LaunchDescription([container])

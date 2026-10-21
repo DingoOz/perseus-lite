@@ -16,6 +16,7 @@ detect alone. Publishes on every frame regardless of detection count
 detections_pub_->publish() call sites are unconditional), so message rate
 directly reflects processing FPS for both pipelines.
 """
+
 from collections import deque
 import math
 import time
@@ -64,13 +65,13 @@ def rotation_matrix_to_quaternion(rot_mat):
 
 class CpuAprilTagNode(Node):
     def __init__(self):
-        super().__init__('apriltag_cpu')
-        self.declare_parameter('size', 0.22)
-        self.declare_parameter('family', 'tag36h11')
-        self.declare_parameter('nthreads', 2)
-        self.tag_size = self.get_parameter('size').value
-        family = self.get_parameter('family').value
-        nthreads = self.get_parameter('nthreads').value
+        super().__init__("apriltag_cpu")
+        self.declare_parameter("size", 0.22)
+        self.declare_parameter("family", "tag36h11")
+        self.declare_parameter("nthreads", 2)
+        self.tag_size = self.get_parameter("size").value
+        family = self.get_parameter("family").value
+        nthreads = self.get_parameter("nthreads").value
 
         self.detector = Detector(families=family, nthreads=nthreads)
         self.bridge = CvBridge()
@@ -86,18 +87,22 @@ class CpuAprilTagNode(Node):
         self.compute_times = deque(maxlen=60)
 
         self.detections_pub = self.create_publisher(
-            AprilTagDetectionArray, 'tag_detections_cpu', 10)
+            AprilTagDetectionArray, "tag_detections_cpu", 10
+        )
         # *_cpu_active -- the pump (demo1_frame_pump_node.py) only
         # publishes here during its CPU phase, so this node only receives
         # frames when it isn't competing with the GPU detector.
         self.image_sub = self.create_subscription(
-            Image, 'image_cpu_active', self.on_image, 10)
+            Image, "image_cpu_active", self.on_image, 10
+        )
         self.info_sub = self.create_subscription(
-            CameraInfo, 'camera_info_cpu_active', self.on_camera_info, 10)
+            CameraInfo, "camera_info_cpu_active", self.on_camera_info, 10
+        )
 
         self.create_timer(3.0, self.log_compute_stats)
         self.get_logger().info(
-            f'CPU AprilTag detector ready: family={family} nthreads={nthreads}')
+            f"CPU AprilTag detector ready: family={family} nthreads={nthreads}"
+        )
 
     def log_compute_stats(self):
         if not self.compute_times:
@@ -105,8 +110,9 @@ class CpuAprilTagNode(Node):
         mean_ms = 1000.0 * sum(self.compute_times) / len(self.compute_times)
         max_fps = 1000.0 / mean_ms if mean_ms > 0 else 0.0
         self.get_logger().info(
-            f'[pure CPU compute, no ROS overhead] detect(): {mean_ms:.2f} ms/frame '
-            f'mean over last {len(self.compute_times)} calls -> {max_fps:.1f} fps max')
+            f"[pure CPU compute, no ROS overhead] detect(): {mean_ms:.2f} ms/frame "
+            f"mean over last {len(self.compute_times)} calls -> {max_fps:.1f} fps max"
+        )
 
     def on_camera_info(self, msg):
         # Post-rectification P matrix -- fx, fy, cx, cy at indices 0, 5, 2, 6.
@@ -114,7 +120,7 @@ class CpuAprilTagNode(Node):
         self.camera_params = (p[0], p[5], p[2], p[6])
 
     def on_image(self, msg):
-        gray = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
+        gray = self.bridge.imgmsg_to_cv2(msg, desired_encoding="mono8")
 
         estimate_pose = self.camera_params is not None
         t0 = time.perf_counter()
@@ -131,11 +137,15 @@ class CpuAprilTagNode(Node):
         for r in results:
             det = AprilTagDetection()
             det.family = (
-                r.tag_family.decode() if isinstance(r.tag_family, bytes) else str(r.tag_family)
+                r.tag_family.decode()
+                if isinstance(r.tag_family, bytes)
+                else str(r.tag_family)
             )
             det.id = int(r.tag_id)
             det.center = Point(x=float(r.center[0]), y=float(r.center[1]), z=0.0)
-            det.corners = [Point(x=float(c[0]), y=float(c[1]), z=0.0) for c in r.corners]
+            det.corners = [
+                Point(x=float(c[0]), y=float(c[1]), z=0.0) for c in r.corners
+            ]
 
             pose_msg = PoseWithCovarianceStamped()
             pose_msg.header = msg.header
@@ -165,5 +175,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

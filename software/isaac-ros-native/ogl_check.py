@@ -9,6 +9,7 @@ recorded pose, not a dummy/random value. This is the first check in the
 series to validate a real GPU CUDA scan-matching result against known
 lidar data, not a DNN inference chain.
 """
+
 import math
 import pathlib
 import subprocess
@@ -20,8 +21,14 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_srvs.srv import Empty
 
-BAG_PATH = pathlib.Path(__file__).parent / 'isaac_ros_mapping_and_localization' / \
-    'isaac_ros_occupancy_grid_localizer' / 'data' / 'rosbags' / 'flatscan'
+BAG_PATH = (
+    pathlib.Path(__file__).parent
+    / "isaac_ros_mapping_and_localization"
+    / "isaac_ros_occupancy_grid_localizer"
+    / "data"
+    / "rosbags"
+    / "flatscan"
+)
 
 EXPECTED_POSITION = (33.5, 7.75, 0.0)
 EXPECTED_QUATERNION = (0.0, 0.0, -0.56573, 0.824589)
@@ -35,11 +42,12 @@ TIMEOUT_SEC = 60
 
 class OglCheck(Node):
     def __init__(self):
-        super().__init__('ogl_check')
+        super().__init__("ogl_check")
         self.received = None
         self.sub = self.create_subscription(
-            PoseWithCovarianceStamped, '/localization_result', self.on_msg, 10)
-        self.cli = self.create_client(Empty, '/trigger_grid_search_localization')
+            PoseWithCovarianceStamped, "/localization_result", self.on_msg, 10
+        )
+        self.cli = self.create_client(Empty, "/trigger_grid_search_localization")
 
     def on_msg(self, msg):
         if self.received is None:
@@ -51,12 +59,16 @@ def main():
     node = OglCheck()
 
     bag_proc = subprocess.Popen(
-        ['ros2', 'bag', 'play', str(BAG_PATH)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ["ros2", "bag", "play", str(BAG_PATH)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
     if not node.cli.wait_for_service(timeout_sec=30.0):
-        node.get_logger().info('trigger_grid_search_localization service never appeared')
-        print('OGL FAILED')
+        node.get_logger().info(
+            "trigger_grid_search_localization service never appeared"
+        )
+        print("OGL FAILED")
         bag_proc.terminate()
         sys.exit(1)
 
@@ -71,7 +83,9 @@ def main():
     bag_proc.terminate()
     bag_proc.wait(timeout=5)
 
-    node.get_logger().info(f'trigger_calls={calls} received={node.received is not None}')
+    node.get_logger().info(
+        f"trigger_calls={calls} received={node.received is not None}"
+    )
 
     ok = node.received is not None
     if ok:
@@ -79,8 +93,8 @@ def main():
         q = node.received.pose.pose.orientation
         cov = node.received.pose.covariance
         node.get_logger().info(
-            f'position=({p.x:.3f},{p.y:.3f},{p.z:.3f}) '
-            f'orientation=({q.x:.4f},{q.y:.4f},{q.z:.4f},{q.w:.4f})'
+            f"position=({p.x:.3f},{p.y:.3f},{p.z:.3f}) "
+            f"orientation=({q.x:.4f},{q.y:.4f},{q.z:.4f},{q.w:.4f})"
         )
 
         ex, ey, ez = EXPECTED_POSITION
@@ -100,11 +114,11 @@ def main():
             else:
                 ok = ok and math.isclose(cov[i], 0.0, abs_tol=COV_TOLERANCE)
 
-    print('OGL OK' if ok else 'OGL FAILED')
+    print("OGL OK" if ok else "OGL FAILED")
     node.destroy_node()
     rclpy.shutdown()
     sys.exit(0 if ok else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

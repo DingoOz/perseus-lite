@@ -41,9 +41,9 @@ shipped yet:
    confirmed gap was TensorRT reporting zero DLA cores, which NVIDIA staff
    attributed to DLA support specifically, not the GPU compute path. ([forum
    thread](https://forums.developer.nvidia.com/t/jp-7-2-w-isaac-ros-and-dlas/374021))
-3. NVIDIA staff, June 2026: *"We do plan to support JP 7.x on Orin, and this
+3. NVIDIA staff, June 2026: _"We do plan to support JP 7.x on Orin, and this
    is an area the team is actively working on... not ready to share a public
-   timeline yet."* ([forum
+   timeline yet."_ ([forum
    thread](https://forums.developer.nvidia.com/t/eta-for-isaac-ros-release-for-jp-7-2-on-orin-devices/372134))
 
 So the hardware/driver layer plausibly works; what's missing is NVIDIA
@@ -64,7 +64,7 @@ dependency resolves — should compile normally. The real blocker is its GXF
 - The nominally "buildable GXF source" repo,
   [NVIDIA-ISAAC-ROS/gxf](https://github.com/NVIDIA-ISAAC-ROS/gxf), is
   **stale**: every release tag from `v3.2.0` through `v4.4.0` points at the
-  *same* commit (dated 2025-01-10, "Isaac ROS 3.2.0"). That commit's
+  _same_ commit (dated 2025-01-10, "Isaac ROS 3.2.0"). That commit's
   `build_gxf_release_content.yaml` only defines `x86_cuda_12_6` and
   `jetpack61` build targets — nothing for JetPack7/CUDA13. The release tags
   are cosmetic; the actual buildable source hasn't moved past the JetPack
@@ -72,11 +72,11 @@ dependency resolves — should compile normally. The real blocker is its GXF
 - `isaac_ros_common`'s `CMAKE_DEVICE` logic doesn't resolve to a Jetson-aware
   value in the generic path either — it deprecated the aarch64→"arm64" branch
   in favor of defaulting to `sbsa`. (The newer `isaac-ros-cli` tool's
-  `platform.py` *does* distinguish real Jetson — `ARM64_JETPACK`, detected via
+  `platform.py` _does_ distinguish real Jetson — `ARM64_JETPACK`, detected via
   `/etc/nv_tegra_release` — from DGX Spark's `ARM64_FASTOS`, but that
   detection doesn't currently have a matching binary to select on JetPack7.)
 
-Net: nothing prevents *compiling* NITROS/GXF for SM 8.7 in principle, but the
+Net: nothing prevents _compiling_ NITROS/GXF for SM 8.7 in principle, but the
 actual published artifacts to link against for embedded Jetson on
 JetPack7/CUDA13 don't exist yet, and the "source you could build them from
 yourself" hasn't been updated to target that configuration either.
@@ -88,10 +88,10 @@ yourself" hasn't been updated to target that configuration either.
   NVIDIA GPUs" and explicitly forbids relicensing under an open-source
   license (§4f).
 - The `gxf` repo's actual core source (`com_nvidia_gxf/`) carries a
-  **stricter, more classically proprietary** NVIDIA header: *"Any use,
+  **stricter, more classically proprietary** NVIDIA header: _"Any use,
   reproduction, disclosure or distribution of this software... without an
   express license agreement from NVIDIA CORPORATION is strictly
-  prohibited."* This may just be stale boilerplate carried over from GXF's
+  prohibited."_ This may just be stale boilerplate carried over from GXF's
   internal codebase, but it's a real ambiguity sitting inside a repo NVIDIA
   itself calls "buildable source."
 - Practical stance: treat everything under `nitros-source/` as **local
@@ -106,13 +106,13 @@ experiment that tests it directly, with an explicit decision gate before
 committing to the much larger effort of resurrecting GXF's stale build
 recipe.
 
-| Stage | Goal | Gate |
-| --- | --- | --- |
-| 0 | Stand up a working build toolchain on this host (venv/baremetal `isaac-ros-cli`, since Docker isn't installed here) | `colcon build` configures against `isaac_ros_common` cmake macros |
-| 1 | Force `CMAKE_DEVICE=sbsa`, link against the *existing* `gxf_aarch64_cuda_13_0` binaries, and run a minimal GXF smoke test on this Tegra hardware | **Decision gate.** Clean failure (ABI/arch mismatch) → binary-reuse path closed, go to Stage 2 or stop. Success → skip Stage 2 entirely |
-| 2 | *(only if Stage 1 fails)* Attempt to extend the stale `gxf` repo's build recipe with a `jetpack70`/CUDA13 target | Time-boxed; stop if the `com_nvidia_gxf` licensing ambiguity turns out not to be stale boilerplate, or if progress stalls — fall back to waiting for NVIDIA's stated (undated) JP7-on-Orin work |
-| 3 | Once a working `libgxf_core.so` exists (via 1 or 2), build `isaac_ros_nitros` core only (no perception packages) and run a minimal NITROS type-adapter round trip in one process | Round trip actually runs and prints expected content |
-| 4 | *(out of scope for now)* `isaac_ros_image_proc` / `isaac_ros_apriltag` — introduces a second independent lock point, `isaac_ros_vpi_utils` (VPI), whose JetPack7 status is unchecked | Not started until Stage 3 succeeds |
+| Stage | Goal                                                                                                                                                                                 | Gate                                                                                                                                                                                            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Stand up a working build toolchain on this host (venv/baremetal `isaac-ros-cli`, since Docker isn't installed here)                                                                  | `colcon build` configures against `isaac_ros_common` cmake macros                                                                                                                               |
+| 1     | Force `CMAKE_DEVICE=sbsa`, link against the _existing_ `gxf_aarch64_cuda_13_0` binaries, and run a minimal GXF smoke test on this Tegra hardware                                     | **Decision gate.** Clean failure (ABI/arch mismatch) → binary-reuse path closed, go to Stage 2 or stop. Success → skip Stage 2 entirely                                                         |
+| 2     | _(only if Stage 1 fails)_ Attempt to extend the stale `gxf` repo's build recipe with a `jetpack70`/CUDA13 target                                                                     | Time-boxed; stop if the `com_nvidia_gxf` licensing ambiguity turns out not to be stale boilerplate, or if progress stalls — fall back to waiting for NVIDIA's stated (undated) JP7-on-Orin work |
+| 3     | Once a working `libgxf_core.so` exists (via 1 or 2), build `isaac_ros_nitros` core only (no perception packages) and run a minimal NITROS type-adapter round trip in one process     | Round trip actually runs and prints expected content                                                                                                                                            |
+| 4     | _(out of scope for now)_ `isaac_ros_image_proc` / `isaac_ros_apriltag` — introduces a second independent lock point, `isaac_ros_vpi_utils` (VPI), whose JetPack7 status is unchecked | Not started until Stage 3 succeeds                                                                                                                                                              |
 
 Results and exact error output for each stage should be recorded in this
 document as they happen, rather than in commit messages or PR descriptions —
@@ -148,7 +148,7 @@ with whoever owns this hardware, went with installing Docker +
   license agreement... is strictly prohibited") sitting inside an
   otherwise-Apache-2.0 repo. Not pursued — the classic `run_dev.sh`/plain
   colcon route was used instead.
-- Also installed: `cuda-toolkit-13-2` (nvcc; only the L4T CUDA *runtime* libs
+- Also installed: `cuda-toolkit-13-2` (nvcc; only the L4T CUDA _runtime_ libs
   were preinstalled, not the compiler) and `vpi4-dev` (NVIDIA's Vision
   Programming Interface — turned out to be an `isaac_ros_common` build
   dependency, not just an `isaac_ros_apriltag` one as originally assumed;
@@ -179,6 +179,7 @@ cubin) but wouldn't use Orin-native code generation — worth revisiting if
 Stage 3 is reached.
 
 ### Stage 1 — result: blocked on a build-tooling bug, not (yet) the
+
 architecture question
 
 Attempted `colcon build --packages-select isaac_ros_gxf` — the package that
@@ -209,7 +210,7 @@ evaluate these target properties directly (not through a genuine
 `install(EXPORT)` pass), which CMake rejects outright.
 
 **Ruled out a simple CMake-version mismatch**: the package declares
-`cmake_minimum_required(VERSION 3.22.1)`, and this failed *identically* on
+`cmake_minimum_required(VERSION 3.22.1)`, and this failed _identically_ on
 both CMake 4.3.4 (conda-forge default) and CMake 3.31.8 (pinned down via the
 `isaac-nitros` Pixi feature to test the hypothesis). Same error, same lines,
 both versions. So this isn't "too-new-CMake" — it's either a bug that's
@@ -257,7 +258,7 @@ recording for whoever continues this:
    this link step, which resolved it immediately.
 2. **`RUNPATH` doesn't propagate transitively.** `libgxf_core.so` itself
    needs `libgxf_logger.so`; setting `-Wl,-rpath` on our executable covers
-   *our* direct link but not `libgxf_core.so`'s own `NEEDED` entries (modern
+   _our_ direct link but not `libgxf_core.so`'s own `NEEDED` entries (modern
    `DT_RUNPATH`, unlike legacy `DT_RPATH`, only applies to the object that
    carries it, not what that object subsequently loads). Ran with
    `LD_LIBRARY_PATH` set instead.
@@ -281,10 +282,11 @@ tested (context lifecycle only; no CUDA kernel execution, no NITROS message
 passing, no perception pipeline).
 
 Caveats on how far this result reaches:
+
 - Only tested `GxfContextCreate`/`GxfContextDestroy` — no GXF graph execution,
   no CUDA interop (`libgxf_cuda.so`), no NITROS layer above this yet.
 - Still unresolved: the `CUDA architectures: 75` (Turing) vs `87`
-  (Orin/Ampere) discrepancy noted in Stage 0 — irrelevant to *this* binary
+  (Orin/Ampere) discrepancy noted in Stage 0 — irrelevant to _this_ binary
   (which is prebuilt, not something we compiled), but relevant once Stage 3
   compiles fresh NITROS C++ code that needs to target Orin's actual SM
   correctly.
@@ -320,7 +322,7 @@ Three more snags on the way, all resolved:
    rather than this subdirectory layout). Worked around with
    `CXXFLAGS="-I$CONDA_PREFIX/include/magic_enum"` rather than patching
    NVIDIA's `#include` lines. Needed a clean `rm -rf build/isaac_ros_nitros
-   install/isaac_ros_nitros` afterward — CMake caches
+install/isaac_ros_nitros` afterward — CMake caches
    `CMAKE_CXX_FLAGS` at first configure and won't pick up an env var change
    without a fresh configure.
 3. Built cleanly after that (some harmless C++20-designated-initializer
@@ -344,7 +346,7 @@ both in `nitros-source/`, our own code, not NVIDIA's.
 
 One bug in our own launch file along the way: the second node's remappings
 used relative topic names (`'mid1/topic_forward_input'`), which resolved
-*relative to that node's own `mid1` namespace* — silently doubling to
+_relative to that node's own `mid1` namespace_ — silently doubling to
 `/mid1/mid1/topic_forward_input`, which matched nothing. Fixed by making the
 remap `from`/`to` strings absolute (leading `/`).
 
@@ -501,14 +503,16 @@ test, since the ground-truth ap test above only used a static image.
 
 2. **`rectify` → `apriltag` on live camera frames reproducibly crashes —
    not yet root-caused.**
+
    ```
    terminate called after throwing an instance of 'nvcv::Exception'
      what():  NVCV_ERROR_INVALID_OPERATION: The tensor handle is null.
    ```
+
    Isolated carefully (each combination tested independently, with a clean
    process state — an earlier false lead came from a zombie `ros2 launch`
    process left over from a prior crash still holding the `apriltag_container`
-   node name, which produced a *different*, misleading symptom: the next
+   node name, which produced a _different_, misleading symptom: the next
    launch attempt hung indefinitely with zero node-loading progress. Always
    force-kill (`pkill -9 -f component_container_mt`) and verify with `ps`
    before re-testing after a crash.):
@@ -527,7 +531,7 @@ test, since the ground-truth ap test above only used a static image.
    This points at the interaction between `RectifyNode`'s NITROS/CV-CUDA
    image output and `AprilTagNode`'s consumption of it under real
    throughput — plausibly related to the still-unresolved `CUDA
-   architectures: 75` vs `87` question from Stage 0, or a CV-CUDA
+architectures: 75` vs `87` question from Stage 0, or a CV-CUDA
    version/ABI mismatch specific to that data path, but not confirmed.
    **Worked around, not fixed:** `apriltag_camera_launch.py` skips
    `RectifyNode` entirely and feeds `usb_cam`'s raw image straight to
@@ -543,14 +547,14 @@ test, since the ground-truth ap test above only used a static image.
 frames (`tag36h11:<id>`) at a steady 10 Hz. RViz visualization from a
 second machine: see `nitros-source/README.md` "Live camera test."
 
-Also found and fixed a bug in *our own* launch file while getting this far:
+Also found and fixed a bug in _our own_ launch file while getting this far:
 `os.path.dirname(__file__)` stays relative when `ros2 launch` is invoked
 with a relative path (as `run_test_apriltags.sh` does) — this produced an
 invalid `file://../camera_c920_info.yaml` calibration URL, which `usb_cam`
 silently failed to load, falling back to an all-zero `camera_info`. Corner/
 ID detection doesn't need the K matrix, so it kept working — but pose
 estimation produced `NaN`, which is also why the `camera` TF frame appeared
-to never exist (it only shows up as the parent of a *published* transform,
+to never exist (it only shows up as the parent of a _published_ transform,
 and nothing valid was ever published). Fixed with `os.path.abspath()`.
 
 ### Root-caused: the rectify+apriltag crash is a genuine race condition
@@ -589,7 +593,7 @@ confident answer):
   no second stream involved. This asymmetry matches the crash pattern
   exactly: the only foreign→NITROS conversion in this graph is the
   `usb_cam → rectify` hop, and that's the one that's timing-sensitive.
-- The cross-stream handoff is *supposed* to be safe — `NitrosBuffer`'s
+- The cross-stream handoff is _supposed_ to be safe — `NitrosBuffer`'s
   `WriteHandle`/`ReadHandle` (`isaac_ros_nitros/include/isaac_ros_nitros/types/nitros_buffer.hpp`)
   implement exactly this via CUDA events: a `WriteHandle`'s destructor
   records an event on its stream, and a subsequent `ReadHandle` does
@@ -624,7 +628,7 @@ without perturbing timing on replay.
 it doesn't officially support aarch64. Instead, re-attempted a live `gdb`
 backtrace with `catch throw` (rather than `catch throw nvcv::Exception`,
 since that type-filtered form wasn't reliably matching) on the **full**
-`usb_cam → rectify → apriltag` graph, attached *after* all three nodes had
+`usb_cam → rectify → apriltag` graph, attached _after_ all three nodes had
 already loaded and frames were flowing (to minimize how much ptrace
 overhead could shift timing, versus attaching from process start as
 before). `gdb -p <pid>` needed `sudo` — the host's default
@@ -698,7 +702,7 @@ version hunting needed.
   lives at `/usr/local/cuda-13.2/targets/sbsa-linux/lib/cmake/cccl/`, which
   isn't on the Pixi env's `CMAKE_PREFIX_PATH`. It was apparently found
   during whatever earlier build first compiled `isaac_ros_tensor_list_interfaces`
-  (baking `CCCL::CCCL` into its exported config), but a *fresh* configure
+  (baking `CCCL::CCCL` into its exported config), but a _fresh_ configure
   for a new package doesn't find it, so re-importing that dependency's
   exported target fails. Fixed by prepending
   `/usr/local/cuda-13.2/targets/sbsa-linux` to `CMAKE_PREFIX_PATH` for every
@@ -711,17 +715,17 @@ version hunting needed.
   compiles real `.cu` kernels, unlike `isaac_ros_tensor_rt` which is pure
   C++ against the TensorRT API) — this requires `CUDACXX` to point at
   `nvcc` (same fix as documented in Stage 0/3: `export
-  CUDACXX=/usr/local/cuda/bin/nvcc`) *and*, separately, an explicit
+CUDACXX=/usr/local/cuda/bin/nvcc`) _and_, separately, an explicit
   `-DCMAKE_CUDA_ARCHITECTURES=87` cmake arg. Without it, CMake's own CUDA
   architecture auto-detection (which runs immediately at the `project()`
   call, before `isaac_ros_common-extras.cmake`'s own
   `CMAKE_CUDA_ARCHITECTURES` fallback logic gets a chance to execute) fails
-  with "CMAKE_CUDA_ARCHITECTURES must be non-empty if set." `87` is Orin's
+  with "CMAKE*CUDA_ARCHITECTURES must be non-empty if set." `87` is Orin's
   real SM (Ampere) — picking it explicitly here sidesteps the SM75-vs-87
   ambiguity flagged back in Stage 0 entirely, since TensorRT itself builds
   its inference engine at runtime against whatever GPU is present (no
   fixed-architecture kernels to get wrong), and `isaac_ros_tensor_proc`'s
-  own handful of `.cu` files just need *a* valid target, not a
+  own handful of `.cu` files just need \_a* valid target, not a
   contentious one.
 - Same magic_enum/VPI/CV-CUDA `CXXFLAGS`/`LDFLAGS` scoping as Stage 3/4
   applied unchanged.
@@ -733,7 +737,7 @@ version hunting needed.
    copied out to `models/`), publishes a zero-filled `[1,3,224,224]` input
    tensor directly on `tensor_pub`, and checks the response on `tensor_sub`
    matches mobilenetv2's known output signature (`name=output,
-   dims=[1,1000], float32`) — same checks as NVIDIA's own
+dims=[1,1000], float32`) — same checks as NVIDIA's own
    `isaac_ros_tensor_rt_test.py`, just without pulling in
    `isaac_ros_test`/`IsaacROSBaseTest`. **First real TensorRT engine build
    on this hardware**: ONNX parse → optimization pass → serialized a
@@ -746,7 +750,7 @@ version hunting needed.
    `TensorRTNode` (mobilenetv2), fed NVIDIA's own
    `isaac_ros_dnn_image_encoder` test image
    (`test_cases/pose_estimation_0/image.jpg`, 1920×1080). Checks the same
-   shape/dtype/name properties *plus* that the 1000-way output isn't
+   shape/dtype/name properties _plus_ that the 1000-way output isn't
    degenerate (finite, non-constant: `std≈3.67`, a real logit spread) —
    catching the case where the shape happens to match but the
    resize/normalize step fed TensorRT garbage. Passed on the first
@@ -755,8 +759,8 @@ version hunting needed.
 ### Two real bugs found while wiring the encoder→tensor_rt chain (both ours, not NVIDIA's — fixed)
 
 - **`enable_padding: False` crashes**: `NVCV_ERROR_INVALID_ARGUMENT:
-  INVALID_DATA_SHAPE` — `terminate called after throwing an instance of
-  'nvcv::Exception'`, immediately on the first frame. The underlying
+INVALID_DATA_SHAPE` — `terminate called after throwing an instance of
+'nvcv::Exception'`, immediately on the first frame. The underlying
   CV-CUDA resize path used when padding is disabled apparently requires
   the input and output to already match some shape constraint (didn't
   dig further into CV-CUDA's own resize op internals); NVIDIA's own
@@ -765,7 +769,7 @@ version hunting needed.
   explicitly overrode it to `false`. Fixed by not overriding it.
 - **Wrong output topic name → silent no-op, not a crash**: initially
   remapped `('encoded_tensor', 'tensor_pub')`, guessing the topic name
-  from the *launch-wrapper* parameter (`tensor_output_topic`, used by
+  from the _launch-wrapper_ parameter (`tensor_output_topic`, used by
   NVIDIA's own `dnn_image_encoder.launch.py` when composing nodes via
   `LoadComposableNodes`). But `DnnImageEncoderNode`'s C++ constructor
   hardcodes its actual publisher topic as `"tensors"`
@@ -775,14 +779,14 @@ version hunting needed.
   our minimal launch files do). Symptom was a hang with **zero errors**:
   the encoder's own debug log showed it receiving images and building
   `NitrosTensorList` objects correctly (`[DnnImageEncoderNode]: [Dnn Image
-  Encoder] Image received`, followed by a full `NitrosBuffer`
+Encoder] Image received`, followed by a full `NitrosBuffer`
   `WriteHandle`/`ReadHandle`/CUDA-event sequence), but `tensor_rt` never
   saw anything on `tensor_pub` because the encoder was actually publishing
   on `/tensors`, not `/tensor_pub`. Found by bumping the container to
   `--log-level debug` and grepping for `Initializing publisher for topic
-  name` — confirmed the real topic name directly rather than trusting the
+name` — confirmed the real topic name directly rather than trusting the
   launch-wrapper parameter's naming. Fixed by remapping `('tensors',
-  'tensor_pub')` instead.
+'tensor_pub')` instead.
 
 ### Stage 5 follow-up — `isaac_ros_yolov8`: perception-level proof-of-life, done
 
@@ -809,7 +813,7 @@ seconds** (smaller/simpler graph than mobilenetv2's 41.8s). Result: **10
 detections** came back through NMS/box decoding on the very first
 publish — full chain confirmed working end to end.
 
-Because the model's weights are random, detection *content* is
+Because the model's weights are random, detection _content_ is
 meaningless by design — NVIDIA's own POL test explicitly only checks that
 a message arrives, not the values in it ("the data is not verified
 because the model is initialized with random weights"). First pass of
@@ -1115,21 +1119,22 @@ before any of this could plausibly run together on the robot, and it had
 never been tested.
 
 `combined_pipeline_launch.py` loads AprilTag, YOLOv8 (encoder + tensor_rt
-+ decoder), U-Net (encoder + tensor_rt + decoder), and CenterPose
-(encoder + tensor_rt + decoder) — ten composable nodes total — into one
-container, each pipeline in its own ROS namespace (`/apriltag`,
-`/yolov8`, `/unet`, `/centerpose`). This matters specifically because of
-the Stage 5 topic-name bug documented earlier in this file: every
-encoder publishes to the literal hardcoded topic `"tensors"`, every
-`TensorRTNode` subscribes to `"tensor_pub"` and publishes `"tensor_sub"`
-— relative names that would collide directly if three encoder/tensor_rt
-pairs ran unnamespaced in the same container (each `TensorRTNode` would
-receive whichever pipeline's tensor arrived last, silently producing
-wrong results, not a crash). ROS namespace resolution prepends each
-node's namespace to these relative names, isolating them.
-`combined_pipeline_check.py` publishes each pipeline's own Stage
-4/5-follow-up/7/8 test fixture into its namespace concurrently and waits
-for all four outputs.
+
+- decoder), U-Net (encoder + tensor_rt + decoder), and CenterPose
+  (encoder + tensor_rt + decoder) — ten composable nodes total — into one
+  container, each pipeline in its own ROS namespace (`/apriltag`,
+  `/yolov8`, `/unet`, `/centerpose`). This matters specifically because of
+  the Stage 5 topic-name bug documented earlier in this file: every
+  encoder publishes to the literal hardcoded topic `"tensors"`, every
+  `TensorRTNode` subscribes to `"tensor_pub"` and publishes `"tensor_sub"`
+  — relative names that would collide directly if three encoder/tensor_rt
+  pairs ran unnamespaced in the same container (each `TensorRTNode` would
+  receive whichever pipeline's tensor arrived last, silently producing
+  wrong results, not a crash). ROS namespace resolution prepends each
+  node's namespace to these relative names, isolating them.
+  `combined_pipeline_check.py` publishes each pipeline's own Stage
+  4/5-follow-up/7/8 test fixture into its namespace concurrently and waits
+  for all four outputs.
 
 **First attempt found a real bug** (in our test harness, not in Isaac
 ROS): the check script's `simple_camera_info()` helper left `K` as all
@@ -1261,7 +1266,7 @@ an occupancy grid map, with no cuVSLAM, no depth camera, no video codec
 hardware anywhere in its dependency chain.
 
 Conceptually this doesn't duplicate `slam_toolbox`: `slam_toolbox`
-*builds* the map (SLAM); this node does *relocalization* — finding the
+_builds_ the map (SLAM); this node does _relocalization_ — finding the
 robot's pose within an already-built map, conceptually similar to
 `amcl`/Nav2's localization stack but GPU-accelerated grid-search instead
 of a particle filter. It also introduces genuinely new CUDA code in this
@@ -1280,7 +1285,7 @@ one with the `.cu` kernel) — all built without any of the
 **One real bug in our own launch file, not Isaac ROS**: the node's map
 image path resolves as `dirname(map_yaml_path) + "/" + image_param`,
 where `image_param` is a ROS parameter the node expects to be populated
-*separately* from `map_yaml_path` — normally satisfied by ROS 2 launch's
+_separately_ from `map_yaml_path` — normally satisfied by ROS 2 launch's
 special handling of a bare `.yaml` string in a `parameters=[...]` list
 (it's loaded as a **parameters file**, not just a value; nav2-format
 map.yaml files happen to use the same top-level keys — `image`,

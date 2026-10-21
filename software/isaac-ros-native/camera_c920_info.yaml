@@ -14,9 +14,7 @@ camera_name: c920
 camera_matrix:
   rows: 3
   cols: 3
-  data: [942.53242,   0.     , 642.81122,
-           0.     , 946.21221, 346.71313,
-           0.     ,   0.     ,   1.     ]
+  data: [942.53242, 0., 642.81122, 0., 946.21221, 346.71313, 0., 0., 1.]
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
@@ -25,12 +23,8 @@ distortion_coefficients:
 rectification_matrix:
   rows: 3
   cols: 3
-  data: [1., 0., 0.,
-         0., 1., 0.,
-         0., 0., 1.]
+  data: [1., 0., 0., 0., 1., 0., 0., 0., 1.]
 projection_matrix:
   rows: 3
   cols: 4
-  data: [951.11548,   0.     , 647.78203,   0.     ,
-           0.     , 959.21429, 347.66431,   0.     ,
-           0.     ,   0.     ,   1.     ,   0.     ]
+  data: [951.11548, 0., 647.78203, 0., 0., 959.21429, 347.66431, 0., 0., 0., 1., 0.]

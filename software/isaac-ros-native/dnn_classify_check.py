@@ -8,6 +8,7 @@ tensor_rt_check.py) plus a basic sanity check that the 1000-way output
 isn't degenerate (all-zero/constant, which would mean the resize/normalize
 step fed tensor_rt garbage even if the shape happened to match).
 """
+
 import pathlib
 import sys
 import time
@@ -20,10 +21,17 @@ from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from isaac_ros_tensor_list_interfaces.msg import TensorList
 
-IMAGE_PATH = pathlib.Path(__file__).parent / 'isaac_ros_dnn_inference' / \
-    'isaac_ros_dnn_image_encoder' / 'test' / 'test_cases' / 'pose_estimation_0' / 'image.jpg'
+IMAGE_PATH = (
+    pathlib.Path(__file__).parent
+    / "isaac_ros_dnn_inference"
+    / "isaac_ros_dnn_image_encoder"
+    / "test"
+    / "test_cases"
+    / "pose_estimation_0"
+    / "image.jpg"
+)
 
-EXPECTED_NAME = 'output'
+EXPECTED_NAME = "output"
 EXPECTED_DATA_TYPE = 9  # float32
 EXPECTED_DIMS = [1, 1000]
 ENGINE_READY_TIMEOUT_SEC = 60
@@ -31,12 +39,11 @@ ENGINE_READY_TIMEOUT_SEC = 60
 
 class DnnClassifyCheck(Node):
     def __init__(self):
-        super().__init__('dnn_classify_check')
+        super().__init__("dnn_classify_check")
         self.received = None
-        self.sub = self.create_subscription(
-            TensorList, 'tensor_sub', self.on_msg, 10)
-        self.image_pub = self.create_publisher(Image, 'image', 10)
-        self.camera_info_pub = self.create_publisher(CameraInfo, 'camera_info', 10)
+        self.sub = self.create_subscription(TensorList, "tensor_sub", self.on_msg, 10)
+        self.image_pub = self.create_publisher(Image, "image", 10)
+        self.camera_info_pub = self.create_publisher(CameraInfo, "camera_info", 10)
 
     def on_msg(self, msg):
         if self.received is None:
@@ -46,7 +53,7 @@ class DnnClassifyCheck(Node):
 def main():
     cv_image = cv2.imread(str(IMAGE_PATH))
     bridge = CvBridge()
-    image_msg = bridge.cv2_to_imgmsg(cv_image, encoding='bgr8')
+    image_msg = bridge.cv2_to_imgmsg(cv_image, encoding="bgr8")
 
     camera_info_msg = CameraInfo()
     camera_info_msg.width = cv_image.shape[1]
@@ -66,36 +73,37 @@ def main():
         node.camera_info_pub.publish(camera_info_msg)
         rclpy.spin_once(node, timeout_sec=0.1)
 
-    node.get_logger().info(f'sent={sent} received={node.received is not None}')
+    node.get_logger().info(f"sent={sent} received={node.received is not None}")
 
     ok = node.received is not None and len(node.received.tensors) >= 1
     if ok:
         tensor = node.received.tensors[0]
         data = np.frombuffer(bytes(tensor.data), dtype=np.float32)
         checks = {
-            'name': (tensor.name, EXPECTED_NAME),
-            'data_type': (tensor.data_type, EXPECTED_DATA_TYPE),
-            'dims': (list(tensor.shape.dims), EXPECTED_DIMS),
+            "name": (tensor.name, EXPECTED_NAME),
+            "data_type": (tensor.data_type, EXPECTED_DATA_TYPE),
+            "dims": (list(tensor.shape.dims), EXPECTED_DIMS),
         }
         for key, (actual, expected) in checks.items():
             if actual != expected:
                 ok = False
-            node.get_logger().info(f'{key}: got={actual} expected={expected}')
+            node.get_logger().info(f"{key}: got={actual} expected={expected}")
 
-        non_degenerate = bool(data.size == 1000 and np.isfinite(data).all()
-                               and np.std(data) > 1e-6)
+        non_degenerate = bool(
+            data.size == 1000 and np.isfinite(data).all() and np.std(data) > 1e-6
+        )
         ok = ok and non_degenerate
         top5 = np.argsort(data)[-5:][::-1] if data.size == 1000 else []
         node.get_logger().info(
-            f'output stats: min={data.min():.4f} max={data.max():.4f} '
-            f'std={data.std():.4f} top5_class_idx={list(top5)}'
+            f"output stats: min={data.min():.4f} max={data.max():.4f} "
+            f"std={data.std():.4f} top5_class_idx={list(top5)}"
         )
 
-    print('DNN_CLASSIFY OK' if ok else 'DNN_CLASSIFY FAILED')
+    print("DNN_CLASSIFY OK" if ok else "DNN_CLASSIFY FAILED")
     node.destroy_node()
     rclpy.shutdown()
     sys.exit(0 if ok else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

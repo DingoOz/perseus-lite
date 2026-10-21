@@ -8,24 +8,25 @@ network-connected laptop over the same ROS domain, per the existing
 
 ## Status
 
-| # | Demo | Status |
-|---|------|--------|
-| 1 | Live AprilTag: GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags), side by side | **Done** |
-| 2 | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | **Done** |
-| 3 | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay | **Done** |
-| 4 | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks | **Done** |
-| 5 | Batch-size scaling: TensorRT vs ONNX Runtime CPU throughput vs batch size | **Done** |
+| #   | Demo                                                                                       | Status   |
+| --- | ------------------------------------------------------------------------------------------ | -------- |
+| 1   | Live AprilTag: GPU (VPI/cuAprilTag) vs CPU (pupil-apriltags), side by side                 | **Done** |
+| 2   | Occupancy-grid localizer: GPU parallel scan-matching vs CPU brute-force, pose-grid heatmap | **Done** |
+| 3   | YOLOv8: TensorRT (GPU) vs ONNX Runtime (CPU) on a recorded video, FPS overlay              | **Done** |
+| 4   | U-Net segmentation: same GPU-vs-CPU structure as #3, dense per-pixel masks                 | **Done** |
+| 5   | Batch-size scaling: TensorRT vs ONNX Runtime CPU throughput vs batch size                  | **Done** |
 
 ## 1. Live AprilTag: GPU vs CPU, side by side — DONE
 
 Same live camera feed (`usb_cam` → GPU `RectifyNode` → shared
 rectified frame) is consumed by two independent detectors:
+
 - **GPU**: the existing, live-camera-proven `isaac_ros_apriltag`
   (`AprilTagNode`, cuAprilTag via VPI) — unchanged, reused as-is.
 - **CPU**: a new node wrapping `pupil-apriltags` (the official AprilTag
   C library's Python binding, CPU-only — no prebuilt aarch64 wheel on
   PyPI, builds from source via the env's existing `c-compiler`/
-  `cxx-compiler`, confirmed working). Publishes the *same*
+  `cxx-compiler`, confirmed working). Publishes the _same_
   `AprilTagDetectionArray` message type as the GPU node so both sides
   share overlay-drawing code.
 
@@ -40,13 +41,14 @@ detectors at the same rate and hide any real difference, so a
 higher rate to decouple detector throughput from camera rate. Getting
 that pump right took real iteration (full history in
 `demo1_frame_pump_node.py`'s docstring):
+
 1. Naively republishing full-res color frames hit a `ros2 topic bw`
    ceiling around 12 MB/s — nowhere near the 200 Hz target.
 2. Tried a smaller `mono8` encoding to cut message size — `cuAprilTags`
    (GPU) rejects `mono8` outright and crashed the whole container.
    Reverted to `bgr8`.
 3. Shrank resolution instead. Rate scaled with pixel count as expected,
-   but GPU and CPU stayed locked to *each other* and to the pump rate
+   but GPU and CPU stayed locked to _each other_ and to the pump rate
    at every size tried (12 Hz at 640×480, 68 Hz at 320×180, 262 Hz at
    160×90) — never revealing either detector's real ceiling. An
    isolated 2-process pub/sub diagnostic (no ROS graph complexity)
@@ -101,11 +103,11 @@ code), this demo forces the identical compiled binary down each path by
 hiding the GPU from CUDA entirely: `CUDA_VISIBLE_DEVICES=""`. Confirmed
 this genuinely works on this Jetson via a standalone `ctypes` test
 before relying on it (`cudaMalloc` returns `cudaErrorNoDevice`, which
-*is* the `std::runtime_error` the node's own `catch` block expects — a
+_is_ the `std::runtime_error` the node's own `catch` block expects — a
 real fallback, not a simulated one). No reimplementation risk at all:
 both numbers come from NVIDIA's own real code.
 
-The coarse search level alone sweeps the *entire* bundled map (38.7m ×
+The coarse search level alone sweeps the _entire_ bundled map (38.7m ×
 22.25m at 0.05 m/cell, ~265k candidate poses, each scored against up to
 128 lidar beams) — genuinely heavy compute, not a toy problem.
 
@@ -193,7 +195,7 @@ deliver — both already compute mean/p50/p99 latency and an fps chart from
 a tight direct-API timing loop. The one dimension neither demo tested is
 batching, so #5 was reshaped into a batch-size scaling study instead:
 sweep batch size ([1, 2, 4, 8]) on #4's dynamic-batch U-Net model and plot
-throughput vs batch size for both backends. The intent was to show *why*
+throughput vs batch size for both backends. The intent was to show _why_
 GPU inference matters beyond raw single-image latency — a GPU can process
 a batch largely in parallel, so throughput should climb with batch size,
 while a CPU's per-image cost is roughly fixed.
