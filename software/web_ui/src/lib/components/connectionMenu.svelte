@@ -10,6 +10,7 @@
 	import { localStore } from '$lib/scripts/localStore.svelte';
 	import { connectRos, disconnectRos, getRosConnection } from '$lib/scripts/rosBridge.svelte';
 	import ConnectionMenuMobile from './connectionMenuMobile.svelte';
+	import { toast } from 'svelte-sonner';
 
 	let props: { isMobile: boolean } = $props();
 
@@ -19,18 +20,33 @@
 	let disableServerIP = $state(false);
 
 	let address = localStore('rosAddress', 'localhost');
+	// never keep an empty / non-string address (older versions could persist '')
+	if (typeof address.value !== 'string' || address.value.trim() === '') {
+		address.value = 'localhost';
+	}
 
 	const changeAddress = async (value?: string) => {
+		let newAddress: string;
 		if (value === 'server') {
-			address.value = window.location.hostname; // get ip from the server
-			disableServerIP = true;
+			newAddress = window.location.hostname; // get ip from the server
 		} else {
-			address.value = value || customAddress; // use the custom value if there is no param
-			disableServerIP = false;
+			newAddress = (value || customAddress).trim(); // use the custom value if there is no param
 		}
+		if (newAddress === '') {
+			toast.error('ROS host cannot be empty');
+			return;
+		}
+
+		address.value = newAddress;
+		disableServerIP = value === 'server';
 		disconnectRos();
 		connectRos(address.value);
 		openAddressMenu = false;
+	};
+
+	const submitCustomAddress = (e: SubmitEvent) => {
+		e.preventDefault(); // don't let the browser submit (reload) the page
+		changeAddress();
 	};
 
 	const toggleConnection = () => {
@@ -86,10 +102,10 @@
 
 	<Dialog.Root bind:open={openAddressMenu}>
 		<Dialog.Content>
-			<Label for="customAddress">New Ros Domain ID:</Label>
-			<form class="flex space-x-2">
+			<Label for="customAddress">Custom ROS host:</Label>
+			<form class="flex space-x-2" onsubmit={submitCustomAddress}>
 				<Input class="m-auto mb-0" id="customAddress" type="text" bind:value={customAddress} />
-				<Button type="submit" variant="outline" onclick={() => changeAddress()}>Set</Button>
+				<Button type="submit" variant="outline">Set</Button>
 			</form>
 		</Dialog.Content>
 	</Dialog.Root>
@@ -100,7 +116,7 @@
 			{changeAddress}
 			{address}
 			{disableServerIP}
-			{customAddress}
+			bind:customAddress
 			{domainId}
 		/>
 	</div>
