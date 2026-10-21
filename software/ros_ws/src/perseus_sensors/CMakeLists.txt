@@ -124,6 +124,8 @@ add_library(bias_estimator_component SHARED
             src/bias_remover/bias_estimator_component.cpp)
 ament_target_dependencies(bias_estimator_component rclcpp rclcpp_components
                           sensor_msgs geometry_msgs nav_msgs)
+target_include_directories(bias_estimator_component
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 rclcpp_components_register_nodes(bias_estimator_component
                                  "imu_processors::BiasEstimator")
 
@@ -160,8 +162,14 @@ if(BUILD_TESTING)
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/i2c_imu_driver/include)
   target_link_libraries(i2c_imu_helpers_test GTest::gtest_main)
 
+  add_executable(stationary_gate_test tests/stationary_gate_test.cpp)
+  target_include_directories(stationary_gate_test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(stationary_gate_test GTest::gtest_main)
+
   include(GoogleTest)
   gtest_discover_tests(i2c_imu_helpers_test)
+  gtest_discover_tests(stationary_gate_test)
 endif()
 
 # ROS LIBRARY POST-INSTALL
