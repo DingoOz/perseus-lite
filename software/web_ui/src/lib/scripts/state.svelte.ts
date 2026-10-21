@@ -49,6 +49,65 @@ export const getWidgetByName = (name: string): WidgetType | undefined => {
   return availableWidgets.find((widget) => widget.name === name);
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isOptionList = (
+  value: unknown,
+): value is { value: string; label: string }[] =>
+  Array.isArray(value) &&
+  value.every(
+    (option) =>
+      isRecord(option) &&
+      typeof option.value === "string" &&
+      typeof option.label === "string",
+  );
+
+// Overlay persisted widget settings (a JSON string from the layout database) onto the
+// widget's template. The template defines the shape: only fields that exist in the
+// template are restored, and only when the persisted values have the right types, so a
+// corrupt, stale or hand-edited layout can't crash the widget. Button actions always
+// come from the template since functions can't be persisted.
+export const mergePersistedSettings = (
+  template: WidgetSettingsType,
+  persisted: string,
+  widgetName: string,
+): WidgetSettingsType["groups"] => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(persisted);
+  } catch (error) {
+    console.warn(`Ignoring unparsable saved state for "${widgetName}"`, error);
+    return template.groups;
+  }
+
+  const persistedGroups = isRecord(parsed) ? parsed.groups : undefined;
+  if (!isRecord(persistedGroups)) {
+    console.warn(`Ignoring malformed saved state for "${widgetName}"`);
+    return template.groups;
+  }
+
+  const merged: WidgetSettingsType["groups"] = {};
+  for (const [group, fields] of Object.entries(template.groups)) {
+    merged[group] = {};
+    const persistedFields = persistedGroups[group];
+    for (const [field, templateField] of Object.entries(fields)) {
+      const result = { ...templateField };
+      const saved = isRecord(persistedFields)
+        ? persistedFields[field]
+        : undefined;
+      if (isRecord(saved) && saved.type === templateField.type) {
+        if (typeof saved.value === "string") result.value = saved.value;
+        if (typeof saved.disabled === "boolean")
+          result.disabled = saved.disabled;
+        if (isOptionList(saved.options)) result.options = saved.options;
+      }
+      merged[group][field] = result;
+    }
+  }
+  return merged;
+};
+
 export const getWidgetsByLayoutId = (id: string): Array<WidgetType> => {
   const layout = layouts.value.find((layout) => layout.id === id);
   if (layout === undefined) return [];
@@ -61,25 +120,11 @@ export const getWidgetsByLayoutId = (id: string): Array<WidgetType> => {
     if (widgetTemplate) {
       // set the persisted state of each widget.
       if (widgetState.state) {
-        let persistedState: WidgetSettingsType = JSON.parse(widgetState.state);
-
-        // load button actions from template
-        Object.keys(widgetTemplate.settings.groups).forEach((group) => {
-          Object.keys(widgetTemplate.settings.groups[group]).forEach(
-            (field) => {
-              if (
-                widgetTemplate.settings.groups[group][field].type ===
-                  "button" &&
-                persistedState.groups[group]
-              ) {
-                persistedState.groups[group][field].action =
-                  widgetTemplate.settings.groups[group][field].action;
-              }
-            },
-          );
-        });
-
-        widgetTemplate.settings.groups = persistedState.groups;
+        widgetTemplate.settings.groups = mergePersistedSettings(
+          widgetTemplate.settings,
+          widgetState.state,
+          widgetState.name,
+        );
       }
 
       widgets.push({
