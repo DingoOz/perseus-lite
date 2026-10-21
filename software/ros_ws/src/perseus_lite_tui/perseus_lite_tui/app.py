@@ -384,6 +384,14 @@ class App:
         for row in view:
             topic = row['topic']
             age = row['age']
+            if not row.get('sampled', True):
+                # Bulk type (image/pointcloud/costmap): deliberately not
+                # subscribed, so there is no rate to show.
+                self._addstr(y, 0, f'{topic:<34}')
+                self._addstr(y, 34, 'bulk'.rjust(8), curses.A_DIM)
+                self._addstr(y, 52, row['type'], curses.A_DIM)
+                y += 1
+                continue
             rate = topic_stats.format_rate(row['rate'])
             stale = age is not None and topic_stats.is_stale(age)
             attr = self._color('bad') if stale else self._color('running')

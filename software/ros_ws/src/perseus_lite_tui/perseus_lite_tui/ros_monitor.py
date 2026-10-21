@@ -21,20 +21,49 @@ from perseus_lite_tui import topic_stats
 # Curated topics shown first, in this order; everything else follows, sorted.
 PINNED = (
     '/cmd_vel',
-    '/odom',
+    '/joy_vel',
+    '/odometry/filtered',
+    '/diff_drive_base_controller/odom',
     '/joint_states',
     '/scan',
+    '/imu/data',
     '/tf',
     '/map',
     '/diagnostics',
 )
+
+# High-bandwidth message types the monitor never subscribes to: even with
+# raw=True every sample is still shipped over DDS to this process, and a few
+# camera/pointcloud/costmap topics would dominate the robot's network/CPU just
+# to draw a rate column. They are listed with their type but no rate.
+BULK_TYPES = frozenset(
+    {
+        'sensor_msgs/msg/Image',
+        'sensor_msgs/msg/CompressedImage',
+        'sensor_msgs/msg/PointCloud2',
+        'sensor_msgs/msg/PointCloud',
+        'nav_msgs/msg/OccupancyGrid',
+        'map_msgs/msg/OccupancyGridUpdate',
+        'nav2_msgs/msg/Costmap',
+        'nav2_msgs/msg/VoxelGrid',
+        'theora_image_transport/msg/Packet',
+        'ffmpeg_image_transport_msgs/msg/FFMPEGPacket',
+        'visualization_msgs/msg/MarkerArray',
+    }
+)
+
+
+def is_bulk_type(type_name: str) -> bool:
+    """Return whether a topic type is too heavy to sample for its rate."""
+    return type_name in BULK_TYPES
+
 
 _DISCOVERY_INTERVAL_S = 2.0
 _WINDOW = 100
 
 
 class RosMonitor:
-    """Subscribe to every graph topic and expose per-topic rate/type."""
+    """Subscribe to every non-bulk graph topic; expose per-topic rate/type."""
 
     def __init__(self):
         self.available = False
@@ -42,12 +71,15 @@ class RosMonitor:
         self._lock = threading.Lock()
         self._stamps: Dict[str, deque] = {}
         self._types: Dict[str, str] = {}
+        self._skipped: set = set()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._rclpy = None
         self._node = None
         self._context = None
         self._executor = None
+        self._get_message = None
+        self._qos = None
 
     def start(self) -> None:
         """Import rclpy and spin the monitor node on a daemon thread."""
@@ -73,11 +105,11 @@ class RosMonitor:
         now = time.monotonic()
         with self._lock:
             items = [
-                (name, self._types.get(name, ''), list(dq))
+                (name, self._types.get(name, ''), list(dq), name in self._skipped)
                 for name, dq in self._stamps.items()
             ]
         rows = []
-        for name, type_name, stamps in items:
+        for name, type_name, stamps, skipped in items:
             age = topic_stats.age_seconds(stamps[-1], now) if stamps else None
             rows.append(
                 {
@@ -85,6 +117,7 @@ class RosMonitor:
                     'type': type_name,
                     'rate': topic_stats.rate_hz(stamps),
                     'age': age,
+                    'sampled': not skipped,
                 }
             )
         order = {topic: index for index, topic in enumerate(PINNED)}
@@ -96,6 +129,24 @@ class RosMonitor:
     def _run(self) -> None:
         rclpy = self._rclpy
         try:
+            # Imported here, inside the guarded block: an ImportError outside
+            # it would silently kill this thread and leave the Monitor tab on
+            # "Waiting for topics…" forever instead of showing the cause.
+            from rclpy.qos import (
+                DurabilityPolicy,
+                HistoryPolicy,
+                QoSProfile,
+                ReliabilityPolicy,
+            )
+            from rosidl_runtime_py.utilities import get_message
+
+            self._get_message = get_message
+            self._qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1,
+            )
             self._context = rclpy.Context()
             rclpy.init(context=self._context)
             self._node = rclpy.create_node('perseus_tui_monitor', context=self._context)
@@ -109,44 +160,42 @@ class RosMonitor:
             return
         subscribed: set = set()
         last_discovery = 0.0
-        while not self._stop.is_set():
-            now = time.monotonic()
-            if now - last_discovery >= _DISCOVERY_INTERVAL_S:
-                last_discovery = now
-                self._discover(subscribed)
-            self._executor.spin_once(timeout_sec=0.1)
-        self._teardown()
+        try:
+            while not self._stop.is_set():
+                now = time.monotonic()
+                if now - last_discovery >= _DISCOVERY_INTERVAL_S:
+                    last_discovery = now
+                    self._discover(subscribed)
+                self._executor.spin_once(timeout_sec=0.1)
+        except Exception as exc:  # noqa: BLE001
+            self.available = False
+            self.error = f'monitor stopped: {type(exc).__name__}: {exc}'
+        finally:
+            self._teardown()
 
     def _discover(self, subscribed: set) -> None:
-        from rclpy.qos import (
-            DurabilityPolicy,
-            HistoryPolicy,
-            QoSProfile,
-            ReliabilityPolicy,
-        )
-        from rosidl_runtime_py.utilities import get_message
-
         try:
             topics = self._node.get_topic_names_and_types()
         except Exception:  # noqa: BLE001
             return
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
         for name, types in topics:
             if name in subscribed or not types:
                 continue
+            subscribed.add(name)
+            if is_bulk_type(types[0]):
+                with self._lock:
+                    self._types[name] = types[0]
+                    self._skipped.add(name)
+                    self._stamps.setdefault(name, deque(maxlen=_WINDOW))
+                continue
             try:
-                msg_type = get_message(types[0])
+                msg_type = self._get_message(types[0])
                 self._node.create_subscription(
-                    msg_type, name, self._make_callback(name), qos, raw=True
+                    msg_type, name, self._make_callback(name), self._qos, raw=True
                 )
             except Exception:  # noqa: BLE001
+                subscribed.discard(name)
                 continue
-            subscribed.add(name)
             with self._lock:
                 self._types[name] = types[0]
                 self._stamps.setdefault(name, deque(maxlen=_WINDOW))
