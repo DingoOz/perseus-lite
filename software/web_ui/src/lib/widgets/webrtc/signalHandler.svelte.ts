@@ -34,18 +34,75 @@ interface SignalMessageType {
   sdp?: any;
 }
 
+// Reconnect with exponential backoff: 500 ms, 1 s, 2 s, 4 s, then every 5 s.
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS = 5000;
+let reconnectAttempts = 0;
+let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
+let shouldReconnect = false;
+
+const clearReconnect = () => {
+  if (reconnectHandle) clearTimeout(reconnectHandle);
+  reconnectHandle = null;
+};
+
+// Close the current socket without letting its close event trigger a reconnect.
+const closeSocket = () => {
+  const old = ws;
+  ws = null;
+  if (old) {
+    old.onopen = null;
+    old.onerror = null;
+    old.onclose = null;
+    old.onmessage = null;
+    old.close();
+  }
+};
+
+export const disconnectFromSignallingServer = () => {
+  shouldReconnect = false;
+  clearReconnect();
+  reconnectAttempts = 0;
+  closeSocket();
+};
+
 export const connectToSignallingServer = (ip: string) => {
-  ws = new WebSocket(`ws://${ip}:${8443}`);
-  ws.onopen = () => {
+  shouldReconnect = true;
+  clearReconnect();
+  closeSocket();
+
+  const socket = new WebSocket(`ws://${ip}:${8443}`);
+  ws = socket;
+  socket.onopen = () => {
+    reconnectAttempts = 0;
     console.log("[WS] Connected to signalling server");
   };
-  ws.onerror = (event) => {
-    // if there is a websocket error just try again
-    setTimeout(() => connectToSignallingServer(ip), 200);
+  socket.onerror = (event) => {
+    // an error is always followed by a close event, which schedules the reconnect
     console.log("[WS Error] -", event);
   };
-  ws.onmessage = (event) => {
-    const data: SignalMessageType = JSON.parse(event.data);
+  socket.onclose = () => {
+    if (ws !== socket || !shouldReconnect) return;
+    ws = null;
+    const delay = Math.min(
+      RECONNECT_BASE_MS * 2 ** reconnectAttempts,
+      RECONNECT_MAX_MS,
+    );
+    reconnectAttempts++;
+    clearReconnect();
+    reconnectHandle = setTimeout(() => {
+      reconnectHandle = null;
+      if (shouldReconnect) connectToSignallingServer(ip);
+    }, delay);
+  };
+  socket.onmessage = (event) => {
+    let data: SignalMessageType;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      console.warn("[WS] Ignoring non-JSON message");
+      return;
+    }
     switch (data.type) {
       case "welcome":
         // Sent when the signalling server registers a new connection
@@ -203,7 +260,7 @@ export const newPeerConfigured = () => {
 };
 
 const wsSend = (data: SignalMessageType) => {
-  if (!ws) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   // console.log('Sending:', data);
   ws.send(JSON.stringify(data));
 };

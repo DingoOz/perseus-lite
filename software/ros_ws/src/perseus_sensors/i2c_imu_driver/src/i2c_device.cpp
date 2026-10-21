@@ -69,7 +69,13 @@ namespace i2c_imu_driver
                       throw std::invalid_argument("Invalid I2C bus path: " + _bus_path +
                                                   ". Must be /dev/i2c-N where N is 0-255");
                   }
-                  return open(_bus_path.c_str(), O_RDWR);
+                  const int fd = open(_bus_path.c_str(), O_RDWR | O_CLOEXEC);
+                  if (fd < 0)
+                  {
+                      throw std::runtime_error("Failed to open I2C bus " + _bus_path + ": " +
+                                               std::string(strerror(errno)));
+                  }
+                  return fd;
               },
               [this](int fd)
               {

@@ -1,0 +1,6 @@
+# ament_flake8 (run by ament_lint_auto for this package) enforces flake8-quotes
+# Q000, i.e. single-quoted strings, while the repo-wide treefmt formatter is
+# `ruff format` with double quotes by default. Pin single quotes here so the
+# formatter and the linter agree (same approach as perseus_lite_tui).
+[format]
+quote-style = "single"

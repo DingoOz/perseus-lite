@@ -61,13 +61,13 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 0
       Min Color: 0; 0; 0
       Min Intensity: 0
-      Name: 3D Lidar PointCloud
+      Name: Camera PointCloud
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -78,10 +78,10 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /livox/lidar
+        Value: /camera/camera/depth/color/points
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/TF
       Enabled: true
       Filter (blacklist): ""
@@ -498,7 +498,7 @@ Visualization Manager:
       Max Intensity: 15.440167427062988
       Min Color: 0; 0; 0
       Min Intensity: -8.496444702148438
-      Name: Converted Livox Scan
+      Name: Filtered Scan
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 10
@@ -510,7 +510,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /livox/scan
+        Value: /scan_filtered
       Use Fixed Frame: true
       Use rainbow: true
       Value: true

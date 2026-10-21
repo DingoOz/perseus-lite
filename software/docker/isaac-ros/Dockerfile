@@ -29,14 +29,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # YOLOv8 model, reused verbatim from perseus_vision (same URL + SHA256 as
-# software/ros_ws/src/perseus_vision/CMakeLists.txt). The GPU-specific TensorRT
-# engine is NOT built here — it is arch-specific and produced on first run by
-# entrypoint.sh into a named volume.
+# software/ros_ws/src/perseus_vision/CMakeLists.txt). It is baked into
+# /opt/perseus/models-image, NOT the volume mountpoint /opt/perseus/models:
+# docker only seeds a named volume from the image when the volume is first
+# created, so a later image rebuild would otherwise leave stale models in it.
+# entrypoint.sh instead syncs the volume whenever models-image/STAMP (model
+# hash + base image) differs from the copy recorded in the volume. The
+# GPU-specific TensorRT engine is NOT built here — it is arch-specific and
+# built on demand (ISAAC_BUILD_ENGINE=1) by entrypoint.sh into the volume.
+ARG ISAAC_ROS_IMAGE
 ARG MODEL_URL=https://github.com/ROAR-QUTRC/perseus-v2/releases/download/models-v1/cube_detector_yolob8s.onnx
 ARG MODEL_SHA256=1245a1285628839cac4a86dc1380c55b64bc8f764b4190c1c6e7162dafca55f7
-RUN mkdir -p /opt/perseus/models \
-    && curl -fSL "${MODEL_URL}" -o /opt/perseus/models/cube_detector_yolob8s.onnx \
-    && echo "${MODEL_SHA256}  /opt/perseus/models/cube_detector_yolob8s.onnx" | sha256sum -c -
+RUN mkdir -p /opt/perseus/models-image /opt/perseus/models \
+    && curl -fSL "${MODEL_URL}" -o /opt/perseus/models-image/cube_detector_yolob8s.onnx \
+    && echo "${MODEL_SHA256}  /opt/perseus/models-image/cube_detector_yolob8s.onnx" | sha256sum -c - \
+    && echo "model=${MODEL_SHA256} base=${ISAAC_ROS_IMAGE}" > /opt/perseus/models-image/STAMP
 
 # Build the in-image relay/launch overlay (Humble-only; never seen by the host
 # colcon workspace — it lives outside software/ros_ws on purpose).

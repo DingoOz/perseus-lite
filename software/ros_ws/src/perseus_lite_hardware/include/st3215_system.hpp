@@ -1,17 +1,22 @@
 #pragma once
 
+#include <atomic>
 #include <boost/asio.hpp>
+#include <chrono>
 #include <hardware_interface/hardware_component_interface.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <iomanip>
 #include <mutex>
 #include <numbers>
-#include <queue>
+#include <optional>
 #include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
 #include <span>
 #include <sstream>
 #include <string_view>
+#include <thread>
 #include <vector>
+
+#include "st3215_protocol.hpp"
 
 namespace perseus_lite_hardware
 {
@@ -113,6 +118,17 @@ namespace perseus_lite_hardware
         [[nodiscard]] hardware_interface::CallbackReturn on_deactivate(
             const rclcpp_lifecycle::State& previous_state) override;
 
+        /**
+         * @brief Called by ros2_control when read()/write() fail or a transition errors
+         * @details The servos have no communication watchdog and keep running at
+         *          their last goal speed, so this stops them before giving up the bus.
+         */
+        [[nodiscard]] hardware_interface::CallbackReturn on_error(
+            const rclcpp_lifecycle::State& previous_state) override;
+
+        [[nodiscard]] hardware_interface::CallbackReturn on_shutdown(
+            const rclcpp_lifecycle::State& previous_state) override;
+
         [[nodiscard]] hardware_interface::return_type read(
             const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
@@ -124,14 +140,20 @@ namespace perseus_lite_hardware
         static constexpr size_t _BUFFER_SIZE = 256;              // Buffer size for serial communication
         static constexpr uint8_t _WHEEL_MODE_VALUE = 1;          // Value for wheel mode setting
         static constexpr uint8_t _TORQUE_ENABLE_VALUE = 1;       // Value to enable torque
+        static constexpr uint8_t _TORQUE_DISABLE_VALUE = 0;      // Value to disable torque
+        static constexpr uint8_t _DEFAULT_ACCELERATION = 0;      // 0 = no ramp (tuned on the robot)
         static constexpr uint8_t _PRESENT_POSITION_REG = 0x38;   // Present position register
         static constexpr size_t _ROOM_TEMPERATURE_CELSIUS = 25;  // Default room temperature
+        static constexpr int _STARTUP_PROBE_ATTEMPTS = 3;        // Status reads per servo at configure
 
         // Communication timing constants
         static constexpr auto _SERVO_TIMEOUT = std::chrono::seconds(1);
         static constexpr auto _COMMAND_DELAY = std::chrono::milliseconds(10);
         static constexpr auto _COMMUNICATION_CYCLE_DELAY = std::chrono::milliseconds(20);
-        static constexpr auto _RESPONSE_TIMEOUT = std::chrono::milliseconds(50);
+        // A 14-byte status reply takes ~0.15 ms at 1 Mbps; the deadline only
+        // matters for a missing servo, and bounds how long write() can be
+        // blocked behind a status transaction.
+        static constexpr auto _RESPONSE_TIMEOUT = std::chrono::milliseconds(20);
 
         // Communication thread control
         std::atomic<bool> _comm_thread_running{false};
@@ -141,12 +163,15 @@ namespace perseus_lite_hardware
         mutable std::mutex _state_mutex;  // Protects servo state updates
 
         // Servo state tracking
+        // Feedback is stamped and checked with std::chrono::steady_clock only:
+        // mixing rclcpp clock types (ROS vs steady) throws on subtraction.
         struct ServoState
         {
-            double position{0.0};
+            double position{0.0};  // unwrapped, continuous, in the servo's own direction
             double velocity{0.0};
             double temperature{_ROOM_TEMPERATURE_CELSIUS};
-            rclcpp::Time last_update{0, 0, RCL_ROS_TIME};
+            std::optional<uint16_t> last_raw_position;
+            std::optional<std::chrono::steady_clock::time_point> last_update;
         };
         std::vector<ServoState> _servo_states;
 
@@ -168,11 +193,26 @@ namespace perseus_lite_hardware
          */
         bool send_servo_command(uint8_t id, ServoCommand cmd, std::span<const uint8_t> data) noexcept;
         /**
-         * @brief Processes a response packet received from a servo
-         * @param response The raw response data received from the servo
-         * @details Parses the response packet and extracts position, velocity, and temperature data
+         * @brief Requests and waits for one servo's status (caller holds _serial_mutex)
+         * @return true if a valid status packet from that servo was received and applied
+         * @details Discards stale input (e.g. the acknowledgements servos send for
+         *          WRITE commands) before the request so that only a real status
+         *          reply can refresh the servo's feedback timestamp.
          */
-        void process_response(std::span<const uint8_t> response) noexcept;
+        bool request_status(size_t index) noexcept;
+        /**
+         * @brief Applies a status packet from a servo to its tracked state
+         * @return true if the packet was a status reply from the expected servo
+         */
+        bool process_response(std::span<const uint8_t> response, uint8_t expected_id) noexcept;
+        /**
+         * @brief Commands zero speed to every servo, optionally disabling torque
+         * @details Best effort: errors are logged, not thrown. Caller must not hold
+         *          _serial_mutex.
+         */
+        void stop_all_servos(bool disable_torque) noexcept;
+        void stop_communication_thread() noexcept;
+        void discard_pending_input() noexcept;
         /**
          * @brief Reads available bytes from the serial port, giving up after a deadline
          * @param buffer Destination buffer for the read
@@ -202,7 +242,11 @@ namespace perseus_lite_hardware
         std::vector<double> _current_velocities;  // State feedback
         std::vector<double> _temperatures;        // State feedback
         std::vector<uint8_t> _servo_ids;
-        std::vector<uint8_t> _inverted_servo_ids;  // Servos whose drive direction is inverted
+        // Servos mounted mirrored (left side): commands AND feedback are negated
+        // so every joint reports positive = forward to diff_drive_controller.
+        std::vector<uint8_t> _inverted_servo_ids;
+        double _servo_max_rpm{protocol::DEFAULT_SERVO_MAX_RPM};
+        uint8_t _acceleration{_DEFAULT_ACCELERATION};
 
         // Communication members
         // _serial_mutex serializes complete request/response transactions on the

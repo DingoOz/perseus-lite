@@ -10,7 +10,14 @@ export class LocalStore<T> {
 
     if (browser) {
       const item = localStorage.getItem(key);
-      if (item) this.value = this.deserialize(item);
+      if (item) {
+        try {
+          this.value = this.deserialize(item);
+        } catch {
+          // corrupt entry: keep the default (the effect below overwrites it)
+          console.warn(`Ignoring unparsable localStorage entry "${key}"`);
+        }
+      }
     }
 
     $effect(() => {

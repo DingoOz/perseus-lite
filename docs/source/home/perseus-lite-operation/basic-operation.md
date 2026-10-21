@@ -7,18 +7,23 @@ To teleoperate with an Xbox controller, with Perseus-Lite powered up you will ne
 ```console
 pixi shell
 source software/ros_ws/install/setup.bash
-ros2 launch perseus_lite perseus_lite.launch.py cmd_vel_topic:=/joy_vel
+ros2 launch perseus_lite perseus_lite.launch.py
 ```
 
 :::{note}
-The `cmd_vel_topic:=/joy_vel` parameter remaps the velocity command topic for compatibility with the twist_mux topic multiplexer. This ensures the Xbox controller commands (published to `/joy_vel`) are correctly routed to the base controller.
+The bringup starts `twist_mux`, which merges every velocity source onto `/cmd_vel`
+(the base controller's input): gamepad `/joy_vel` (highest priority), keyboard
+`/key_vel`, web UI `/web_vel`, then Nav2. Don't pass `cmd_vel_topic:=/joy_vel` any
+more: that bypasses the mux, so keyboard, web UI and Nav2 commands would be ignored.
 :::
 
 ## Terminal 2
 
 ```console
-ros2 run input_devices generic_controller
+ros2 launch perseus_input controller.launch.py
 ```
+
+The gamepad publishes on `/joy_vel` only while the deadman button is held.
 
 # Basic Operation
 

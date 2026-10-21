@@ -40,21 +40,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # INCLUDE DEPENDENCIES
 
-# public dependencies (which should propagate)
-set(THIS_PACKAGE_INCLUDE_DEPENDS rclcpp)
-# packages which must be present but aren't linked against
-set(THIS_PACKAGE_BUILD_DEPENDS backward_ros ament_cmake)
-
-foreach(Dependency IN ITEMS ${THIS_PACKAGE_BUILD_DEPENDS})
-  find_package(${Dependency} REQUIRED)
-endforeach()
-
-foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
-  find_package(${Dependency} REQUIRED)
-endforeach()
-
-# Find other required packages
-find_package(Boost REQUIRED COMPONENTS system)
+# Standalone tool: no ROS/ament dependencies. Boost.Asio is header-only
+# (boost_system has been header-only since 1.69 and its CMake component is
+# gone in Boost >= 1.90), so only the headers target is needed.
+find_package(Boost REQUIRED CONFIG)
+find_package(Threads REQUIRED)
 find_package(Curses REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
@@ -67,10 +57,22 @@ add_executable(${PROJECT_NAME} ${CODE_SOURCES})
 # Set the include directories
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_include_directories(${PROJECT_NAME} SYSTEM
+                           PRIVATE ${CURSES_INCLUDE_DIRS})
 
 # Link private dependencies
-target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system ${CURSES_LIBRARIES}
-                                              yaml-cpp pthread)
+target_link_libraries(
+  ${PROJECT_NAME} PRIVATE Boost::headers ${CURSES_LIBRARIES} yaml-cpp
+                          Threads::Threads)
+
+# TESTS (pure protocol helpers; no serial port or ncurses needed)
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(st3215-protocol-test tests/st3215_protocol_test.cpp)
+  target_include_directories(st3215-protocol-test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME st3215-protocol-test COMMAND st3215-protocol-test)
+endif()
 
 # INSTALL (Executables)
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)

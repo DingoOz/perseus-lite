@@ -7,6 +7,7 @@ from launch.substitutions import (
     LaunchConfiguration,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -43,7 +44,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "timeout_enable",
             default_value="true",
-            description="Should the controller timeout run (disable this during autonomy testing)",
+            description="Publish one zero twist on /joy_vel when /joy goes stale while driving",
         ),
         DeclareLaunchArgument(
             "debug",
@@ -105,7 +106,13 @@ def generate_launch_description():
         name="generic_controller",
         output="both",
         emulate_tty=True,
-        parameters=[config_path, timeout_enable],
+        # A bare LaunchConfiguration in `parameters` is treated as a params
+        # *file path* (and silently dropped), so timeout_enable never reached
+        # the node. Pass it as a typed parameter instead.
+        parameters=[
+            config_path,
+            {"timeout_enable": ParameterValue(timeout_enable, value_type=bool)},
+        ],
         remappings=[],
         ros_arguments=["--log-level", debug_arg],
     )

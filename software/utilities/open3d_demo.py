@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Open3D demo — visual proof that the Nix-managed Open3D install works."""
+"""Open3D demo — visual proof that an Open3D install works.
+
+Open3D is NOT yet in any Pixi environment (the old Nix shell provided it; the
+conda-forge package has not been added to pixi.toml), so this script fails with
+ModuleNotFoundError unless Open3D (plus numpy and plotly) is installed
+separately, eg `pip install open3d plotly` in a virtualenv.
+"""
 
 import sys
 import numpy as np
@@ -165,7 +171,7 @@ def main():
 
     fig.update_layout(
         title=dict(
-            text="<b>Open3D Demo</b> — Nix-managed build",
+            text="<b>Open3D Demo</b>",
             font=dict(size=22),
         ),
         annotations=[

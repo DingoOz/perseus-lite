@@ -1,6 +1,7 @@
 #include "generic_controller/generic_controller.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -10,54 +11,112 @@
 GenericController::GenericController(const rclcpp::NodeOptions& options)
     : Node("generic_controller", options)
 {
+    // Only the drive is handled on the lite. The perseus-v2 excavation-bucket
+    // axes (lift/tilt/jaws/rotate/magnet -> /bucket_actuators) were removed:
+    // the lite has no bucket, and their configs read joystick indexes (e.g.
+    // axis 7, button 14) that many pads don't have.
     _axis_parsers.emplace(std::make_pair(FORWARD_BASE_NAME, AxisParser(*this, FORWARD_BASE_NAME, true)));
     _axis_parsers.emplace(std::make_pair(TURN_BASE_NAME, AxisParser(*this, TURN_BASE_NAME, true)));
-    _axis_parsers.emplace(std::make_pair(LIFT_BASE_NAME, AxisParser(*this, LIFT_BASE_NAME)));
-    _axis_parsers.emplace(std::make_pair(TILT_BASE_NAME, AxisParser(*this, TILT_BASE_NAME)));
-    _axis_parsers.emplace(std::make_pair(JAWS_BASE_NAME, AxisParser(*this, JAWS_BASE_NAME)));
-    _axis_parsers.emplace(std::make_pair(ROTATE_BASE_NAME, AxisParser(*this, ROTATE_BASE_NAME)));
-    _axis_parsers.emplace(std::make_pair(MAGNET_BASE_NAME, AxisParser(*this, "bucket.magnet")));
+
+    _timeout_length_ns = rcl_time_point_value_t(this->declare_parameter<int64_t>(TIMEOUT_LENGTH, 150000000));
+    _max_linear = std::abs(this->declare_parameter<double>(MAX_LINEAR, DEFAULT_MAX_LINEAR));
+    _max_angular = std::abs(this->declare_parameter<double>(MAX_ANGULAR, DEFAULT_MAX_ANGULAR));
+    _frame_id = this->declare_parameter<std::string>(FRAME_ID, "base_link");
+
     _joy_subscription =
         this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&GenericController::_joy_callback, this, std::placeholders::_1));
     _twist_publisher = this->create_publisher<geometry_msgs::msg::TwistStamped>("joy_vel", 10);
-    _actuator_publisher = this->create_publisher<actuator_msgs::msg::Actuators>("bucket_actuators", 10);
-    if (this->declare_parameter("timeout_enable", "true") == "true")
+    if (_read_timeout_enable())
     {
         _joy_timeout_timer = this->create_wall_timer(JOY_TIMEOUT, std::bind(&GenericController::_joy_timeout_callback, this));
     }
     _prev_received_joy_time = this->now();
-    RCLCPP_INFO(this->get_logger(), "Generic controller initialized");
+    RCLCPP_INFO(this->get_logger(), "Generic controller initialized (max %.2f m/s, %.2f rad/s)", _max_linear, _max_angular);
+}
+
+bool GenericController::_read_timeout_enable()
+{
+    // Declared dynamically typed for backwards compatibility: launch files now
+    // pass a real bool, but older launch files / YAML / CLI overrides passed
+    // the string "true"/"false".
+    rcl_interfaces::msg::ParameterDescriptor descriptor{};
+    descriptor.description = "Publish a single zero twist when /joy goes stale (bool)";
+    descriptor.dynamic_typing = true;
+    const auto value = this->declare_parameter(TIMEOUT_ENABLE, rclcpp::ParameterValue(true), descriptor);
+    switch (value.get_type())
+    {
+    case rclcpp::ParameterType::PARAMETER_BOOL:
+        return value.get<bool>();
+    case rclcpp::ParameterType::PARAMETER_INTEGER:
+        return value.get<int64_t>() != 0;
+    case rclcpp::ParameterType::PARAMETER_STRING:
+    {
+        std::string text = value.get<std::string>();
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c)
+                       { return std::tolower(c); });
+        return !(text == "false" || text == "0" || text == "no" || text == "off");
+    }
+    default:
+        return true;
+    }
+}
+
+double GenericController::axis_or_zero(const sensor_msgs::msg::Joy& joy, int index, bool* out_of_range)
+{
+    const bool bad = index >= 0 && static_cast<size_t>(index) >= joy.axes.size();
+    if (out_of_range)
+        *out_of_range = bad;
+    if (index < 0 || bad)
+        return 0.0;
+    return joy.axes[static_cast<size_t>(index)];
+}
+
+bool GenericController::button_or_false(const sensor_msgs::msg::Joy& joy, int index, bool* out_of_range)
+{
+    const bool bad = index >= 0 && static_cast<size_t>(index) >= joy.buttons.size();
+    if (out_of_range)
+        *out_of_range = bad;
+    if (index < 0 || bad)
+        return false;
+    return joy.buttons[static_cast<size_t>(index)] != 0;
+}
+
+void GenericController::_publish_twist(double forward, double turn)
+{
+    geometry_msgs::msg::TwistStamped twist_msg;
+    twist_msg.header.stamp = this->now();
+    twist_msg.header.frame_id = _frame_id;
+    // Clamp to the diff_drive_base_controller limits (turbo can exceed them).
+    twist_msg.twist.linear.x = std::clamp(forward, -_max_linear, _max_linear);
+    twist_msg.twist.angular.z = std::clamp(turn, -_max_angular, _max_angular);
+    _twist_publisher->publish(twist_msg);
+}
+
+bool GenericController::_drive_enabled()
+{
+    for (const auto& base : {FORWARD_BASE_NAME, TURN_BASE_NAME})
+    {
+        if (_enable_parsers.at(base + ".enable").get_value() ||
+            _enable_parsers.at(base + ".turbo_enable").get_value())
+            return true;
+    }
+    return false;
 }
 
 void GenericController::_joy_timeout_callback(void)
 {
-    static const auto timeout_length = rcl_time_point_value_t(this->declare_parameter(TIMEOUT_LENGTH, 150000000));
-    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Timeout length is %ld ns", timeout_length);
-    if ((this->now().nanoseconds() - _prev_received_joy_time.nanoseconds()) > timeout_length)
+    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Timeout length is %ld ns", _timeout_length_ns);
+    if ((this->now().nanoseconds() - _prev_received_joy_time.nanoseconds()) > _timeout_length_ns)
     {
-        geometry_msgs::msg::TwistStamped twist_msg;
-        twist_msg.twist.linear.x = 0;
-        twist_msg.twist.angular.z = 0;
-
-        twist_msg.header.stamp = this->now();
-        // Publish twist message
-        _twist_publisher->publish(twist_msg);
-
-        actuator_msgs::msg::Actuators actuator_msg;
-        actuator_msg.velocity.push_back(0);
-        actuator_msg.velocity.push_back(0);
-        actuator_msg.velocity.push_back(0);
-        actuator_msg.velocity.push_back(0);
-
-        // note: inverted, so magnet is released when the button's pressed
-        actuator_msg.normalized.push_back(0);
-
-        actuator_msg.header.stamp = this->now();
-        // Publish actuator message
-        _actuator_publisher->publish(actuator_msg);
-
+        if (_commanding)
+        {
+            // One zero to stop the robot, then stay quiet so twist_mux can
+            // fall through to lower-priority sources.
+            _publish_twist(0.0, 0.0);
+            _commanding = false;
+        }
         // Warn user if controller is disconnected
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Joy timeout, publishing zero to twist and actuators to stop movement safely");
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Joy timeout: no /joy for > %ld ns, drive command zeroed", _timeout_length_ns);
     }
 }
 
@@ -65,37 +124,23 @@ void GenericController::_joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg
 {
     _last_received_joy = msg;
     _prev_received_joy_time = this->now();
+    const bool enabled = _drive_enabled();
     double forward = _axis_parsers.at(FORWARD_BASE_NAME).get_value();
     double turn = _axis_parsers.at(TURN_BASE_NAME).get_value();
-    double lift = _axis_parsers.at(LIFT_BASE_NAME).get_value();
-    double tilt = _axis_parsers.at(TILT_BASE_NAME).get_value();
-    double jaws = _axis_parsers.at(JAWS_BASE_NAME).get_value();
-    double rotate = _axis_parsers.at(ROTATE_BASE_NAME).get_value();
-    bool magnet = _axis_parsers.at(MAGNET_BASE_NAME).get_value() > 0.5;
 
-    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Forward: %+2.2f, Turn: %+2.2f, Lift: %+2.2f, Tilt: %+2.2f, Jaws: %+2.2f, Rotate: %+2.2f, Magnet: %d",
-                          forward, turn, lift, tilt, jaws, rotate, magnet);
+    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Forward: %+2.2f, Turn: %+2.2f, Enabled: %d", forward, turn, enabled);
 
-    geometry_msgs::msg::TwistStamped twist_msg;
-    twist_msg.twist.linear.x = forward;
-    twist_msg.twist.angular.z = turn;
-
-    twist_msg.header.stamp = this->now();
-    // Publish twist message
-    _twist_publisher->publish(twist_msg);
-
-    actuator_msgs::msg::Actuators actuator_msg;
-    actuator_msg.velocity.push_back(lift);
-    actuator_msg.velocity.push_back(tilt);
-    actuator_msg.velocity.push_back(jaws);
-    actuator_msg.velocity.push_back(rotate);
-
-    // note: inverted, so magnet is released when the button's pressed
-    actuator_msg.normalized.push_back(magnet);
-
-    actuator_msg.header.stamp = this->now();
-    // Publish actuator message
-    _actuator_publisher->publish(actuator_msg);
+    if (enabled)
+    {
+        _publish_twist(forward, turn);
+        _commanding = true;
+    }
+    else if (_commanding)
+    {
+        // Deadman released: stop once, then go quiet (see _commanding).
+        _publish_twist(0.0, 0.0);
+        _commanding = false;
+    }
 }
 
 GenericController::AxisParser::AxisParser(GenericController& parent, const std::string& param_base_name, bool has_enable)
@@ -184,8 +229,16 @@ double GenericController::AxisParser::get_value()
     int axis_idx = params[AXIS_IDX].as_int();
     bool has_analog_axis = axis_idx >= 0;
     bool hold = _parent.get_parameter(_param_base_name + ".hold").as_bool();
+    if (!_parent._last_received_joy)
+        return 0.0;
+    const auto& joy = *_parent._last_received_joy;
     if (has_analog_axis)
-        axis_value = _parent._last_received_joy->axes[axis_idx];
+    {
+        bool out_of_range = false;
+        axis_value = axis_or_zero(joy, axis_idx, &out_of_range);
+        if (out_of_range)
+            _warn_out_of_range("axis", axis_idx);
+    }
 
     double scaling = params[SCALING_IDX].as_double();
     if (_has_enable && _parent._enable_parsers.at(_param_base_name + ".turbo_enable").get_value())
@@ -222,13 +275,16 @@ double GenericController::AxisParser::get_value()
         }
     }
 
-    bool button_positive = false;
-    if (int button = params[BUTTON_POSITIVE_IDX].as_int(); button >= 0)
-        button_positive = _parent._last_received_joy->buttons[button];
+    bool out_of_range = false;
+    const int button_positive_idx = params[BUTTON_POSITIVE_IDX].as_int();
+    bool button_positive = button_or_false(joy, button_positive_idx, &out_of_range);
+    if (out_of_range)
+        _warn_out_of_range("button", button_positive_idx);
 
-    bool button_negative = false;
-    if (int button = params[BUTTON_NEGATIVE_IDX].as_int(); button >= 0)
-        button_negative = _parent._last_received_joy->buttons[button];
+    const int button_negative_idx = params[BUTTON_NEGATIVE_IDX].as_int();
+    bool button_negative = button_or_false(joy, button_negative_idx, &out_of_range);
+    if (out_of_range)
+        _warn_out_of_range("button", button_negative_idx);
 
     bool both_buttons = button_positive && button_negative;
     if (!both_buttons)
@@ -242,13 +298,24 @@ double GenericController::AxisParser::get_value()
         axis_value = 0.0;
 
     axis_value *= scaling;
-    bool should_update_analog_axis = has_analog_axis && (!hold || (abs(axis_value) > 0));
+    bool should_update_analog_axis = has_analog_axis && (!hold || (std::abs(axis_value) > 0));
     if (button_positive || button_negative || should_update_analog_axis)
         _last_value = axis_value;
     else if (hold)
         return _last_value;
 
     return axis_value;
+}
+
+void GenericController::AxisParser::_warn_out_of_range(const char* kind, int index) const
+{
+    // Out-of-range indexes read as 0 / unpressed (a config written for a pad
+    // with more axes/buttons than the connected one must not crash the node).
+    RCLCPP_WARN_THROTTLE(_parent.get_logger(), *_parent.get_clock(), 5000,
+                         "%s: %s index %d is out of range for the connected joystick (%zu axes, %zu buttons); treating it as 0/unpressed",
+                         _param_base_name.c_str(), kind, index,
+                         _parent._last_received_joy ? _parent._last_received_joy->axes.size() : size_t{0},
+                         _parent._last_received_joy ? _parent._last_received_joy->buttons.size() : size_t{0});
 }
 
 std::vector<rclcpp::Parameter> GenericController::AxisParser::_resolve_params()
@@ -385,26 +452,4 @@ bool GenericController::EnableParser::get_value()
     if (is_less_than)
         return axis_value < threshold;
     return axis_value > threshold;
-}
-
-int main(int argc, char** argv)
-{
-    rclcpp::init(argc, argv);
-
-    rclcpp::NodeOptions node_options{};
-    try
-    {
-        node_options.allow_undeclared_parameters(true);
-        RCLCPP_INFO(rclcpp::get_logger("main"), "Starting generic controller node");
-        auto node = std::make_shared<GenericController>(node_options);
-        rclcpp::spin(node);
-    }
-    catch (const std::exception& e)
-    {
-        RCLCPP_ERROR(rclcpp::get_logger("main"), "Error running generic controller: %s", e.what());
-        return 1;
-    }
-
-    rclcpp::shutdown();
-    return 0;
 }

@@ -41,7 +41,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # INCLUDE DEPENDENCIES
 
 # public dependencies (which should propagate)
-set(THIS_PACKAGE_INCLUDE_DEPENDS rclcpp sensor_msgs geometry_msgs actuator_msgs)
+set(THIS_PACKAGE_INCLUDE_DEPENDS rclcpp sensor_msgs geometry_msgs)
 
 # packages which must be present but aren't linked against
 set(THIS_PACKAGE_BUILD_DEPENDS backward_ros ament_cmake)
@@ -56,11 +56,13 @@ endforeach()
 
 # COMPILE (Executables)
 
-# Find all source files for the executables
+# Find all source files for the executables (main() lives in src/main.cpp so
+# the tests can link the node implementation)
 file(GLOB_RECURSE GENERIC_CONTROLLER_CODE_SOURCES src/generic_controller/*.cpp)
 
 # Add exec targets
-add_executable(generic_controller ${GENERIC_CONTROLLER_CODE_SOURCES})
+add_executable(generic_controller ${GENERIC_CONTROLLER_CODE_SOURCES}
+                                  src/main.cpp)
 
 # Add include dirs
 target_include_directories(generic_controller
@@ -72,6 +74,23 @@ ament_target_dependencies(generic_controller PUBLIC
 
 # Install ROS Executable
 install(TARGETS generic_controller DESTINATION lib/${PROJECT_NAME})
+
+# TESTS (suite names end in "Test" so the CI `-R 'Test\.'` filter picks them up)
+if(BUILD_TESTING)
+  find_package(GTest REQUIRED)
+  enable_testing()
+
+  add_executable(generic_controller_test tests/generic_controller_test.cpp
+                                         ${GENERIC_CONTROLLER_CODE_SOURCES})
+  target_include_directories(generic_controller_test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_target_dependencies(generic_controller_test
+                            ${THIS_PACKAGE_INCLUDE_DEPENDS})
+  target_link_libraries(generic_controller_test GTest::gtest_main)
+
+  include(GoogleTest)
+  gtest_discover_tests(generic_controller_test)
+endif()
 
 # INSTALL (ROS)
 install(

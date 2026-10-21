@@ -15,6 +15,12 @@ types. This node subscribes to the Isaac AprilTag output and republishes:
 - vision_msgs/Detection2DArray -> /perseus_isaac/apriltag/detections
 - diagnostic_msgs/DiagnosticArray -> /perseus_isaac/health (1 Hz heartbeat)
 
+Health is OK only while both camera frames (camera_info, a cheap proxy for the
+image stream) and AprilTag detection arrays (published per processed frame,
+even when empty) keep arriving; STALE when no camera frame has arrived for
+`stale_after_s` seconds, WARN when the camera is alive but the AprilTag
+pipeline has produced nothing for that long.
+
 This module imports isaac_ros_apriltag_interfaces, which only exists inside the
 Isaac ROS container image — importing it on the Jazzy host will fail by design.
 """
@@ -23,6 +29,7 @@ from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Pose, PoseArray
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import CameraInfo
 from vision_msgs.msg import (
     Detection2D,
     Detection2DArray,
@@ -50,10 +57,21 @@ class AprilTagRelay(Node):
         self._health = self.create_publisher(
             DiagnosticArray, "/perseus_isaac/health", 1
         )
+        self._camera_sub = self.create_subscription(
+            CameraInfo, "camera_info", self._on_camera_info, 10
+        )
+        self._stale_after_s = float(self.declare_parameter("stale_after_s", 3.0).value)
         self._relayed = 0
+        self._start_ns = self.get_clock().now().nanoseconds
+        self._last_tags_ns = None
+        self._last_camera_ns = None
         self.create_timer(1.0, self._on_health)
 
+    def _on_camera_info(self, _msg):
+        self._last_camera_ns = self.get_clock().now().nanoseconds
+
     def _on_tags(self, msg):
+        self._last_tags_ns = self.get_clock().now().nanoseconds
         poses = PoseArray()
         poses.header = msg.header
         dets = Detection2DArray()
@@ -74,15 +92,48 @@ class AprilTagRelay(Node):
         self._relayed += 1
 
     def _on_health(self):
+        now = self.get_clock().now()
+        now_ns = now.nanoseconds
+        camera_age = _age_s(now_ns, self._last_camera_ns, self._start_ns)
+        tags_age = _age_s(now_ns, self._last_tags_ns, self._start_ns)
+        level, message = health_level(
+            camera_age,
+            tags_age,
+            self._last_camera_ns is not None,
+            self._last_tags_ns is not None,
+            self._stale_after_s,
+        )
         array = DiagnosticArray()
-        array.header.stamp = self.get_clock().now().to_msg()
+        array.header.stamp = now.to_msg()
         status = DiagnosticStatus()
         status.name = "perseus_isaac_relay"
-        status.level = DiagnosticStatus.OK
-        status.message = "relaying apriltag detections"
+        status.level = level
+        status.message = message
         status.values.append(KeyValue(key="relayed", value=str(self._relayed)))
+        status.values.append(
+            KeyValue(key="seconds_since_camera_frame", value=f"{camera_age:.1f}")
+        )
+        status.values.append(
+            KeyValue(key="seconds_since_detections", value=f"{tags_age:.1f}")
+        )
         array.status.append(status)
         self._health.publish(array)
+
+
+def _age_s(now_ns, last_ns, start_ns):
+    """Seconds since `last_ns` (or since node start if never seen)."""
+    return (now_ns - (start_ns if last_ns is None else last_ns)) / 1e9
+
+
+def health_level(camera_age, tags_age, camera_seen, tags_seen, stale_after_s):
+    """Return (DiagnosticStatus level, message) for the relay heartbeat."""
+    if camera_age > stale_after_s:
+        what = "since start" if not camera_seen else "for %.1fs" % camera_age
+        return DiagnosticStatus.STALE, "no camera frames " + what
+    if tags_age > stale_after_s:
+        what = "since start" if not tags_seen else "for %.1fs" % tags_age
+        return DiagnosticStatus.WARN, "camera alive but no apriltag output " + what
+    return DiagnosticStatus.OK, "relaying apriltag detections"
 
 
 def _extract_pose(tag) -> Pose:

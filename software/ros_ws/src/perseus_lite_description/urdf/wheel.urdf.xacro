@@ -26,8 +26,12 @@
 
     <!-- WHEEL -->
     <joint name="${prefix}${end}_${side}_wheel_joint" type="continuous">
+      <!-- Positive joint velocity must roll every wheel forward (+X of
+           base_link), i.e. the axis is +Y in base_link on both sides, as
+           diff_drive_controller assumes. The left motor link is yawed by pi,
+           so its local axis is flipped relative to the right side. -->
       <xacro:if value="${side == 'left'}">
-        <axis xyz="0 0 -1"/>
+        <axis xyz="0 0 1"/>
       </xacro:if>
       <xacro:if value="${side == 'right'}">
         <axis xyz="0 0 -1"/>

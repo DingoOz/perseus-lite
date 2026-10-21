@@ -5,17 +5,33 @@
   Layout (top-down, +X is east, +Y is north):
 
   Spawn (0, 0) .... open area .... [entrance gap] .... Corridor A .... [leak]
-                                    x=3, y=-1..+1      0.8m wide        x=10
+                                  x=3, y=-0.9..+0.9    0.8m wide       x=9.8
 
-  Habitat is a rectangular structure from x=3 to x=12, y=-3 to y=+3.
-  The west face has a 2m gap for the rover to enter. Inside, the
-  corridor narrows to 0.8m between two internal walls running east
-  to a dead-end at x=10 where the leak marker sits.
+  Habitat is a rectangular structure from x=3 to x=12, y=-3 to y=+3
+  (inner wall faces). The west face has a 1.8 m gap (y=-0.9..+0.9) for the
+  rover to enter. Corridor A starts right at the gap: two internal walls
+  with inner faces at y=+/-0.4 (0.8 m clear) run east to a dead-end face at
+  x=10.0; the leak marker sits at (9.8, 0).
 
-  Corridor width (0.8m) is load-bearing for Challenge 2: with the
-  broken robot_radius (0.85m) the planner marks the entire corridor
-  lethal. With the correct radius (0.28m) there is a clear 0.24m
-  channel down the centre and Nav2 can plan through it.
+  Two debris blocks just inside the entrance lean against the corridor
+  walls and narrow it slightly: debris_1 (south wall, x~3.05-3.55) to
+  y>=-0.37 and debris_2 (north wall, x~3.6-4.0) to y<=+0.35, so the
+  narrowest clear width is ~0.72 m. Both reach above the lidar plane
+  (~0.15 m) so Nav2 sees them.
+
+  Corridor width is load-bearing for Challenge 2. The rover body is
+  0.44 m wide (y +/-0.22 m about base_link) and 0.63 m long
+  (x -0.42..+0.21 m).
+  - Broken nav2 params (robot_radius 0.85, inflation_radius 0.75): the
+    planner's keep-out distance exceeds half the corridor, so the whole
+    corridor is lethal and Nav2 cannot plan through it.
+  - Hinted fix (robot_radius 0.28, inflation_radius 0.25): ~0.25 m channel
+    of valid base_link positions past the debris.
+  - Answer key (polygon footprint, inscribed radius 0.21, inflation 0.30):
+    ~0.3 m channel; the body clears the debris by ~0.14 m each side.
+  The lidar's 0.5 m blind radius (/scan_filtered) means walls/debris are
+  marked from further away and persist in the costmap.
+  test/test_world_geometry.py in perseus_lite_missions checks these numbers.
 -->
 <sdf version="1.9">
   <world name="selene_base">
@@ -142,7 +158,7 @@
           <material><ambient>0.55 0.55 0.52 1</ambient><diffuse>0.55 0.55 0.52 1</diffuse></material>
         </visual>
       </link>
-      <!-- Gap between west_north and west_south: y=-1..+1 (2m opening) -->
+      <!-- Gap between west_north and west_south: y=-0.9..+0.9 (1.8m opening) -->
 
       <!-- ── Corridor A internal walls ───────────────────────── -->
       <!-- 0.8m clear width: inner faces at y=+0.4 and y=-0.4 -->
@@ -192,7 +208,8 @@
         </visual>
       </link>
 
-      <!-- Debris blocks near the entrance -->
+      <!-- Debris blocks near the entrance, leaning against the corridor
+           walls (see header: they leave a >= 0.72 m clear channel) -->
       <link name="debris_1">
         <pose>3.3 -0.6 0.15 0.1 0 0.4</pose>
         <collision name="col"><geometry><box><size>0.4 0.3 0.3</size></box></geometry></collision>
@@ -202,7 +219,7 @@
       </link>
 
       <link name="debris_2">
-        <pose>3.8 0.3 0.1 0 0.15 -0.3</pose>
+        <pose>3.8 0.52 0.1 0 0.15 -0.3</pose>
         <collision name="col"><geometry><box><size>0.3 0.25 0.2</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.3 0.25 0.2</size></box></geometry>
           <material><ambient>0.50 0.48 0.45 1</ambient><diffuse>0.50 0.48 0.45 1</diffuse></material>

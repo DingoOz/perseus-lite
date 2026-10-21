@@ -5,31 +5,54 @@ Script (source of truth for the segment flow) is at
 
 ## Current state
 
-- Branch: `feature/mission-zero-cold-open` (no commits yet — everything is
-  untracked).
-- Package `perseus_lite_missions` builds clean. Launch graph resolves.
-- Selene Base world (`selene_base.sdf`) in
-  `perseus_lite_simulation/worlds/`. Box-primitive habitat with a 0.8 m
-  corridor, collapsed panels, debris, leak marker at (9.8, 0). Moon_DEM
+- Package `perseus_lite_missions` (ament_python) builds and tests in the
+  `simulation` Pixi env only (it `exec_depend`s on `perseus_lite_simulation`,
+  which the `default`/`machine-learning` envs skip — see `pixi.toml`).
+- Selene Base world (`selene_base.sdf`) in `perseus_lite_simulation/worlds/`.
+  Box-primitive habitat with a 0.8 m corridor (narrowest point ~0.72 m beside
+  the entrance debris), collapsed panels, leak marker at (9.8, 0). Moon_DEM
   terrain. Launch defaults to this world with spawn at (0, 0, 0.3).
-- Broken + reference configs for SLAM and Nav2 are in place. Topics point
-  at `/scan`.
-- Orchestrator relaunches slam_toolbox with reference params when
-  Challenge 1 passes (kill-and-relaunch via subprocess). Persists badges
-  to `~/.config/rover-robotics/badges.json`. Publishes mission state +
-  badge events on `/mission/state` and `/mission/badge`.
-- Checker nodes are functional: map_quality watches the slam YAML on disk,
-  goal_reached measures TF distance to the leak pose.
+  `test/test_world_geometry.py` checks the corridor is passable with the
+  answer key and sealed with the broken values.
+- Broken + reference configs for SLAM and Nav2 are in place. Frames are
+  `base_link`/`odom`/`map`; scans come from `/scan_filtered`. The Nav2 answer
+  key uses the rover's real polygon footprint.
+- The orchestrator **owns slam_toolbox and Nav2** as `ros2 launch` process
+  groups (`process_group.ManagedProcess`), started with the broken params:
+  - Challenge 1 passes (map_quality checker) → slam_toolbox is stopped
+    (whole process group, SIGINT → SIGTERM → SIGKILL) and relaunched with
+    `slam_params.reference.yaml`.
+  - nav2_params checker reports the student's file fixed → Nav2 is stopped
+    and relaunched with `nav2_params.reference.yaml`.
+  - Challenge 2 passes when the goal_reached checker sees the rover at the
+    leak under an executing/succeeded NavigateToPose goal.
+  - Challenges are accepted in mission order only (`mission_logic.py`), so
+    driving to the leak by hand before Challenge 1 does not count.
+- Badges persist to `~/.config/rover-robotics/badges.json`. Mission state +
+  badge events on `/mission/state` and `/mission/badge`; checker status
+  (`pass`/`fail`/`invalid`/`missing` + reason) on
+  `/mission/challenge_1/status` and `/mission/challenge_2/params_status`.
 
 ## Resume here
 
 ```bash
-cd /home/dingo/perseus-lite/software/ros_ws
-source install/setup.bash
-ros2 launch perseus_lite_missions mission_zero.launch.py --show-args
+# Build (simulation env builds the whole workspace except perseus_vision)
+pixi run -e simulation build
 
-# To actually launch (Gazebo opens — needs GPU):
-ros2 launch perseus_lite_missions mission_zero.launch.py
+# Inspect the launch graph
+pixi run -e simulation bash -c \
+  'cd software/ros_ws && source install/setup.bash && \
+   ros2 launch perseus_lite_missions mission_zero.launch.py --show-args'
+
+# Actually launch (Gazebo opens — needs a GPU):
+pixi run -e simulation bash -c \
+  'cd software/ros_ws && source install/setup.bash && \
+   ros2 launch perseus_lite_missions mission_zero.launch.py'
+
+# Unit + lint tests (expect a non-zero pytest count)
+pixi run -e simulation bash -c \
+  'cd software/ros_ws && colcon test --packages-select perseus_lite_missions && \
+   colcon test-result --verbose'
 ```
 
 ## Remaining work (priority order)
@@ -43,50 +66,52 @@ Create `software/web_ui/src/routes/mission-zero/+page.svelte`. Needs:
   relevant lines per challenge.
 - rosbridge subscription to `/mission/state`,
   `/mission/challenge_1/passed`, `/mission/challenge_2/passed`,
+  `/mission/challenge_1/status`, `/mission/challenge_2/params_status`,
   `/mission/badge`.
 - Badge overlay on challenge pass.
 - Save button that writes the edited YAML back to the orchestrator via
   rosbridge (or via a small REST shim if rosbridge file write is
   awkward — needs a 5-min spike to confirm).
+- Segment advancement for `video`/`drive` segments (the orchestrator only
+  advances on challenge passes today).
 
 `rosbridge_server` is already launched by `perseus_sim.launch.py`
-so the websocket wiring is free.
+so the websocket wiring is free. Note `software/web_ui/` has no Pixi
+toolchain yet (see CLAUDE.md).
 
-### 2. `apps.mission-zero` Nix entry
+### 2. `mission-zero` Pixi task
 
-In `flake.nix`, mirror the existing `apps.perseus-lite` pattern. Wrap
-should:
+Add a task to `pixi.toml`'s `[feature.simulation.tasks]`, mirroring the
+existing `sim` task:
 
-1. Source the ROS workspace.
-2. Start `ros2 launch perseus_lite_missions mission_zero.launch.py` in
-   the background.
-3. Serve the web_ui build (`python3 -m http.server` against
-   `software/web_ui/build`, or `vite preview`).
-4. `xdg-open http://localhost:5173/mission-zero`.
+```toml
+mission-zero = { cmd = "bash -c 'source install/setup.bash && ros2 launch perseus_lite_missions mission_zero.launch.py'", cwd = "software/ros_ws", depends-on = ["build"] }
+```
 
-Goal: `nix run github:DingoOz/perseus-lite#mission-zero` opens the
-experience in the browser, end-to-end.
+Then extend it (or a wrapper script) to serve the web_ui build and
+`xdg-open http://localhost:5173/mission-zero`. Goal: a single
+`pixi run -e simulation mission-zero` opens the experience end-to-end.
 
 ### 3. Docs landing page
 
 `docs/source/tutorials/mission-zero.md`. Above-the-fold: the single
-`nix run` command, prerequisites (Nix installed, Linux, GPU). Below:
-lesson notes from the script (commands + the two YAML diffs) for
-readers who prefer text. Link from the docs landing page (commit
-`036159fe`).
+`pixi run -e simulation mission-zero` command, prerequisites (Pixi
+installed, Linux x86_64, GPU). Below: lesson notes from the script
+(commands + the two YAML diffs) for readers who prefer text. Link from
+the docs landing page (commit `036159fe`).
 
-### 4. Cachix prewarm coverage
+### 4. CI coverage
 
-Confirm the CI workflow builds `perseus_lite_missions` on push to main
-and pushes to `perseus-lite.cachix.org`. If it already builds the
-whole ROS workspace, this is free.
+Confirm a CI job builds and runs `colcon test --packages-select
+perseus_lite_missions` in the `simulation` env (the `default` env skips
+the package). Check the pytest count is non-zero in the job log.
 
 ### 5. End-to-end run
 
 Walk the full script flow: cold launch, drive, see smeared map, edit
 slam params, see clean map, send goal, see corridor blocked, edit nav2
-params, watch rover reach the leak. Time it — target under 12 minutes
-on a warm cache.
+params, watch Nav2 restart and the rover reach the leak. Time it — target
+under 12 minutes on a warm build.
 
 ### 6. World geometry polish
 
@@ -99,13 +124,8 @@ production, you may want:
 - Dust/particle effects near the collapsed section.
 - Contact sensor on the chassis for a no-collisions gate on Challenge 2.
 
-### 7. Nav2 relaunch on Challenge 2
-
-The orchestrator currently only relaunches slam_toolbox (Challenge 1).
-Challenge 2 needs the same kill-and-relaunch for the Nav2 stack. This
-requires killing the lifecycle_manager + all Nav2 nodes, then
-relaunching `perseus_nav_bringup.launch.py` with the reference
-nav2_params. Same pattern as the slam relaunch but more nodes.
+Re-run `test/test_world_geometry.py` after moving anything near the
+corridor.
 
 ## Out of scope
 
@@ -113,18 +133,3 @@ nav2_params. Same pattern as the slam relaunch but more nodes.
 - Mission 1 onwards.
 - Mac/Windows support (call out Linux-only in docs).
 - Signed-in skill-tree backend (local badges are enough for Tier 0).
-
-## When ready to commit
-
-```bash
-git add software/ros_ws/src/perseus_lite_missions \
-        software/ros_ws/src/perseus_lite_simulation/worlds/selene_base.sdf \
-        software/assets/missions
-git commit -m "feat(missions): Add Mission Zero Selene Base Rescue package
-
-New ament_python package with launch, orchestrator, checkers, broken/
-reference configs for SLAM and Nav2 challenges. Selene Base world with
-0.8m corridor, habitat geometry, and leak marker."
-```
-
-`.claude/` is local config and should stay untracked.

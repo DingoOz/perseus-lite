@@ -4,14 +4,30 @@ This repo contains the UI for controlling/viewing outputs from sensors on the ro
 
 ### Running the UI
 
-The Rover UI uses SvelteKit meaning that it does not need a server to be run and can be started by running this command in the root directory:
+The Rover UI is a SvelteKit app (built with `@sveltejs/adapter-node`). It uses Yarn 4
+(`packageManager` in `package.json`; enable it with `corepack enable`, or run any Yarn 4.x).
+Run these from this directory (`software/web_ui`):
 
 ```shell
-yarn # This installs dependencies
-yarn host # This runs the server
+yarn install   # install dependencies
+yarn dev       # development server (Vite, --host: reachable from any device on the network)
 ```
 
-This command with host the UI so with Vite so that it can be accessed by any device on the same network.  
+For the robot / production:
+
+```shell
+yarn build     # build the app into ./build
+yarn start     # serve ./build plus the socket.io camera/resource endpoints on port 3000
+```
+
+The UI talks to ROS through `rosbridge_websocket` on port 9090 of the selected ROS host
+(the hardware bringup and the simulation both start it). Teleop publishes stamped twists on
+`/web_vel`.
+
+Cameras are served by the separate GStreamer helper in `pi-server/` (`yarn camera`, configure
+`pi-server/config.json`). Recordings requested from the UI are restricted to plain file names
+(`[A-Za-z0-9_.-]`) and are always written to `~/perseus-recordings/` on the camera host.
+
 **Note:** The hydration errors can be ignored
 
 ### Developing
@@ -86,5 +102,3 @@ To begin developing a widget run the command: `./create-widget.sh <file-name>`. 
 
 - Camera
 - Battery
-- Motor stats
-- BMS (power bus states)

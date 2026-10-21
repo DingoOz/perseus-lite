@@ -1,7 +1,8 @@
 import { io, Socket } from "socket.io-client";
 import config from "./config.json";
 import fs, { watch } from "node:fs";
-import { networkInterfaces } from "os";
+import os from "node:os";
+import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 
 type videoTransformType =
@@ -36,6 +37,114 @@ interface CameraEventType {
 
 const log = (message: string) => {
   console.log(`[Camera server] ${message}`);
+};
+
+// -------------------------------------
+//         Request validation
+// -------------------------------------
+// Everything below ends up in a gst-launch-1.0 pipeline description, which
+// gst-launch re-parses from its argv (so "!" or spaces inside one argument
+// still create new elements). Every client-supplied value is therefore
+// validated against a strict whitelist before it gets anywhere near spawn().
+
+const VIDEO_TRANSFORMS: readonly videoTransformType[] = [
+  "none",
+  "clockwise",
+  "counterclockwise",
+  "rotate-180",
+  "horizontal-flip",
+  "vertical-flip",
+  "upper-left-diagonal",
+  "upper-right-diagonal",
+  "automatic",
+];
+const MIN_DIMENSION = 16;
+const MAX_WIDTH = 4096;
+const MAX_HEIGHT = 4096;
+const DEFAULT_RESOLUTION = { width: 320, height: 240 };
+// Recording file names are plain basenames; they are always written under RECORDINGS_DIR.
+const FILE_NAME_RE = /^[A-Za-z0-9_.-]+$/;
+const MAX_FILE_NAME_LENGTH = 128;
+// Characters that are safe to place unquoted in a gst-launch property value.
+const SAFE_PATH_RE = /^[A-Za-z0-9_./-]+$/;
+const RECORDINGS_DIR = path.join(os.homedir(), "perseus-recordings");
+
+interface StreamRequest {
+  device: string;
+  resolution: { width: number; height: number };
+  transform: videoTransformType;
+  file: string | null; // absolute path under RECORDINGS_DIR, or null
+  convertFromJpeg: boolean;
+  forceRestart: boolean;
+  // true when the client specified the stream preferences explicitly
+  hasPreferences: boolean;
+}
+
+const isDimension = (value: unknown, max: number): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= MIN_DIMENSION &&
+  value <= max;
+
+// Returns the validated request, or a string describing why it was rejected.
+const parseStreamRequest = (
+  data: CameraEventType["data"] | undefined,
+): StreamRequest | string => {
+  if (!data || typeof data !== "object") return "missing data";
+
+  const device = Array.isArray(data.devices) ? data.devices[0] : undefined;
+  if (typeof device !== "string" || !videoDevices.includes(device))
+    return "unknown device";
+
+  let resolution = DEFAULT_RESOLUTION;
+  if (data.resolution !== undefined) {
+    const { width, height } = (data.resolution ?? {}) as {
+      width?: unknown;
+      height?: unknown;
+    };
+    if (!isDimension(width, MAX_WIDTH) || !isDimension(height, MAX_HEIGHT))
+      return "invalid resolution";
+    resolution = { width, height };
+  }
+
+  let transform: videoTransformType = "none";
+  if (data.transform !== undefined) {
+    if (!VIDEO_TRANSFORMS.includes(data.transform)) return "invalid transform";
+    transform = data.transform;
+  }
+
+  let file: string | null = null;
+  if (data.file !== undefined && data.file !== null && data.file !== "") {
+    if (
+      typeof data.file !== "string" ||
+      data.file.length > MAX_FILE_NAME_LENGTH ||
+      !FILE_NAME_RE.test(data.file) ||
+      data.file === "." ||
+      data.file === ".."
+    )
+      return "invalid file name (use letters, digits, '_', '.', '-' only)";
+    file = path.join(RECORDINGS_DIR, data.file);
+    if (path.dirname(file) !== RECORDINGS_DIR || !SAFE_PATH_RE.test(file))
+      return "invalid recording path";
+  }
+
+  for (const flag of ["convertFromJpeg", "forceRestart"] as const) {
+    if (data[flag] !== undefined && typeof data[flag] !== "boolean")
+      return `invalid ${flag}`;
+  }
+
+  return {
+    device,
+    resolution,
+    transform,
+    file,
+    convertFromJpeg: data.convertFromJpeg ?? false,
+    forceRestart: data.forceRestart ?? false,
+    hasPreferences:
+      data.resolution !== undefined &&
+      data.transform !== undefined &&
+      data.convertFromJpeg !== undefined,
+  };
 };
 
 log("Starting...");
@@ -97,8 +206,10 @@ let fsWatcher = watch("/dev/v4l/by-id", (eventType, filename) => {
       let index = gstInstances.findIndex(
         (instance) => instance.device === filename,
       );
-      gstInstances[index].instance.kill();
-      gstInstances.splice(index, 1);
+      if (index !== -1) {
+        gstInstances[index].instance.kill();
+        gstInstances.splice(index, 1);
+      }
 
       socket.send({
         type: "camera",
@@ -140,13 +251,9 @@ let gstInstances: {
   instance: ChildProcessWithoutNullStreams;
 }[] = [];
 
-const startStream = (
-  device: string,
-  resolution: { width: number; height: number },
-  transform: videoTransformType,
-  file: string | null,
-  convertFromJpeg: boolean = false,
-) => {
+// Only ever called with a request that has passed parseStreamRequest().
+const startStream = (request: StreamRequest) => {
+  const { device, resolution, transform, file, convertFromJpeg } = request;
   let gstArgs = [
     "webrtcsink",
     "stun-server=NULL",
@@ -154,8 +261,7 @@ const startStream = (
     `signaller::uri="ws://${config.webserverIp}:8443"`, // port is always default 8443
     `meta="meta,device=${device}"`,
   ];
-  if (device === "test") gstArgs.push("videotestsrc");
-  else gstArgs.push("v4l2src", `device=/dev/v4l/by-id/${device}`);
+  gstArgs.push("v4l2src", `device=/dev/v4l/by-id/${device}`);
   if (convertFromJpeg) {
     gstArgs.push("!", "jpegdec");
   }
@@ -168,7 +274,8 @@ const startStream = (
   if (transform !== "none")
     gstArgs.push("!", `videoflip`, `method=${transform}`);
   // If the video should be saved:
-  if (file)
+  if (file) {
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
     gstArgs.push(
       "!",
       "tee",
@@ -183,33 +290,37 @@ const startStream = (
       "avimux",
       "!",
       "filesink",
-      `location=${file}`, // Save frames as an avi file to ${file}
+      `location=${file}`, // Save frames as an avi file under RECORDINGS_DIR
       "t.",
       "!",
       "queue",
     ); // If the webrtcsink fills up the queue (it can't display the video as fast as it's coming in), it will slow down the video
+  }
   gstArgs.push("!", "ws.");
 
+  // argv array, no shell
+  const instance = spawn("gst-launch-1.0", gstArgs);
   gstInstances.push({
     device: device,
     resolution: resolution,
     transform: transform,
     file: file,
     convertFromJpeg: convertFromJpeg,
-    instance: spawn("gst-launch-1.0", gstArgs),
+    instance: instance,
   });
 
-  log("gst-launch1.0 " + gstArgs.join(" "));
+  log("gst-launch-1.0 " + gstArgs.join(" "));
 
-  gstInstances.at(-1)!.instance.stdout.pipe(process.stdout);
-  gstInstances.at(-1)!.instance.stderr.pipe(process.stderr);
+  instance.stdout.pipe(process.stdout);
+  instance.stderr.pipe(process.stderr);
 };
 
 socket.on("camera-event", (event: CameraEventType) => {
   // Return if the target device is not owned by this server
+  if (!event || typeof event !== "object") return;
   if (
     event.data &&
-    event.data.devices &&
+    Array.isArray(event.data.devices) &&
     !videoDevices.includes(event.data.devices[0])
   )
     return;
@@ -218,70 +329,48 @@ socket.on("camera-event", (event: CameraEventType) => {
       initMessage.data.devices = videoDevices;
       socket.send(initMessage);
       break;
-    case "request-stream":
-      // request stream
+    case "request-stream": {
+      const request = parseStreamRequest(event.data);
+      if (typeof request === "string") {
+        log(`Rejected stream request: ${request}`);
+        break;
+      }
       log(
-        `Requesting stream for device: ${formatDeviceName(event.data?.devices![0])} @ ${event.data?.resolution?.width}x${event.data?.resolution?.height} with transform: ${event.data?.transform} and file: ${event.data?.file}`,
+        `Requesting stream for device: ${formatDeviceName(request.device)} @ ${request.resolution.width}x${request.resolution.height} with transform: ${request.transform} and file: ${request.file}`,
       );
       let index = gstInstances.findIndex(
-        (instance) => instance.device === event.data?.devices?.[0],
+        (instance) => instance.device === request.device,
       );
 
-      if (event.data.forceRestart && index !== -1) {
+      if (request.forceRestart && index !== -1) {
         gstInstances[index].instance.kill();
+        gstInstances.splice(index, 1);
+        index = -1;
+      }
+
+      if (index !== -1) {
+        const running = gstInstances[index];
+        // device is already streaming and no preferences were set
+        if (!request.hasPreferences) break;
+
+        // If the stream is already running, check if we need to restart it
+        if (
+          request.resolution.width === running.resolution?.width &&
+          request.resolution.height === running.resolution?.height &&
+          request.transform === running.transform &&
+          request.convertFromJpeg === running.convertFromJpeg &&
+          request.file === running.file
+        )
+          break;
+
+        // Restart the stream with new preferences
+        running.instance.kill();
         gstInstances.splice(index, 1);
       }
 
-      let shouldStartStream = true;
-
-      if (index !== -1) {
-        if (!gstInstances[index]) {
-          gstInstances.splice(index, 1);
-        } else if (
-          event.data.resolution &&
-          event.data.transform &&
-          event.data.convertFromJpeg !== undefined
-        ) {
-          // If the stream is already running, check if we need to restart it
-          if (
-            event.data.resolution.width !==
-              gstInstances[index].resolution?.width ||
-            event.data.resolution.height !==
-              gstInstances[index].resolution?.height ||
-            event.data.transform !== gstInstances[index].transform ||
-            event.data.convertFromJpeg !==
-              gstInstances[index].convertFromJpeg ||
-            event.data.file !== gstInstances[index].file
-          ) {
-            // Restart the stream with new preferences
-            gstInstances[index].instance.kill();
-            gstInstances.splice(index, 1);
-          } else {
-            shouldStartStream = false;
-          }
-        } else {
-          // device is already streaming and not preferences set
-          break;
-        }
-      }
-
-      if (shouldStartStream) {
-        // Validate arguments
-        if (!event.data.transform) event.data.transform = "none";
-        if (event.data.convertFromJpeg === undefined)
-          event.data.convertFromJpeg = false;
-        if (!event.data.resolution)
-          event.data.resolution = { width: 320, height: 240 };
-        startStream(
-          event.data.devices![0],
-          event.data.resolution,
-          event.data.transform,
-          event.data.file ?? null,
-          event.data.convertFromJpeg,
-        );
-      }
-
+      startStream(request);
       break;
+    }
     case "group-description":
       // ignore self sent messages
       break;
