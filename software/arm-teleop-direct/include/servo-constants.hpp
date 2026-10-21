@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 
 namespace perseus
@@ -69,6 +71,33 @@ namespace perseus
             static constexpr uint8_t HEADER1 = 0xFF;
             static constexpr uint8_t HEADER2 = 0xFF;
             static constexpr uint8_t BROADCAST_ID = 0xFE;
+            // Status packet LEN field covers ERR + params + CHK, so >= 2
+            static constexpr std::size_t MIN_STATUS_LENGTH = 2;
+            // Give up resynchronising on a 0xFF 0xFF header after this many junk bytes
+            static constexpr std::size_t MAX_SYNC_BYTES = 64;
+        }
+
+        // Register value encodings (Feetech uses sign-magnitude, not two's complement)
+        namespace encoding
+        {
+            static constexpr unsigned int POSITION_SIGN_BIT = 15;
+            static constexpr unsigned int SPEED_SIGN_BIT = 15;
+            static constexpr unsigned int LOAD_SIGN_BIT = 10;
+        }
+
+        // TORQUE_ENABLE register values (not named `torque`: that would
+        // collide with the many `torque` variables in main.cpp)
+        namespace torque_switch
+        {
+            static constexpr uint8_t OFF = 0;
+            static constexpr uint8_t ON = 1;
+        }
+
+        // Arm layout: each arm has servos with IDs FIRST_SERVO_ID..SERVO_COUNT
+        namespace arm
+        {
+            static constexpr std::size_t SERVO_COUNT = 6;
+            static constexpr uint8_t FIRST_SERVO_ID = 1;
         }
 
         // Limits & Safety Values
@@ -84,7 +113,11 @@ namespace perseus
         // Timing Constants
         namespace timing
         {
+            // Deadline for a register-read reply
             static constexpr auto DEFAULT_TIMEOUT = std::chrono::milliseconds(200);
+            // Deadline for the (optional) status reply to a write; a missing
+            // reply is not an error (STATUS_RETURN_LEVEL may suppress it)
+            static constexpr auto STATUS_TIMEOUT = std::chrono::milliseconds(50);
             static constexpr auto MIN_RESPONSE_TIME = std::chrono::milliseconds(10);
             static constexpr auto PORT_SETTLE_TIME = std::chrono::milliseconds(200);
             static constexpr auto RETRY_DELAY = std::chrono::milliseconds(100);
@@ -94,7 +127,8 @@ namespace perseus
         // Communication Parameters
         namespace communication
         {
-            static constexpr unsigned int DEFAULT_BAUD_RATE = 115200;
+            // ST3215 factory default; override with --baud
+            static constexpr unsigned int DEFAULT_BAUD_RATE = 1000000;
             static constexpr int MAX_RETRIES = 3;
             static constexpr uint8_t DEFAULT_ACCELERATION = 30;
         }
@@ -106,6 +140,14 @@ namespace perseus
             static constexpr int MAX_DISPLAY_TORQUE = 100;  // Scale display to ±100
             static constexpr int TORQUE_BAR_WIDTH = 5;
             static constexpr int POSITION_BAR_LENGTH = 40;
+            // Status-message rows below the servo table
+            static constexpr int SAVE_STATUS_ROW = 25;
+            static constexpr int STATUS_ROW = 27;
+            static constexpr int LOAD_STATUS_ROW = 29;
+            static constexpr auto STATUS_MESSAGE_TIME = std::chrono::milliseconds(1000);
+            static constexpr auto ERROR_MESSAGE_TIME = std::chrono::milliseconds(2000);
+            // Poll interval while waiting for a key in blocking prompts
+            static constexpr int KEY_WAIT_POLL_MS = 100;
         }
 
         // Error Bits
