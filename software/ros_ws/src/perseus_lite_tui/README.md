@@ -31,7 +31,18 @@ core and a thin shell:
 Launches and tasks run through `pixi run -e <env>` so the right Pixi environment
 activates first; simulation/mission profiles therefore work from the default-env
 TUI. Each job is its own process group, stopped with SIGINT→SIGTERM→SIGKILL
-escalation.
+escalation that keeps going until the whole group is gone (not just the
+`pixi run` leader). Quitting, SIGHUP (terminal/SSH closed) and SIGTERM all run
+the same orderly stop and wait (bounded, ~10 s) for it to finish. Live job
+process groups are recorded in `$XDG_CONFIG_HOME/perseus_lite_tui/running_jobs.json`
+so a relaunch warns about (and refuses to double-start over) orphans.
+
+Profiles declare exclusive resources (`drive` = controller_manager + ST3215
+bus or the simulated equivalent, `robot_state_publisher`, `slam`, `nav2`,
+`joystick`); a launch whose resources overlap a live job is refused with a
+status-line message — e.g. "SLAM + Nav2" while "Robot bringup" runs. A failed
+spawn (e.g. missing executable) is shown in the status line and Logs tab and
+never affects other running jobs.
 
 ## Test
 

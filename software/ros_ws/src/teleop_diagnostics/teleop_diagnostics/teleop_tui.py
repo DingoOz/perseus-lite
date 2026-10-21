@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025 Nigel Hungerford-Symes
+#
+# Use of this source code is governed by an MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT.
+
 """
-Teleop Diagnostics TUI - A comprehensive diagnostic tool for teleoperation debugging.
+Teleop Diagnostics TUI - a diagnostic tool for teleoperation debugging.
 
 Uses curses (standard library) for the terminal interface - no external dependencies.
 Falls back to simple text mode when no TTY is available.
@@ -8,29 +14,29 @@ Falls back to simple text mode when no TTY is available.
 This tool provides a real-time view of:
 - Joystick raw input (axes and buttons)
 - Generic controller configuration and scaling
-- Velocity command chain (joy -> mux -> controller)
+- Velocity command chain (joy_vel/key_vel/web_vel/nav -> twist_mux -> /cmd_vel)
 - Wheel states (velocities, positions)
 - Twist mux priority and active source
 - Wheel axis configuration
 """
 
+from collections import deque
 import curses
+from dataclasses import dataclass, field
 import os
+import signal
 import sys
-import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-from rclpy.executors import MultiThreadedExecutor
-from rcl_interfaces.srv import GetParameters
 import threading
 import time
-import signal
-from dataclasses import dataclass, field
 from typing import Dict, List
-from collections import deque
 
-from sensor_msgs.msg import Joy, JointState
-from geometry_msgs.msg import Twist, TwistStamped
+from geometry_msgs.msg import TwistStamped
+from rcl_interfaces.srv import GetParameters
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import JointState, Joy
 
 # =============================================================================
 # Constants
@@ -75,16 +81,19 @@ RATE_WINDOW_SIZE = 10
 CURSES_REFRESH_MS = 100
 SIMPLE_MODE_REFRESH_INTERVAL = 0.5
 
-# Default wheel configuration (loaded from diff_drive_controller if available)
-DEFAULT_WHEEL_SEPARATION = 0.714
-DEFAULT_WHEEL_RADIUS = 0.147
+# Default wheel configuration: perseus-lite calibrated values (overridden by
+# config/teleop_diagnostics.yaml). wheel_separation is the *effective*
+# skid-steer separation calibrated on the robot, not the 0.376 m geometric
+# track; the old 0.714 / 0.147 were perseus-v2 values.
+DEFAULT_WHEEL_SEPARATION = 0.8286
+DEFAULT_WHEEL_RADIUS = 0.0725
 
 # Default mux priorities (loaded from twist_mux if available)
 DEFAULT_MUX_PRIORITIES = {
-    "joystick": 100,
-    "keyboard": 90,
-    "web_ui": 80,
-    "navigation": 10,
+    'joystick': 100,
+    'keyboard': 90,
+    'web_ui': 80,
+    'navigation': 10,
 }
 
 # Default controller configuration (loaded from generic_controller if available)
@@ -95,7 +104,7 @@ DEFAULT_TURN_SCALING = 0.5
 DEFAULT_FORWARD_ENABLE_AXIS = 2
 DEFAULT_FORWARD_ENABLE_THRESHOLD = -0.5
 DEFAULT_TURBO_ENABLE_AXIS = 5
-DEFAULT_TURBO_SCALING = 2.5
+DEFAULT_TURBO_SCALING = 2.0
 DEFAULT_DEADBAND = 0.08
 
 # Service discovery timeout (seconds)
@@ -120,7 +129,7 @@ class VelocityData:
     angular_z: float = 0.0
     timestamp: float = 0.0
     rate_hz: float = 0.0
-    frame_id: str = ""
+    frame_id: str = ''
 
 
 @dataclass
@@ -156,6 +165,7 @@ class RateCalculator:
         self.timestamps: deque = deque(maxlen=window_size)
 
     def add_timestamp(self, ts: float) -> float:
+        """Record an arrival time and return the windowed rate in Hz."""
         self.timestamps.append(ts)
         if len(self.timestamps) < 2:
             return 0.0
@@ -169,16 +179,20 @@ class TeleopDiagnosticsNode(Node):
     """ROS2 node that collects teleoperation diagnostic data."""
 
     def __init__(self):
-        super().__init__("teleop_diagnostics")
+        super().__init__('teleop_diagnostics')
 
         # Declare and get wheel parameters
-        self.declare_parameter("wheel.separation", DEFAULT_WHEEL_SEPARATION)
-        self.declare_parameter("wheel.radius", DEFAULT_WHEEL_RADIUS)
-        self.wheel_separation = self.get_parameter("wheel.separation").value
-        self.wheel_radius = self.get_parameter("wheel.radius").value
+        self.declare_parameter('wheel.separation', DEFAULT_WHEEL_SEPARATION)
+        self.declare_parameter('wheel.radius', DEFAULT_WHEEL_RADIUS)
+        self.wheel_separation = self.get_parameter('wheel.separation').value
+        self.wheel_radius = self.get_parameter('wheel.radius').value
 
-        # Mux priorities (will be discovered from twist_mux)
-        self.mux_priorities = DEFAULT_MUX_PRIORITIES.copy()
+        # Mux priorities: YAML defaults, then discovered from twist_mux
+        self.mux_priorities = {}
+        for source, priority in DEFAULT_MUX_PRIORITIES.items():
+            name = f'mux_priorities.{source}'
+            self.declare_parameter(name, priority)
+            self.mux_priorities[source] = int(self.get_parameter(name).value)
 
         # Data storage
         self.joy_data = JoyData()
@@ -201,12 +215,12 @@ class TeleopDiagnosticsNode(Node):
         self.wheel_rate = RateCalculator()
 
         # Active mux source tracking
-        self.active_mux_source = "none"
+        self.active_mux_source = 'none'
         self.mux_sources: Dict[str, float] = {
-            "joystick": 0.0,
-            "keyboard": 0.0,
-            "web_ui": 0.0,
-            "navigation": 0.0,
+            'joystick': 0.0,
+            'keyboard': 0.0,
+            'web_ui': 0.0,
+            'navigation': 0.0,
         }
 
         # QoS for sensor data
@@ -218,43 +232,50 @@ class TeleopDiagnosticsNode(Node):
 
         # Subscribe to joy input
         self.joy_sub = self.create_subscription(
-            Joy, "/joy", self.joy_callback, sensor_qos
+            Joy, '/joy', self.joy_callback, sensor_qos
         )
 
         # Subscribe to velocity topics
         self.joy_vel_sub = self.create_subscription(
-            TwistStamped, "/joy_vel", self.joy_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
+            TwistStamped, '/joy_vel', self.joy_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
         )
+        # twist_mux output. On Jazzy /cmd_vel is TwistStamped (subscribing
+        # with Twist never matched, so the mux output always looked STALE).
+        self.cmd_vel_sub = self.create_subscription(
+            TwistStamped,
+            '/cmd_vel',
+            self.cmd_vel_out_callback,
+            SUBSCRIPTION_QUEUE_DEPTH,
+        )
+        # Legacy mux output name, kept so older sim/bringup graphs still show.
         self.cmd_vel_out_sub = self.create_subscription(
             TwistStamped,
-            "/cmd_vel_out",
+            '/cmd_vel_out',
             self.cmd_vel_out_callback,
             SUBSCRIPTION_QUEUE_DEPTH,
         )
         self.nav_vel_sub = self.create_subscription(
             TwistStamped,
-            "/cmd_vel_nav_stamped",
+            '/cmd_vel_nav_stamped',
             self.nav_vel_callback,
             SUBSCRIPTION_QUEUE_DEPTH,
         )
         self.web_vel_sub = self.create_subscription(
-            TwistStamped, "/web_vel", self.web_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
+            TwistStamped, '/web_vel', self.web_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
         )
         self.key_vel_sub = self.create_subscription(
-            TwistStamped, "/key_vel", self.key_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
-        )
-        self.cmd_vel_unstamped_sub = self.create_subscription(
-            Twist, "/cmd_vel", self.cmd_vel_unstamped_callback, SUBSCRIPTION_QUEUE_DEPTH
+            TwistStamped, '/key_vel', self.key_vel_callback, SUBSCRIPTION_QUEUE_DEPTH
         )
 
         # Subscribe to joint states
         self.joint_state_sub = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_callback, sensor_qos
+            JointState, '/joint_states', self.joint_state_callback, sensor_qos
         )
 
-        self.get_logger().info("Teleop diagnostics node started")
+        self.get_logger().info('Teleop diagnostics node started')
 
     def joy_callback(self, msg: Joy):
+        """Store the latest raw joystick state."""
         now = time.time()
         self.joy_data.axes = list(msg.axes)
         self.joy_data.buttons = list(msg.buttons)
@@ -262,16 +283,18 @@ class TeleopDiagnosticsNode(Node):
         self.joy_data.rate_hz = self.joy_rate.add_timestamp(now)
 
     def joy_vel_callback(self, msg: TwistStamped):
+        """Store the latest gamepad velocity command."""
         now = time.time()
         self.joy_vel_data.linear_x = msg.twist.linear.x
         self.joy_vel_data.angular_z = msg.twist.angular.z
         self.joy_vel_data.timestamp = now
         self.joy_vel_data.frame_id = msg.header.frame_id
         self.joy_vel_data.rate_hz = self.joy_vel_rate.add_timestamp(now)
-        self.mux_sources["joystick"] = now
+        self.mux_sources['joystick'] = now
         self._update_active_source()
 
     def cmd_vel_out_callback(self, msg: TwistStamped):
+        """Store the latest twist_mux output."""
         now = time.time()
         self.cmd_vel_out_data.linear_x = msg.twist.linear.x
         self.cmd_vel_out_data.angular_z = msg.twist.angular.z
@@ -279,38 +302,35 @@ class TeleopDiagnosticsNode(Node):
         self.cmd_vel_out_data.frame_id = msg.header.frame_id
         self.cmd_vel_out_data.rate_hz = self.cmd_vel_out_rate.add_timestamp(now)
 
-    def cmd_vel_unstamped_callback(self, msg: Twist):
-        now = time.time()
-        self.cmd_vel_out_data.linear_x = msg.linear.x
-        self.cmd_vel_out_data.angular_z = msg.angular.z
-        self.cmd_vel_out_data.timestamp = now
-        self.cmd_vel_out_data.rate_hz = self.cmd_vel_out_rate.add_timestamp(now)
-
     def nav_vel_callback(self, msg: TwistStamped):
+        """Store the latest Nav2 velocity command."""
         now = time.time()
         self.nav_vel_data.linear_x = msg.twist.linear.x
         self.nav_vel_data.angular_z = msg.twist.angular.z
         self.nav_vel_data.timestamp = now
-        self.mux_sources["navigation"] = now
+        self.mux_sources['navigation'] = now
         self._update_active_source()
 
     def web_vel_callback(self, msg: TwistStamped):
+        """Store the latest web UI velocity command."""
         now = time.time()
         self.web_vel_data.linear_x = msg.twist.linear.x
         self.web_vel_data.angular_z = msg.twist.angular.z
         self.web_vel_data.timestamp = now
-        self.mux_sources["web_ui"] = now
+        self.mux_sources['web_ui'] = now
         self._update_active_source()
 
     def key_vel_callback(self, msg: TwistStamped):
+        """Store the latest keyboard velocity command."""
         now = time.time()
         self.key_vel_data.linear_x = msg.twist.linear.x
         self.key_vel_data.angular_z = msg.twist.angular.z
         self.key_vel_data.timestamp = now
-        self.mux_sources["keyboard"] = now
+        self.mux_sources['keyboard'] = now
         self._update_active_source()
 
     def joint_state_callback(self, msg: JointState):
+        """Store the latest wheel joint states."""
         now = time.time()
         self.wheel_data.names = list(msg.name)
         self.wheel_data.positions = list(msg.position) if msg.position else []
@@ -321,25 +341,25 @@ class TeleopDiagnosticsNode(Node):
     def _update_active_source(self):
         """Determine which mux source is currently active."""
         now = time.time()
-        priority_order = ["joystick", "keyboard", "web_ui", "navigation"]
+        priority_order = ['joystick', 'keyboard', 'web_ui', 'navigation']
         for source in priority_order:
             if now - self.mux_sources.get(source, 0.0) < DATA_ACTIVE_TIMEOUT:
                 self.active_mux_source = source
                 return
-        self.active_mux_source = "none"
+        self.active_mux_source = 'none'
 
     def _discover_twist_mux_config(self):
         """Discover mux priorities from /twist_mux node parameters."""
-        client = self.create_client(GetParameters, "/twist_mux/get_parameters")
+        client = self.create_client(GetParameters, '/twist_mux/get_parameters')
         if not client.wait_for_service(timeout_sec=SERVICE_DISCOVERY_TIMEOUT):
             self.get_logger().info(
-                "twist_mux not available, using default mux priorities"
+                'twist_mux not available, using default mux priorities'
             )
             return
 
         # Query priorities for each source
-        sources = ["joystick", "keyboard", "web_ui", "navigation"]
-        param_names = [f"topics.{src}.priority" for src in sources]
+        sources = ['joystick', 'keyboard', 'web_ui', 'navigation']
+        param_names = [f'topics.{src}.priority' for src in sources]
 
         try:
             future = client.call_async(GetParameters.Request(names=param_names))
@@ -353,29 +373,29 @@ class TeleopDiagnosticsNode(Node):
                     if i < len(response.values) and response.values[i].type != 0:
                         self.mux_priorities[src] = int(response.values[i].integer_value)
                 self.get_logger().info(
-                    f"Discovered mux priorities: {self.mux_priorities}"
+                    f'Discovered mux priorities: {self.mux_priorities}'
                 )
         except Exception as e:
-            self.get_logger().warn(f"Failed to discover mux config: {e}")
+            self.get_logger().warn(f'Failed to discover mux config: {e}')
 
     def _discover_controller_config(self):
         """Discover controller configuration from /generic_controller node parameters."""
-        client = self.create_client(GetParameters, "/generic_controller/get_parameters")
+        client = self.create_client(GetParameters, '/generic_controller/get_parameters')
         if not client.wait_for_service(timeout_sec=SERVICE_DISCOVERY_TIMEOUT):
             self.get_logger().info(
-                "generic_controller not available, using default controller config"
+                'generic_controller not available, using default controller config'
             )
             return
 
         param_names = [
-            "drive.forward.axis",
-            "drive.forward.scaling",
-            "drive.turn.axis",
-            "drive.turn.scaling",
-            "drive.forward.enable.axis",
-            "drive.forward.enable.threshold",
-            "drive.forward.turbo_enable.axis",
-            "drive.forward.turbo",
+            'drive.forward.axis',
+            'drive.forward.scaling',
+            'drive.turn.axis',
+            'drive.turn.scaling',
+            'drive.forward.enable.axis',
+            'drive.forward.enable.threshold',
+            'drive.forward.turbo_enable.axis',
+            'drive.forward.turbo',
         ]
 
         try:
@@ -422,11 +442,12 @@ class TeleopDiagnosticsNode(Node):
                         )
 
                 self.get_logger().info(
-                    f"Discovered controller config: forward_axis={self.controller_config.forward_axis}, "
-                    f"forward_scaling={self.controller_config.forward_scaling}"
+                    'Discovered controller config: '
+                    f'forward_axis={self.controller_config.forward_axis}, '
+                    f'forward_scaling={self.controller_config.forward_scaling}'
                 )
         except Exception as e:
-            self.get_logger().warn(f"Failed to discover controller config: {e}")
+            self.get_logger().warn(f'Failed to discover controller config: {e}')
 
 
 class TeleopTUI:
@@ -448,66 +469,68 @@ class TeleopTUI:
         normalized = max(0, min(1, normalized))
         mid = width // 2
         pos = int(normalized * width)
-        bar = ["-"] * width
-        bar[mid] = "|"
+        bar = ['-'] * width
+        bar[mid] = '|'
         if pos < width:
-            bar[pos] = "*"
-        return "[" + "".join(bar) + "]"
+            bar[pos] = '*'
+        return '[' + ''.join(bar) + ']'
 
-    def draw_box(self, y: int, x: int, h: int, w: int, title: str = ""):
-        """Draw a box with optional title."""
-        # Top border
-        self.stdscr.addstr(y, x, "+" + "-" * (w - 2) + "+")
-        # Title
+    def draw_box(self, y: int, x: int, h: int, w: int, title: str = ''):
+        """Draw a box with optional title, clipped to the terminal."""
+        # Everything goes through safe_addstr: a raw addstr past the edge of a
+        # small terminal raises curses.error, which used to abort the whole
+        # frame before refresh()/getch() (blank screen, 100% CPU, 'q' ignored).
+        self.safe_addstr(y, x, '+' + '-' * (w - 2) + '+')
         if title:
-            title_str = f" {title} "
-            self.stdscr.addstr(y, x + 2, title_str, curses.A_BOLD)
-        # Sides
+            self.safe_addstr(y, x + 2, f' {title} ', curses.A_BOLD)
         for i in range(1, h - 1):
-            self.stdscr.addstr(y + i, x, "|")
-            self.stdscr.addstr(y + i, x + w - 1, "|")
-        # Bottom border
-        self.stdscr.addstr(y + h - 1, x, "+" + "-" * (w - 2) + "+")
+            self.safe_addstr(y + i, x, '|')
+            self.safe_addstr(y + i, x + w - 1, '|')
+        self.safe_addstr(y + h - 1, x, '+' + '-' * (w - 2) + '+')
 
     def safe_addstr(self, y: int, x: int, text: str, attr=0):
-        """Safely add string, handling screen boundaries."""
+        """Add a string clipped to the screen; never raises curses.error."""
         max_y, max_x = self.stdscr.getmaxyx()
         if y < 0 or y >= max_y or x < 0:
             return
-        # Truncate if needed
+        # Truncate if needed (leave the last column free: writing the
+        # bottom-right cell makes curses raise after the cursor wraps).
         available = max_x - x - 1
         if available <= 0:
             return
-        self.stdscr.addstr(y, x, text[:available], attr)
+        try:
+            self.stdscr.addstr(y, x, text[:available], attr)
+        except curses.error:
+            pass
 
     def draw_joy_panel(self, y: int, x: int, w: int):
         """Draw joystick input panel."""
         h = JOY_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Joy Input (/joy)")
+        self.draw_box(y, x, h, w, 'Joy Input (/joy)')
 
         joy = self.node.joy_data
         now = time.time()
         stale = now - joy.timestamp > STALE_DATA_TIMEOUT
 
         # Rate display
-        rate_str = f"Rate: {joy.rate_hz:.1f} Hz"
+        rate_str = f'Rate: {joy.rate_hz:.1f} Hz'
         if stale:
-            rate_str += " [STALE]"
+            rate_str += ' [STALE]'
         self.safe_addstr(y + 1, x + 2, rate_str)
 
         # Axes
-        self.safe_addstr(y + 2, x + 2, "Axes:", curses.A_BOLD)
+        self.safe_addstr(y + 2, x + 2, 'Axes:', curses.A_BOLD)
         for i, val in enumerate(joy.axes[:MAX_AXES_DISPLAY]):
             bar = self.make_bar(val, AXIS_BAR_WIDTH)
-            line = f"[{i}] {val:+.2f} {bar}"
+            line = f'[{i}] {val:+.2f} {bar}'
             attr = curses.A_BOLD if abs(val) > AXIS_ACTIVITY_THRESHOLD else curses.A_DIM
             self.safe_addstr(y + 3 + i, x + 2, line, attr)
 
         # Buttons
-        self.safe_addstr(y + 11, x + 2, "Buttons:", curses.A_BOLD)
-        btn_str = " ".join(
+        self.safe_addstr(y + 11, x + 2, 'Buttons:', curses.A_BOLD)
+        btn_str = ' '.join(
             [
-                str(i) if b else "."
+                str(i) if b else '.'
                 for i, b in enumerate(joy.buttons[:MAX_BUTTONS_DISPLAY])
             ]
         )
@@ -516,19 +539,19 @@ class TeleopTUI:
     def draw_config_panel(self, y: int, x: int, w: int):
         """Draw controller config panel."""
         h = CONFIG_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Controller Config")
+        self.draw_box(y, x, h, w, 'Controller Config')
 
         cfg = self.node.controller_config
         lines = [
-            f"Forward Axis:   {cfg.forward_axis}  (Left stick Y)",
-            f"Forward Scale:  {cfg.forward_scaling:+.2f}",
-            f"Turn Axis:      {cfg.turn_axis}  (Left stick X)",
-            f"Turn Scale:     {cfg.turn_scaling:+.2f}",
-            "",
-            f"Enable Axis:    {cfg.forward_enable_axis}  (RT)",
-            f"Enable Thresh:  {cfg.forward_enable_threshold:+.2f}",
-            f"Turbo Axis:     {cfg.turbo_enable_axis}  (LT)",
-            f"Turbo Scale:    {cfg.turbo_scaling:.1f}x",
+            f'Forward Axis:   {cfg.forward_axis}  (Left stick Y)',
+            f'Forward Scale:  {cfg.forward_scaling:+.2f}',
+            f'Turn Axis:      {cfg.turn_axis}  (Left stick X)',
+            f'Turn Scale:     {cfg.turn_scaling:+.2f}',
+            '',
+            f'Enable Axis:    {cfg.forward_enable_axis}  (RT)',
+            f'Enable Thresh:  {cfg.forward_enable_threshold:+.2f}',
+            f'Turbo Axis:     {cfg.turbo_enable_axis}  (LT)',
+            f'Turbo Scale:    {cfg.turbo_scaling:.1f}x',
         ]
         for i, line in enumerate(lines):
             self.safe_addstr(y + 1 + i, x + 2, line)
@@ -536,7 +559,7 @@ class TeleopTUI:
     def draw_velocity_panel(self, y: int, x: int, w: int):
         """Draw velocity command chain panel."""
         h = VELOCITY_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Velocity Command Chain")
+        self.draw_box(y, x, h, w, 'Velocity Command Chain')
 
         now = time.time()
         joy = self.node.joy_vel_data
@@ -545,33 +568,34 @@ class TeleopTUI:
 
         def dir_str(val: float) -> str:
             if val > LINEAR_MOTION_THRESHOLD:
-                return "FWD >>>"
+                return 'FWD >>>'
             elif val < -LINEAR_MOTION_THRESHOLD:
-                return "<<< REV"
-            return "STOPPED"
+                return '<<< REV'
+            return 'STOPPED'
 
         def rot_str(val: float) -> str:
             if val > LINEAR_MOTION_THRESHOLD:
-                return "<<< LEFT"
+                return '<<< LEFT'
             elif val < -LINEAR_MOTION_THRESHOLD:
-                return "RIGHT >>>"
-            return "STRAIGHT"
+                return 'RIGHT >>>'
+            return 'STRAIGHT'
 
         # Header
         self.safe_addstr(
             y + 1,
             x + 2,
-            f"{'Source':<12} {'Lin.X':>8} {'Ang.Z':>8} {'Direction':<12} {'Status':<8}",
+            f'{"Source":<12} {"Lin.X":>8} {"Ang.Z":>8} {"Direction":<12} {"Status":<8}',
             curses.A_BOLD,
         )
 
         # Joy vel
         joy_stale = now - joy.timestamp > DATA_ACTIVE_TIMEOUT
-        joy_status = "STALE" if joy_stale else "OK"
+        joy_status = 'STALE' if joy_stale else 'OK'
         self.safe_addstr(
             y + 3,
             x + 2,
-            f"{'joy_vel':<12} {joy.linear_x:+7.3f} {joy.angular_z:+7.3f}  {dir_str(joy.linear_x):<12} {joy_status}",
+            f'{"joy_vel":<12} {joy.linear_x:+7.3f} {joy.angular_z:+7.3f}  '
+            f'{dir_str(joy.linear_x):<12} {joy_status}',
         )
 
         # Nav vel (if active)
@@ -580,19 +604,21 @@ class TeleopTUI:
             self.safe_addstr(
                 y + 4,
                 x + 2,
-                f"{'nav_vel':<12} {nav.linear_x:+7.3f} {nav.angular_z:+7.3f}  {dir_str(nav.linear_x):<12} OK",
+                f'{"nav_vel":<12} {nav.linear_x:+7.3f} {nav.angular_z:+7.3f}  '
+                f'{dir_str(nav.linear_x):<12} OK',
             )
 
         # Separator
-        self.safe_addstr(y + 5, x + 2, "-" * (w - 4) + " TWIST MUX")
+        self.safe_addstr(y + 5, x + 2, '-' * (w - 4) + ' TWIST MUX')
 
         # Output
         out_stale = now - out.timestamp > DATA_ACTIVE_TIMEOUT
-        out_status = "STALE" if out_stale else "OK"
+        out_status = 'STALE' if out_stale else 'OK'
         self.safe_addstr(
             y + 7,
             x + 2,
-            f"{'cmd_vel_out':<12} {out.linear_x:+7.3f} {out.angular_z:+7.3f}  {dir_str(out.linear_x):<12} {out_status}",
+            f'{"cmd_vel":<12} {out.linear_x:+7.3f} {out.angular_z:+7.3f}  '
+            f'{dir_str(out.linear_x):<12} {out_status}',
             curses.A_BOLD,
         )
 
@@ -602,50 +628,50 @@ class TeleopTUI:
         left_vel = (out.linear_x - out.angular_z * wheel_sep / 2) / wheel_rad
         right_vel = (out.linear_x + out.angular_z * wheel_sep / 2) / wheel_rad
 
-        self.safe_addstr(y + 9, x + 2, "-" * (w - 4) + " DIFF DRIVE")
+        self.safe_addstr(y + 9, x + 2, '-' * (w - 4) + ' DIFF DRIVE')
         self.safe_addstr(
             y + 10,
             x + 2,
-            f"Expected wheels:  L: {left_vel:+.2f} rad/s   R: {right_vel:+.2f} rad/s",
+            f'Expected wheels:  L: {left_vel:+.2f} rad/s   R: {right_vel:+.2f} rad/s',
         )
 
         # Direction summary
         self.safe_addstr(
             y + 12,
             x + 2,
-            f"Motion: {dir_str(out.linear_x)}  |  Turn: {rot_str(out.angular_z)}",
+            f'Motion: {dir_str(out.linear_x)}  |  Turn: {rot_str(out.angular_z)}',
             curses.A_BOLD,
         )
 
     def draw_wheel_panel(self, y: int, x: int, w: int):
         """Draw wheel state panel."""
         h = WHEEL_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Wheel States")
+        self.draw_box(y, x, h, w, 'Wheel States')
 
         wheels = self.node.wheel_data
         now = time.time()
         stale = now - wheels.timestamp > STALE_DATA_TIMEOUT
 
-        rate_str = f"Rate: {wheels.rate_hz:.1f} Hz"
+        rate_str = f'Rate: {wheels.rate_hz:.1f} Hz'
         if stale:
-            rate_str += " [STALE]"
+            rate_str += ' [STALE]'
         self.safe_addstr(y + 1, x + 2, rate_str)
 
         self.safe_addstr(
-            y + 2, x + 2, f"{'Joint':<28} {'Vel':>8} {'Dir':<6}", curses.A_BOLD
+            y + 2, x + 2, f'{"Joint":<28} {"Vel":>8} {"Dir":<6}', curses.A_BOLD
         )
 
         row = 3
         for i, name in enumerate(wheels.names):
-            if "wheel" in name.lower():
+            if 'wheel' in name.lower():
                 vel = wheels.velocities[i] if i < len(wheels.velocities) else 0.0
                 if vel > WHEEL_MOTION_THRESHOLD:
-                    direction = "FWD"
+                    direction = 'FWD'
                 elif vel < -WHEEL_MOTION_THRESHOLD:
-                    direction = "REV"
+                    direction = 'REV'
                 else:
-                    direction = "---"
-                self.safe_addstr(y + row, x + 2, f"{name:<28} {vel:+7.3f}  {direction}")
+                    direction = '---'
+                self.safe_addstr(y + row, x + 2, f'{name:<28} {vel:+7.3f}  {direction}')
                 row += 1
                 if row >= h - 2:
                     break
@@ -656,25 +682,25 @@ class TeleopTUI:
     def draw_mux_panel(self, y: int, x: int, w: int):
         """Draw twist mux status panel."""
         h = MUX_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Twist Mux")
+        self.draw_box(y, x, h, w, 'Twist Mux')
 
         now = time.time()
         topics = {
-            "joystick": "joy_vel",
-            "keyboard": "key_vel",
-            "web_ui": "web_vel",
-            "navigation": "cmd_vel_nav_stamped",
+            'joystick': 'joy_vel',
+            'keyboard': 'key_vel',
+            'web_ui': 'web_vel',
+            'navigation': 'cmd_vel_nav_stamped',
         }
 
         self.safe_addstr(
             y + 1,
             x + 2,
-            f"{'Source':<12} {'Pri':>4} {'Topic':<20} {'Status':<8}",
+            f'{"Source":<12} {"Pri":>4} {"Topic":<20} {"Status":<8}',
             curses.A_BOLD,
         )
 
         row = 2
-        for source in ["joystick", "keyboard", "web_ui", "navigation"]:
+        for source in ['joystick', 'keyboard', 'web_ui', 'navigation']:
             priority = self.mux_priorities[source]
             topic = topics[source]
             last_time = self.node.mux_sources.get(source, 0.0)
@@ -682,19 +708,19 @@ class TeleopTUI:
             is_current = source == self.node.active_mux_source
 
             if is_current and active:
-                status = "ACTIVE"
+                status = 'ACTIVE'
                 attr = curses.A_BOLD | curses.A_REVERSE
             elif active:
-                status = "ready"
+                status = 'ready'
                 attr = curses.A_BOLD
             else:
-                status = "---"
+                status = '---'
                 attr = curses.A_DIM
 
             self.safe_addstr(
                 y + row,
                 x + 2,
-                f"{source:<12} {priority:>4} {topic:<20} {status:<8}",
+                f'{source:<12} {priority:>4} {topic:<20} {status:<8}',
                 attr,
             )
             row += 1
@@ -702,7 +728,7 @@ class TeleopTUI:
     def draw_direction_panel(self, y: int, x: int, w: int):
         """Draw direction indicator panel."""
         h = DIRECTION_PANEL_HEIGHT
-        self.draw_box(y, x, h, w, "Direction")
+        self.draw_box(y, x, h, w, 'Direction')
 
         out = self.node.cmd_vel_out_data
         lin = out.linear_x
@@ -710,102 +736,118 @@ class TeleopTUI:
 
         # ASCII robot
         if lin > LINEAR_MOTION_THRESHOLD:
-            self.safe_addstr(y + 2, x + w // 2 - 1, "^", curses.A_BOLD)
-            self.safe_addstr(y + 3, x + w // 2 - 1, "|", curses.A_BOLD)
-            self.safe_addstr(y + 4, x + w // 2 - 1, "|", curses.A_BOLD)
+            self.safe_addstr(y + 2, x + w // 2 - 1, '^', curses.A_BOLD)
+            self.safe_addstr(y + 3, x + w // 2 - 1, '|', curses.A_BOLD)
+            self.safe_addstr(y + 4, x + w // 2 - 1, '|', curses.A_BOLD)
         elif lin < -LINEAR_MOTION_THRESHOLD:
-            self.safe_addstr(y + 2, x + w // 2 - 1, "|", curses.A_BOLD)
-            self.safe_addstr(y + 3, x + w // 2 - 1, "|", curses.A_BOLD)
-            self.safe_addstr(y + 4, x + w // 2 - 1, "v", curses.A_BOLD)
+            self.safe_addstr(y + 2, x + w // 2 - 1, '|', curses.A_BOLD)
+            self.safe_addstr(y + 3, x + w // 2 - 1, '|', curses.A_BOLD)
+            self.safe_addstr(y + 4, x + w // 2 - 1, 'v', curses.A_BOLD)
         else:
-            self.safe_addstr(y + 3, x + w // 2 - 1, "o", curses.A_DIM)
+            self.safe_addstr(y + 3, x + w // 2 - 1, 'o', curses.A_DIM)
 
         # Rotation
         if ang > LINEAR_MOTION_THRESHOLD:
-            rot = "<-- LEFT"
+            rot = '<-- LEFT'
         elif ang < -LINEAR_MOTION_THRESHOLD:
-            rot = "RIGHT -->"
+            rot = 'RIGHT -->'
         else:
-            rot = "STRAIGHT"
+            rot = 'STRAIGHT'
         self.safe_addstr(y + 6, x + 2, rot, curses.A_BOLD)
 
         # Speed
         speed = abs(lin)
         if speed > SPEED_FAST_THRESHOLD:
-            speed_txt = "FAST"
+            speed_txt = 'FAST'
         elif speed > SPEED_MEDIUM_THRESHOLD:
-            speed_txt = "MEDIUM"
+            speed_txt = 'MEDIUM'
         elif speed > SPEED_SLOW_THRESHOLD:
-            speed_txt = "SLOW"
+            speed_txt = 'SLOW'
         else:
-            speed_txt = "STOPPED"
-        self.safe_addstr(y + 8, x + 2, f"Speed: {speed_txt} ({speed:.2f} m/s)")
+            speed_txt = 'STOPPED'
+        self.safe_addstr(y + 8, x + 2, f'Speed: {speed_txt} ({speed:.2f} m/s)')
 
     def run_curses(self, stdscr):
-        """Main curses loop."""
+        """Run the main curses loop until 'q' or SIGINT."""
         self.stdscr = stdscr
-        curses.curs_set(0)  # Hide cursor
-        stdscr.nodelay(True)  # Non-blocking input
+        try:
+            curses.curs_set(0)  # Hide cursor
+        except curses.error:
+            pass
+        # getch() blocks for at most CURSES_REFRESH_MS, which also paces the
+        # redraw rate (no busy loop).
         stdscr.timeout(CURSES_REFRESH_MS)
 
         while self.running:
             try:
-                stdscr.clear()
-                max_y, max_x = stdscr.getmaxyx()
-
-                # Title bar
-                title = " TELEOP DIAGNOSTICS TUI - Press 'q' to quit "
-                self.safe_addstr(
-                    0, 0, title.center(max_x), curses.A_REVERSE | curses.A_BOLD
-                )
-
-                # Calculate column widths
-                col1_w = COL1_WIDTH
-                col2_w = max(COL2_MIN_WIDTH, max_x - col1_w - COL3_WIDTH - 2)
-                col3_w = COL3_WIDTH
-
-                # Left column: Joy + Config
-                self.draw_joy_panel(2, 0, col1_w)
-                self.draw_config_panel(JOY_PANEL_HEIGHT + 2, 0, col1_w)
-
-                # Center column: Velocity + Wheels
-                self.draw_velocity_panel(2, col1_w + 1, col2_w)
-                self.draw_wheel_panel(VELOCITY_PANEL_HEIGHT + 3, col1_w + 1, col2_w)
-
-                # Right column: Mux + Direction
-                self.draw_mux_panel(2, col1_w + col2_w + 2, col3_w)
-                self.draw_direction_panel(
-                    MUX_PANEL_HEIGHT + 3, col1_w + col2_w + 2, col3_w
-                )
-
-                # Status bar
-                status = f" Time: {time.strftime('%H:%M:%S')} | Joy: {self.node.joy_data.rate_hz:.1f}Hz | Cmd: {self.node.cmd_vel_out_data.rate_hz:.1f}Hz | Wheels: {self.node.wheel_data.rate_hz:.1f}Hz "
-                self.safe_addstr(max_y - 1, 0, status.ljust(max_x), curses.A_REVERSE)
-
-                stdscr.refresh()
-
-                # Check for quit
-                key = stdscr.getch()
-                if key == ord("q") or key == ord("Q"):
-                    self.running = False
-
+                self.draw_frame()
             except curses.error:
+                # Never skip input handling because a frame failed to draw.
                 pass
+            try:
+                stdscr.refresh()
+                key = stdscr.getch()
+            except curses.error:
+                time.sleep(CURSES_REFRESH_MS / 1000.0)
+                continue
             except KeyboardInterrupt:
                 self.running = False
+                break
+            if key in (ord('q'), ord('Q')):
+                self.running = False
+
+    def draw_frame(self):
+        """Draw one full frame (clipped to the current terminal size)."""
+        stdscr = self.stdscr
+        stdscr.erase()
+        max_y, max_x = stdscr.getmaxyx()
+
+        # Title bar
+        title = " TELEOP DIAGNOSTICS TUI - Press 'q' to quit "
+        self.safe_addstr(0, 0, title.center(max_x), curses.A_REVERSE | curses.A_BOLD)
+
+        # Calculate column widths
+        col1_w = COL1_WIDTH
+        col2_w = max(COL2_MIN_WIDTH, max_x - col1_w - COL3_WIDTH - 2)
+        col3_w = COL3_WIDTH
+
+        # Left column: Joy + Config
+        self.draw_joy_panel(2, 0, col1_w)
+        self.draw_config_panel(JOY_PANEL_HEIGHT + 2, 0, col1_w)
+
+        # Center column: Velocity + Wheels
+        self.draw_velocity_panel(2, col1_w + 1, col2_w)
+        self.draw_wheel_panel(VELOCITY_PANEL_HEIGHT + 3, col1_w + 1, col2_w)
+
+        # Right column: Mux + Direction
+        self.draw_mux_panel(2, col1_w + col2_w + 2, col3_w)
+        self.draw_direction_panel(MUX_PANEL_HEIGHT + 3, col1_w + col2_w + 2, col3_w)
+
+        # Status bar
+        status = (
+            f' Time: {time.strftime("%H:%M:%S")}'
+            f' | Joy: {self.node.joy_data.rate_hz:.1f}Hz'
+            f' | Cmd: {self.node.cmd_vel_out_data.rate_hz:.1f}Hz'
+            f' | Wheels: {self.node.wheel_data.rate_hz:.1f}Hz '
+        )
+        need_x = COL1_WIDTH + COL2_MIN_WIDTH + COL3_WIDTH + 2
+        need_y = JOY_PANEL_HEIGHT + CONFIG_PANEL_HEIGHT + 3
+        if max_x < need_x or max_y < need_y:
+            status += f'| terminal {max_x}x{max_y} < {need_x}x{need_y}: clipped '
+        self.safe_addstr(max_y - 1, 0, status.ljust(max_x), curses.A_REVERSE)
 
     def run_simple(self):
-        """Simple text output mode for non-TTY environments."""
-        print("TELEOP DIAGNOSTICS - Simple Mode (no TTY detected)")
-        print("=" * 60)
+        """Print a plain-text view for non-TTY environments."""
+        print('TELEOP DIAGNOSTICS - Simple Mode (no TTY detected)')
+        print('=' * 60)
 
         while self.running:
             try:
                 # Clear screen (ANSI escape)
-                print("\033[2J\033[H", end="")
-                print("=" * 70)
-                print(" TELEOP DIAGNOSTICS - Simple Mode | Press Ctrl+C to exit")
-                print("=" * 70)
+                print('\033[2J\033[H', end='')
+                print('=' * 70)
+                print(' TELEOP DIAGNOSTICS - Simple Mode | Press Ctrl+C to exit')
+                print('=' * 70)
 
                 now = time.time()
                 joy = self.node.joy_data
@@ -814,83 +856,85 @@ class TeleopTUI:
                 wheels = self.node.wheel_data
 
                 # Joy input
-                print(f"\n[Joy Input] Rate: {joy.rate_hz:.1f} Hz")
+                print(f'\n[Joy Input] Rate: {joy.rate_hz:.1f} Hz')
                 if joy.axes:
-                    axes_str = " ".join(
+                    axes_str = ' '.join(
                         [
-                            f"{i}:{v:+.2f}"
+                            f'{i}:{v:+.2f}'
                             for i, v in enumerate(joy.axes[:MAX_AXES_DISPLAY])
                         ]
                     )
-                    print(f"  Axes: {axes_str}")
-                    btns = "".join(
+                    print(f'  Axes: {axes_str}')
+                    btns = ''.join(
                         [
-                            str(i) if b else "."
+                            str(i) if b else '.'
                             for i, b in enumerate(joy.buttons[:MAX_BUTTONS_DISPLAY])
                         ]
                     )
-                    print(f"  Btns: {btns}")
+                    print(f'  Btns: {btns}')
                 else:
-                    print("  (no data)")
+                    print('  (no data)')
 
                 # Controller config
                 cfg = self.node.controller_config
-                print("\n[Controller Config]")
+                print('\n[Controller Config]')
                 print(
-                    f"  Forward: axis={cfg.forward_axis} scale={cfg.forward_scaling:+.2f}"
+                    f'  Forward: axis={cfg.forward_axis} scale={cfg.forward_scaling:+.2f}'
                 )
-                print(f"  Turn:    axis={cfg.turn_axis} scale={cfg.turn_scaling:+.2f}")
+                print(f'  Turn:    axis={cfg.turn_axis} scale={cfg.turn_scaling:+.2f}')
 
                 # Velocity chain
-                print("\n[Velocity Chain]")
+                print('\n[Velocity Chain]')
                 joy_stale = (
-                    "STALE" if now - joy_vel.timestamp > DATA_ACTIVE_TIMEOUT else "OK"
+                    'STALE' if now - joy_vel.timestamp > DATA_ACTIVE_TIMEOUT else 'OK'
                 )
                 out_stale = (
-                    "STALE" if now - vel.timestamp > DATA_ACTIVE_TIMEOUT else "OK"
+                    'STALE' if now - vel.timestamp > DATA_ACTIVE_TIMEOUT else 'OK'
                 )
                 print(
-                    f"  joy_vel:     lin={joy_vel.linear_x:+.3f} ang={joy_vel.angular_z:+.3f} [{joy_stale}]"
+                    f'  joy_vel:     lin={joy_vel.linear_x:+.3f} '
+                    f'ang={joy_vel.angular_z:+.3f} [{joy_stale}]'
                 )
                 print(
-                    f"  cmd_vel_out: lin={vel.linear_x:+.3f} ang={vel.angular_z:+.3f} [{out_stale}]"
+                    f'  cmd_vel:     lin={vel.linear_x:+.3f} '
+                    f'ang={vel.angular_z:+.3f} [{out_stale}]'
                 )
 
                 # Direction
                 if vel.linear_x > LINEAR_MOTION_THRESHOLD:
-                    direction = "FORWARD >>>"
+                    direction = 'FORWARD >>>'
                 elif vel.linear_x < -LINEAR_MOTION_THRESHOLD:
-                    direction = "<<< REVERSE"
+                    direction = '<<< REVERSE'
                 else:
-                    direction = "STOPPED"
-                print(f"  Direction: {direction}")
+                    direction = 'STOPPED'
+                print(f'  Direction: {direction}')
 
                 # Wheel states
-                print(f"\n[Wheel States] Rate: {wheels.rate_hz:.1f} Hz")
+                print(f'\n[Wheel States] Rate: {wheels.rate_hz:.1f} Hz')
                 for i, name in enumerate(wheels.names):
-                    if "wheel" in name.lower():
+                    if 'wheel' in name.lower():
                         v = wheels.velocities[i] if i < len(wheels.velocities) else 0.0
                         d = (
-                            "FWD"
+                            'FWD'
                             if v > WHEEL_MOTION_THRESHOLD
-                            else ("REV" if v < -WHEEL_MOTION_THRESHOLD else "---")
+                            else ('REV' if v < -WHEEL_MOTION_THRESHOLD else '---')
                         )
-                        print(f"  {name}: {v:+.3f} [{d}]")
+                        print(f'  {name}: {v:+.3f} [{d}]')
 
                 # Mux status
-                print(f"\n[Twist Mux] Active: {self.node.active_mux_source}")
-                for src in ["joystick", "keyboard", "web_ui", "navigation"]:
+                print(f'\n[Twist Mux] Active: {self.node.active_mux_source}')
+                for src in ['joystick', 'keyboard', 'web_ui', 'navigation']:
                     active = (
                         now - self.node.mux_sources.get(src, 0.0) < DATA_ACTIVE_TIMEOUT
                     )
                     status = (
-                        "ACTIVE"
+                        'ACTIVE'
                         if src == self.node.active_mux_source and active
-                        else ("ready" if active else "---")
+                        else ('ready' if active else '---')
                     )
-                    print(f"  {src:12} pri={self.mux_priorities[src]:3} [{status}]")
+                    print(f'  {src:12} pri={self.mux_priorities[src]:3} [{status}]')
 
-                print("\n" + "=" * 70)
+                print('\n' + '=' * 70)
                 time.sleep(SIMPLE_MODE_REFRESH_INTERVAL)
 
             except KeyboardInterrupt:
@@ -903,7 +947,7 @@ class TeleopTUI:
             try:
                 curses.wrapper(self.run_curses)
             except curses.error as e:
-                print(f"Curses error: {e}, falling back to simple mode")
+                print(f'Curses error: {e}, falling back to simple mode')
                 self.run_simple()
         else:
             self.run_simple()
@@ -914,7 +958,7 @@ class TeleopTUI:
 
 
 def main(args=None):
-    """Main entry point."""
+    """Run the teleop diagnostics node and TUI."""
     rclpy.init(args=args)
 
     node = TeleopDiagnosticsNode()
@@ -941,5 +985,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

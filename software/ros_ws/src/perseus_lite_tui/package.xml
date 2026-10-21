@@ -8,13 +8,15 @@
   <license>MIT</license>
 
   <!--
-    Only rclpy is declared. The TUI launches every ROS package by shelling out
+    Only rclpy (+ rosidl_runtime_py for the monitor) is declared. The TUI launches every ROS package by shelling out
     through `pixi run`, never by importing it, so it must NOT depend on
     perseus_lite / perseus_lite_simulation / etc. — those are skipped in the
     default and machine-learning build envs and an exec_depend on them would
     make this package unbuildable there (see ERRORS.md, 2026-07-06).
   -->
   <exec_depend>rclpy</exec_depend>
+  <!-- ros_monitor resolves topic types via rosidl_runtime_py.utilities. -->
+  <exec_depend>rosidl_runtime_py</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

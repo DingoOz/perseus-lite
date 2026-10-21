@@ -8,15 +8,19 @@
   <license>MIT</license>
 
   <!-- node dependencies -->
-  <exec_depend>python3-pygame</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  
+
   <!-- launch dependencies -->
   <exec_depend>joy</exec_depend>
+  <!--
+    Not used by this package's code, but the documented keyboard-teleop
+    workflow (`ros2 run teleop_twist_keyboard ... -r cmd_vel:=key_vel`, see
+    docs/source/home/perseus-lite-operation/basic-operation.md) relies on it.
+  -->
   <exec_depend>teleop_twist_keyboard</exec_depend>
-  <exec_depend>teleop_twist_joy</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
