@@ -91,10 +91,14 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 ### Build system: Pixi/RoboStack (Nix removed)
 
 The project migrated from Nix to **Pixi**. ROS 2 Jazzy + deps come from the
-`robostack-jazzy` conda channel; `pixi.lock` pins exact versions. Four
+`robostack-jazzy` conda channel; `pixi.lock` pins exact versions. Five
 environments: `default` (the robot; linux-64 **and** linux-aarch64), `simulation`
 and `machine-learning` (linux-64 only — Gazebo / CUDA have no aarch64 builds),
-and `docs`. Run `nix fmt`'s replacement with `pixi run -e format fmt`.
+`isaac-nitros` (linux-aarch64 only — the Jetson from-source NITROS build, see
+below) and `docs`. Run `nix fmt`'s replacement with `pixi run -e format fmt`.
+`isaac-nitros` has an sdist-only PyPI dep (`pupil-apriltags`), so `pixi lock`
+can only re-solve that env **on the Jetson**; on x86 it fails with "build
+dispatch initialization failed" — re-lock there after changing its deps.
 
 Migration notes:
 
@@ -163,6 +167,14 @@ config` + lint/tests, not yet GPU-validated on hardware.** The
 `perseus_isaac_relay` package under `ws/` builds only inside the image, never by
 the host colcon workspace. Full runbook:
 `docs/source/systems/software/isaac-ros.md`.
+
+The robot's Jetson has since moved to **JetPack 7** (L4T R39.2, CUDA 13.2),
+which the Docker scaffold's Isaac ROS 3.2 doesn't support. The experimental
+native alternative is `software/isaac-ros-native/` (`-e isaac-nitros`; run
+via its `test-*`/`demo-*` pixi tasks): GXF/NITROS and selected Isaac ROS
+packages built from source on the host, no containers. NVIDIA's cloned
+sources and build output there are gitignored (not redistributable). Report:
+`docs/source/systems/software/isaac-ros-nitros-source-build.md`.
 
 ## 4. What's lite-relevant vs upstream-only
 
