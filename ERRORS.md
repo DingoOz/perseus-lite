@@ -3,6 +3,256 @@
 Defects found and fixed in this codebase, recorded per the error-tracking
 workflow. Review the **Prevention rules** before modifying the listed files.
 
+### Robot env could not spawn any controller (`filelock` missing) and lacked twist_mux/rosbridge — 2026-10-21
+
+- **Severity:** Critical
+- **Category:** Configuration
+- **File(s):** `pixi.toml`, `pixi.lock`
+- **Pattern:** `ros2 launch perseus_lite perseus_lite.launch.py` in the `default` env: both `spawner` processes die with `ModuleNotFoundError: No module named 'filelock'`, `ros2 control list_controllers` is empty and the robot never drives. The bringup's `twist_mux` and `rosbridge_server` were "package not found" in the same env.
+- **Root cause:** RoboStack's `ros-jazzy-controller-manager` imports `filelock` without depending on it. `twist_mux` and `rosbridge-suite` were declared only under `[feature.simulation.dependencies]`, so they existed in sim (where launches were tried) but not in the robot env. Nothing ever launched the hardware bringup in `default`.
+- **Fix applied:** Added `filelock`, `ros-jazzy-twist-mux`, `ros-jazzy-rosbridge-suite` and `cbor2` to the default `[dependencies]` (all exist for linux-aarch64). Verified with a mock-hardware bringup: both controllers active and joy → twist_mux → `/cmd_vel` → wheels → odom → EKF TF.
+- **Prevention rule:** Any package a hardware launch file starts must be a default-env dependency, not a feature one. Before merging bringup changes, run `pixi run -e default bringup-mock` and confirm `ros2 control list_controllers` shows both controllers `active`. A green `colcon build` does not prove a launch can start.
+
+### twist_mux output never reached the controller; docs told users to bypass it — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_lite/launch/{perseus_lite,twist_mux}.launch.py`, `perseus_lite/config/twist_mux.yaml`, `perseus_lite_simulation/launch/perseus_sim.launch.py`, `docs/source/home/perseus-lite-operation/basic-operation.md`
+- **Pattern:** In sim, keyboard, web and Nav2 commands went nowhere. On hardware only one source worked at a time, chosen by `cmd_vel_topic:=/joy_vel`.
+- **Root cause:** twist_mux publishes `cmd_vel_out`, which was never remapped to `/cmd_vel` (the controller input). The hardware bringup didn't start twist_mux at all, and the docs worked around that by pointing the controller straight at `/joy_vel`.
+- **Fix applied:** One shared `perseus_lite/launch/twist_mux.launch.py` (joy 100 > key 90 > web 80 > nav 10, output remapped to `/cmd_vel`), used by both the hardware bringup and sim. The docs no longer pass `cmd_vel_topic`.
+- **Prevention rule:** Exactly one node, twist_mux, publishes `/cmd_vel`; check with `ros2 topic info /cmd_vel -v`. Never remap the controller onto a single input topic. A high-priority input must stop publishing when idle (deadman), or it starves every lower one.
+
+### Multiple publishers for the same TF edge (controller + EKF, AMCL + SLAM, static map→odom) — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_lite/config/perseus_lite_controllers.yaml`, `perseus_lite/launch/{nav2,perseus_lite_slam_and_nav2}.launch.py`, `autonomy/launch/mapping_using_slam_toolbox.launch.py`, `perseus_lite_missions/launch/mission_zero.launch.py`
+- **Pattern:** The robot pose jumps or jitters in RViz and Nav2. The map drifts against the robot.
+- **Root cause:** `enable_odom_tf: true` on the controller while an EKF also published odom→base_link. AMCL ran alongside slam_toolbox, and static map→odom publishers stood in for a SLAM node that never activated.
+- **Fix applied:** TF contract: map→odom comes only from slam_toolbox (or AMCL in `use_localization` mode, never both), and odom→base_link only from the EKF (`perseus_lite/config/ekf.yaml`), which runs on hardware and in sim. The controller sets `enable_odom_tf: false`. Static map→odom publishers are removed.
+- **Prevention rule:** Before adding any TF broadcaster, check who already owns that edge (`ros2 run tf2_ros tf2_monitor <parent> <child>`). Never paper over a missing transform with a static publisher.
+
+### Lifecycle node (slam_toolbox) started as a plain `Node` — never mapped — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `autonomy/launch/mapping_using_slam_toolbox.launch.py`, `perseus_lite_missions` orchestrator
+- **Pattern:** slam_toolbox runs but `/map` never appears, and a static map→odom hides the problem.
+- **Root cause:** slam_toolbox ≥ 2.8 is a lifecycle node. Started as `Node` or with `ros2 run`, it stays unconfigured.
+- **Fix applied:** Every SLAM start goes through `autonomy/launch/online_async_launch.py` (a LifecycleNode with configure/activate events).
+- **Prevention rule:** Start lifecycle nodes with a LifecycleNode plus transition events or a lifecycle manager, and check with `ros2 lifecycle get /<node>`.
+
+### Left-side wheel feedback not inverted (commands were) — odometry turned instead of driving straight — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_lite_hardware/src/st3215_system.cpp`
+- **Pattern:** Driving straight produced wheel odometry that spun in place.
+- **Root cause:** `apply_motor_direction` negated the commanded velocity for the inverted left-side servos (IDs 2, 3), but `read()` passed their feedback through unchanged.
+- **Fix applied:** read() applies the same per-ID inversion to velocity and position, and a fake-servo-bus test covers both directions.
+- **Prevention rule:** Any per-actuator sign or scale correction must be applied symmetrically to commands and state, with a test for each side.
+
+### Write ACKs counted as servo feedback; stale data never detected — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_lite_hardware/src/st3215_system.cpp`
+- **Pattern:** A servo that stopped answering status reads still looked healthy, with its last position and velocity frozen.
+- **Root cause:** At status return level 1 every WRITE is ACKed, and any valid packet from a servo refreshed its "last update" time. The staleness check also mixed ROS clock types.
+- **Fix applied:** Only a full status payload refreshes the timestamp. Staleness uses `steady_clock` (1 s). Input is flushed before each READ.
+- **Prevention rule:** Liveness must come from the response type that carries the data, never from any packet. Use a monotonic clock for timeouts in hardware interfaces.
+
+### Servos kept running after a fault or shutdown — 2026-10-21
+
+- **Severity:** Critical
+- **Category:** Logic Error
+- **File(s):** `perseus_lite_hardware/src/st3215_system.cpp`
+- **Pattern:** After a controller crash, `on_error`, or Ctrl+C, the wheels kept turning at the last commanded speed.
+- **Root cause:** ST3215s have no comms watchdog. on_error and on_shutdown weren't implemented, and cleanup didn't zero GOAL_SPEED.
+- **Fix applied:** on_cleanup, on_shutdown and on_error send zero speed plus torque-off, then close the port. configure zeroes the speed before enabling torque.
+- **Prevention rule:** For actuators without a watchdog, every lifecycle exit path must command zero, and a test must exercise it.
+
+### Left wheel joint axis rolled the wheels backwards — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `perseus_lite_description/urdf/wheel.urdf.xacro`
+- **Pattern:** In sim and RViz the left wheels spun the wrong way for forward motion.
+- **Root cause:** The left motor link is yawed by π, but the joint axis was `0 0 -1` on both sides.
+- **Fix applied:** Left axis `0 0 1`. A forward-kinematics check confirms all four axes are +Y in base_link.
+- **Prevention rule:** After editing a wheel or joint origin, compute each wheel axis in base_link (FK at zero angles). diff_drive assumes +Y for every wheel.
+
+### Robot-validated fixes stranded on an unmerged branch — 2026-10-21
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `perseus_lite*`, `autonomy/config/*`
+- **Pattern:** main carried the pre-calibration drive (wheel_separation 0.40), the old servo scaling and the wrong lidar mount, while `origin/feat/perseus-lite` had the versions tuned on the robot.
+- **Root cause:** Hardware work continued on a long-lived branch that was never merged after main was restructured.
+- **Fix applied:** Ported the validated driver, calibration, EKF, SLAM and Nav2 tuning, and the lidar mount and range filter to main.
+- **Prevention rule:** Before changing lite drive or nav config, run `git log --oneline main..origin/feat/perseus-lite -- <path>`. Merge hardware-validated changes to main promptly instead of keeping them on a side branch.
+
+### RoboStack `rplidar_ros` 2.1.0 cannot drive the RPLidar C1 — 2026-10-21
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `software/ros_ws/src/rplidar_ros/`, `pixi.toml`
+- **Pattern:** The bringup includes `rplidar_c1_launch.py`, which doesn't exist in the installed package.
+- **Root cause:** The Nix setup had built the Slamtec `ros2` branch from source, which has C1 support. The Pixi migration swapped in RoboStack's 2.1.0, which predates C1.
+- **Fix applied:** Vendored upstream `ros2` @ 24cc9b6 in-tree (see `VENDORED.md`) and removed the conda package. The bringup starts `rplidar_node` directly.
+- **Prevention rule:** When replacing a source-built (patched or branch) package with a distro binary during a toolchain migration, compare versions and check the specific hardware support you rely on.
+
+### Collision-monitor zones placed inside the lidar's blind radius — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `autonomy/config/perseus_nav_params.yaml`, mission nav2 configs
+- **Pattern:** The "stop" polygon could never trigger.
+- **Root cause:** `/scan_filtered` drops everything within 0.5 m of the lidar (the robot's own rockers), and the whole stop zone was inside that radius.
+- **Fix applied:** Protection now comes from FootprintApproach plus a slowdown zone that reaches past the blind radius.
+- **Prevention rule:** Any safety zone must contain points the filtered sensor can actually report. Check it against `min_range` and the lidar's position in base_link.
+
+### Waypoint BT reported SUCCESS when a waypoint failed — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `autonomy/behavior_trees/navigate_through_poses_sequential{,_v2}.xml`
+- **Pattern:** NavigateThroughPoses "succeeded" after silently dropping unreachable waypoints. v1 didn't load at all (empty `<Sequence/>`).
+- **Root cause:** The loop's FAILURE exit couldn't tell "queue empty" from "waypoint failed", and Fallback/AlwaysSuccess turned both into SUCCESS.
+- **Fix applied:** ForceSuccess(loop) followed by a new `IsGoalQueueEmpty` condition, with tests using mocked Nav2 leaves.
+- **Prevention rule:** A BT loop that ends on FAILURE must check afterwards why it ended, and the failure path needs a test.
+
+### Async action callbacks clobbered newer goal state (autonomy bridge) — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Race Condition
+- **File(s):** `perseus_autonomy_bridge`
+- **Pattern:** Cancel sometimes did nothing. A late result from an old goal cleared a new one.
+- **Root cause:** Goal-response and result callbacks changed shared state without checking which request they belonged to.
+- **Fix applied:** A `GoalTracker` with one token per send. Callbacks change state only for the current token, and a cancel that arrives while a goal is pending is applied as soon as Nav2 accepts it.
+- **Prevention rule:** Every async callback must capture its request's identity and drop itself if it is no longer current.
+
+### IMU published zero-filled samples on I2C read failure — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_sensors/i2c_imu_driver/src/i2c_imu_node.cpp`
+- **Pattern:** On a failing bus, the EKF and bias estimator received zero accel and gyro readings with valid timestamps.
+- **Root cause:** Failed reads left default values in place and were published anyway.
+- **Fix applied:** Reads return `std::optional`. Nothing is published on failure, and the device is re-initialised after repeated failures.
+- **Prevention rule:** A failed sensor read must never reach a publisher. Return optional or throw.
+
+### Gyro-bias estimator counted disabled sources as "stationary" — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `perseus_sensors/src/bias_remover/bias_estimator_component.cpp`
+- **Pattern:** Bias was learned while turning.
+- **Root cause:** A disabled or stale motion source voted "ok".
+- **Fix applied:** Only enabled sources vote. Stale data means "not stationary", and with no enabled source there is no estimate.
+- **Prevention rule:** In gating logic, a missing or disabled input means "unknown", never "ok".
+
+### Socket connect fallback reused the first address — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `software/shared/simple-networking/src/client.cpp`
+- **Pattern:** Connect failed with EAFNOSUPPORT when the first resolved address was unusable. Large sends were truncated, and a peer reset killed the process with SIGPIPE.
+- **Root cause:** The getaddrinfo loop ignored its loop variable. send() had no partial-write loop and no MSG_NOSIGNAL.
+- **Fix applied:** Use the current entry. Send loops over partial writes with MSG_NOSIGNAL and EINTR retry.
+- **Prevention rule:** Inside a getaddrinfo loop, use only the current entry. Always handle partial sends and SIGPIPE.
+
+### Arm teleop: refactor deleted the main loop; blocking reads; signal-handler I/O; wrong load decode — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `software/arm-teleop-direct/`
+- **Pattern:** The program did nothing (main loop body gone since 3a05a33d). A missing servo hung both the program and Ctrl+C. Small negative loads tripped torque protection.
+- **Root cause:** A mechanical refactor dropped the loop body and still compiled. Reads used VMIN=1 with no deadline. The signal handler wrote to serial. Load was decoded as two's complement, but Feetech uses sign-magnitude on bit 10.
+- **Fix applied:** Restored the loop. Reads use async_read with a deadline. The handler only sets an atomic flag. Sign-magnitude decoding is unit-tested.
+- **Prevention rule:** In refactors, review the whole diff for function bodies that shrank. Serial reads need deadlines. Signal handlers only set a lock-free flag. Test register decoding with the sign bit set.
+
+### Sourced activation script changed the caller's shell options — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `software/scripts/pixi-env-sanitize.sh`
+- **Pattern:** After `pixi shell` or direnv, shell completion and `source install/setup.bash` broke on unset variables.
+- **Root cause:** `set -uo pipefail` in a script that is sourced (Pixi activation) leaked into the interactive shell. `pixi run` was unaffected, which hid it.
+- **Fix applied:** Removed the `set` line and made the body nounset-safe.
+- **Prevention rule:** Scripts that get sourced must never change shell options. Test them with `pixi shell-hook`/direnv, not only `pixi run`.
+
+### Time-sync script set the clock from a failed fetch, then rebooted — 2026-10-21
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `software/daemons/`
+- **Pattern:** With no network, `date -s "$(curl …)"` set the clock to midnight and the unit reported success.
+- **Root cause:** External input wasn't validated before acting on the system, and every failure was swallowed.
+- **Fix applied:** `timesync-google.sh` validates the HTTPS Date header, refuses large backward steps, exits non-zero on failure, and never reboots.
+- **Prevention rule:** Validate external data before acting on the system, and fail loudly (non-zero).
+
+### Web UI: joystick kept driving after blur; gst-launch pipeline injection — 2026-10-21
+
+- **Severity:** Critical
+- **Category:** Security
+- **File(s):** `software/web_ui/src/…/teleop`, `software/web_ui/pi-server/`
+- **Pattern:** Switching tabs while driving left the rover moving. Camera request fields could add GStreamer elements, and a domain endpoint shelled out with user input.
+- **Root cause:** Separate lock and active flags, with stop returning early when locked. gst-launch re-parses its arguments, so `!` or spaces inside one argument add elements.
+- **Fix applied:** One `lock()` that always sends a zero twist on every exit path. Every client value is whitelisted before it reaches gst-launch. The shell endpoint is removed.
+- **Prevention rule:** Every teleop exit path (blur, hidden, cancel, unmount) must send a zero twist. Whitelist all client input before it reaches a process spawn, even without a shell.
+
+### Web UI: `$effect` subscriptions piled up; dead roslib 1 API; non-bindable prop — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `software/web_ui/src/lib/widgets/*`
+- **Pattern:** Duplicate topic subscriptions grew over time. Start/Stop Autonomy threw at runtime. The custom ROS host was never saved.
+- **Root cause:** Effects didn't return a cleanup. `ROSLIB.ServiceRequest` doesn't exist in roslib 2. `bind:value` on a non-`$bindable` prop only edits a local copy.
+- **Fix applied:** Effects return cleanups, service calls pass plain objects, and the prop is `$bindable()`.
+- **Prevention rule:** Every `$effect` that subscribes returns an unsubscribe. Treat roslib type errors as real bugs. Shared state needs `$bindable()`.
+
+### TUI orphaned robot process groups on terminal close — 2026-10-21
+
+- **Severity:** High
+- **Category:** Resource Leak
+- **File(s):** `perseus_lite_tui/`
+- **Pattern:** Closing the terminal left the bringup (and the wheels' last command source) running.
+- **Root cause:** Jobs run in new sessions, with no SIGHUP/SIGTERM handler, daemon escalator threads, and escalation that stopped at the `pixi run` leader.
+- **Fix applied:** Signal handlers, a bounded SIGINT→SIGTERM→SIGKILL wait on the whole group, and a running-jobs registry that flags orphans.
+- **Prevention rule:** Whoever detaches a process group owns its full stop path. Signal the group, never the leader alone, and never `pkill -f`.
+
+### Bare `LaunchConfiguration` in `Node(parameters=[…])` silently ignored — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `perseus_input/launch/controller.launch.py`
+- **Pattern:** A launch argument such as `timeout_enable` never reached the node.
+- **Root cause:** launch_ros treats a bare substitution in `parameters` as a params-file path, and typed params need `ParameterValue`.
+- **Fix applied:** `{"name": ParameterValue(sub, value_type=…)}`.
+- **Prevention rule:** Pass launch args as `{"param": ParameterValue(sub, value_type=T)}` and check them with `ros2 param get` after launching.
+
+### CI hid -Werror and ran no lint tests — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `software/ros_ws/colcon_defaults.yaml`, `pixi.toml`, `.github/workflows/*`
+- **Pattern:** Warnings that fail Release builds passed CI. Lint-only packages "passed" with zero tests. Main-branch runs got cancelled.
+- **Root cause:** The default build type was Debug, so the `Rel.*` -Werror never applied. `--ctest-args -R 'Test\.'` excluded every ament_lint test. A shared concurrency group cancelled main runs. yamlfmt mangled folded `if: >-` expressions.
+- **Fix applied:** RelWithDebInfo by default. The test task excludes only the formatter-duplicating linters by label. Concurrency groups are per-ref only for PRs (pushes to main use the run id), and the Pages condition is kept on a single line so yamlfmt can't fold it.
+- **Prevention rule:** Make CI build the same type the robot runs. After changing a test filter, check that the per-package test counts are non-zero.
+
+### Mission checkers crashed on malformed live edits; `use_sim_time` re-declared — 2026-10-21
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `perseus_lite_missions/`
+- **Pattern:** A typo in an edited YAML killed the checker node. Nodes crashed at startup with ParameterAlreadyDeclared.
+- **Root cause:** Only YAMLError was caught, so TypeError, AttributeError and OSError escaped the timers. rclpy already declares `use_sim_time`.
+- **Fix applied:** Validation moved to a pure function that returns a status, and timers never raise. The re-declare is removed.
+- **Prevention rule:** Never declare `use_sim_time`. Timer callbacks that read user-edited files must not raise.
+
 ### ament_python tests silently skipped under `colcon test` in the RoboStack env — 2026-07-07
 
 - **Severity:** Medium

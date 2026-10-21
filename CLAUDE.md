@@ -37,7 +37,6 @@ designs, and challenge docs are deleted, not just disabled.
 | `software/ros_ws/src/`                                                    | All ROS 2 packages (Jazzy). See §4 for KEEP/DISABLE.       |
 | `software/arm-teleop-direct/`                                             | Standalone serial Feetech arm teleop (C++). Lite-relevant. |
 | `software/{daemons,scripts,utilities,web_ui,shared,native,home-manager}/` | General system infra — keep.                               |
-| `firmware/`                                                               | ESP32/MCU firmware. Subdirs split lite/v2 — see §4.        |
 | `docs/`                                                                   | Sphinx docs site (mostly perseus-v2 — see §4).             |
 | `pixi.toml`, `pixi.lock`                                                  | Pixi/RoboStack dev environments + build (replaced Nix).    |
 | `.clang-format`, `treefmt.toml`                                           | Formatting config — run before commits.                    |
@@ -49,9 +48,19 @@ designs, and challenge docs are deleted, not just disabled.
 pixi shell                  # default env; ROS 2 Jazzy auto-sourced
 # or run tasks directly without entering a shell:
 pixi run -e default build   # colcon build (skips sim + vision; see pixi.toml)
-pixi run -e default test    # CI unit-test subset
+pixi run -e default build-test # build with tests (RelWithDebInfo => -Werror)
+pixi run -e default test    # CI test set (all gtests/pytests + cppcheck/xmllint/pep257)
+pixi run -e default build-arm-teleop # arm teleop (plain CMake) build + ctest
+pixi run -e default bringup-mock     # hardware bringup on mock ros2_control hardware
 pixi run -e simulation build # full build incl. perseus_lite_simulation (Gazebo)
 pixi run -e machine-learning build # full build incl. perseus_vision (CUDA ONNX)
+
+# Build type: colcon_defaults.yaml sets RelWithDebInfo, which turns on the
+# CMakeLists' `Rel.*` -Werror. The test tasks exclude only the ament linters that
+# duplicate/contradict treefmt (uncrustify, cpplint, lint_cmake, flake8,
+# copyright) by ctest label; check per-package test counts are non-zero.
+# Don't build in one env and run in another (e.g. default-built install/ under
+# `-e simulation`): the overlay pins the build env's prefix. `pixi run clean` first.
 
 # Manual colcon build inside `pixi shell`:
 cd software/ros_ws
@@ -164,7 +173,8 @@ the host colcon workspace. Full runbook:
 | `perseus_lite`                                                          | Lite bringup: launch files, controllers, RViz config                                                                                                                                                            |
 | `perseus_lite_hardware`                                                 | `ros2_control` hardware interface for ST3215 servos over serial                                                                                                                                                 |
 | `perseus_lite_description`                                              | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).                                                                                                                 |
-| `perseus_sensors`                                                       | IMU + lidar drivers (RPLidar)                                                                                                                                                                                   |
+| `perseus_sensors`                                                       | I2C IMU driver (`/imu/data`, no orientation) + gyro-bias estimator/remover                                                                                                                                      |
+| `rplidar_ros`                                                           | **Vendored** Slamtec `ros2`-branch driver (RoboStack's 2.1.0 has no C1 support). Unmodified, excluded from treefmt — see its `VENDORED.md`.                                                                     |
 | `perseus_interfaces`                                                    | Custom msg/srv definitions (shared)                                                                                                                                                                             |
 | `input_devices`, `perseus_input`, `perseus_input_config`                | Gamepad/keyboard input + routing                                                                                                                                                                                |
 | `teleop_diagnostics`                                                    | TUI debug for teleop (shared)                                                                                                                                                                                   |
@@ -174,7 +184,7 @@ the host colcon workspace. Full runbook:
 | `perseus_lite_simulation`                                               | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3).                                                                                                        |
 | `perseus_lite_missions`                                                 | Mission Zero (Selene Base Rescue) and follow-on scripted missions: orchestrator + map-quality/goal-reached checker nodes (`simulation` env — needs `perseus_lite_simulation`, `ros_gz_bridge`, `slam_toolbox`). |
 | `software/arm-teleop-direct`                                            | Serial Feetech arm teleop                                                                                                                                                                                       |
-| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle); built in-tree by `perseus_sensors` via CMake `add_subdirectory`                                                               |
+| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle). No workspace package builds them any more (so CI doesn't either); consume via CMake `add_subdirectory` if needed.             |
 | `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra (`home-manager` is orphaned Nix machine-config — see note below)                                                                                                                                  |
 
 ### REMOVED — deleted, not in tree
@@ -279,7 +289,8 @@ recipes (see §4 "REMOVED in Phase 4" for the full list). Also folded
 in two leftovers from earlier phases: `perseus-lite-description.nix`
 no longer declares `perseus-description` as an input (Phase 2
 follow-up), and `perseus-lite-simulation.nix` was created
-(Phase 3 follow-up). GitHub firmware workflow trimmed to BMS-only;
+(Phase 3 follow-up). GitHub firmware workflow trimmed to BMS-only (later
+deleted with the rest of `firmware/` in the v2-residual cleanup);
 simulation tutorial repointed at `perseus_lite_simulation`.
 
 **Local-machine recommendation (not in repo):** rename the upstream
@@ -308,16 +319,47 @@ keeping the deletions (`git rm` the paths during conflict resolution).
 - Package licenses are MIT (see recent `chore: Update Nix packaging` and
   `chore: Changed ROS package.xml TODO licenses to MIT` commits).
 - C++ formatting: `.clang-format` at repo root. Run `treefmt` before commit.
-- Servo IDs are fixed by hardware: FL=1, FR=2, RL=3, RR=4. Don't renumber
-  without coordinating with the firmware/wiring side.
+- Servo IDs are fixed by hardware: **FL=3, FR=4, RL=2, RR=1**; the left-side
+  servos (2, 3) are mounted mirrored and inverted in software (commands _and_
+  feedback). Defined in `perseus_lite_description/ros2_control/`. Don't
+  renumber without coordinating with the wiring side. (Older docs said
+  FL=1…RR=4 — that was wrong.)
+- Calibrated drive geometry (on the robot): `wheel_radius` 0.0725,
+  **effective** skid-steer `wheel_separation` 0.8286 (geometric track 0.376),
+  `servo_max_rpm` 485.1 (= full-scale speed value 32767).
+
+### Topic / frame contract (hardware and sim must agree)
+
+- Root frame `base_link` — there is **no** `base_footprint`. Lidar frame
+  `c1_lidar_frame` (centred under the chassis, upside down), IMU `imu_link`.
+- TF ownership: `map→odom` only from slam_toolbox (or AMCL when localising
+  on a saved map — never both); `odom→base_link` only from the EKF
+  (`perseus_lite/config/ekf.yaml`, runs on hardware and in sim); the
+  controller has `enable_odom_tf: false`. No static map→odom publishers.
+- `/imu/data`; wheel odom `/diff_drive_base_controller/odom`; fused
+  `/odometry/filtered`.
+- Lidar: raw `/scan` → `scan_range_filter` (perseus_lite) → `/scan_filtered`
+  with readings < 0.5 m (the robot's own rockers) set to inf. **Every
+  consumer** (SLAM, costmaps, collision monitor, AMCL, missions) reads
+  `/scan_filtered`; nothing inside 0.5 m of the lidar is ever observed.
+- Velocity (all `TwistStamped`): `/joy_vel` (100) > `/key_vel` (90) >
+  `/web_vel` (80) > `/cmd_vel_nav_stamped` (10, collision_monitor output)
+  → `twist_mux` → `/cmd_vel` → `diff_drive_base_controller`. twist_mux
+  (`perseus_lite/launch/twist_mux.launch.py`) runs in both the hardware
+  bringup and sim and is the **only** `/cmd_vel` publisher; don't pass
+  `cmd_vel_topic:=...` to bypass it. The gamepad publishes only while its
+  deadman is held.
+- Nav2 is started only via `autonomy/launch/perseus_nav_bringup.launch.py`
+  (params `autonomy/config/perseus_nav_params.yaml`); SLAM only via
+  `autonomy/launch/online_async_launch.py` (it's a lifecycle node).
 
 ## 8. First-time-on-this-repo checklist
 
 1. Read this file end-to-end.
 2. `git fetch upstream && git log --oneline HEAD..upstream/main` — see
    pending upstream drift. Use `git cherry-pick`, not `git merge` (§6).
-3. `colcon list` in `software/ros_ws/` — should be 18 packages (17 from the
-   KEEP table in §4, plus the vendored `twist_stamper`).
+3. `colcon list` in `software/ros_ws/` — should be 19 packages (the KEEP
+   table in §4, incl. vendored `rplidar_ros`, plus the in-tree `twist_stamper`).
 4. Check `ERRORS.md` (per global rules) for any prevention rules touching
    files you plan to edit. Create `ERRORS.md` and log new bugs as
    instructed in `~/.claude/CLAUDE.md`.
