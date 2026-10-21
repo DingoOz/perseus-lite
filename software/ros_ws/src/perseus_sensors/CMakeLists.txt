@@ -147,6 +147,23 @@ install(
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL)
 
+# TESTING
+if(BUILD_TESTING)
+  find_package(GTest REQUIRED)
+
+  enable_testing()
+
+  add_executable(i2c_imu_helpers_test tests/i2c_imu_helpers_test.cpp
+                                      i2c_imu_driver/src/imu_device_config.cpp)
+  target_include_directories(
+    i2c_imu_helpers_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/i2c_imu_driver/include)
+  target_link_libraries(i2c_imu_helpers_test GTest::gtest_main)
+
+  include(GoogleTest)
+  gtest_discover_tests(i2c_imu_helpers_test)
+endif()
+
 # ROS LIBRARY POST-INSTALL
 ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS})
 
