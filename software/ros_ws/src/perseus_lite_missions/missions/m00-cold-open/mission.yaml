@@ -7,6 +7,7 @@
 #   - video   — play a file, advance when it ends
 #   - drive   — wait for the viewer to publish /cmd_vel for at least `min_duration_s`
 #   - edit    — open a YAML in the web UI, advance when the named checker passes
+#               (challenges are only accepted in order; see mission_logic.py)
 id: m00-cold-open
 title: Selene Base Rescue
 target_length_s: 630 # 10.5 minutes from the script
@@ -56,6 +57,8 @@ segments:
     instructions: "Open the SLAM Toolbox config. Two values are wrong — resolution and max_laser_range."
     file: configs/slam_params.broken.yaml
     checker_topic: /mission/challenge_1/passed
+    # The orchestrator restarts slam_toolbox with slam_reference when this passes.
+    restart_stack: slam
     badge: mapping-tier-1
     hints:
       - "Resolution at 0.3 m draws walls as fat blocks. Tighten it to about 5 cm."
@@ -76,10 +79,16 @@ segments:
     time_range: "6:00-8:15"
     instructions: "Open the Nav2 config. Two values are wrong, in both costmaps — robot_radius and inflation_radius."
     file: configs/nav2_params.broken.yaml
+    # Passes when Nav2 drives the rover to the leak -- only after the params
+    # check below has passed, and only once Challenge 1 is done.
     checker_topic: /mission/challenge_2/passed
+    # Fires when the edited file opens the corridor; the orchestrator then
+    # restarts Nav2 with nav2_reference.
+    params_checker_topic: /mission/challenge_2/params_fixed
+    restart_stack: nav2
     badge: navigation-tier-1
     hints:
-      - "The rover's true radius is about 28 cm, not 85 cm."
+      - "The rover is only about 44 cm wide -- a radius around 28 cm, not 85 cm."
       - "Bring the inflation buffer down so it protects the walls without sealing the 0.8 m corridor."
   - id: 8
     kind: video
