@@ -705,17 +705,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sveltejs/adapter-auto@npm:^3.0.0":
-  version: 3.3.1
-  resolution: "@sveltejs/adapter-auto@npm:3.3.1"
-  dependencies:
-    import-meta-resolve: "npm:^4.1.0"
-  peerDependencies:
-    "@sveltejs/kit": ^2.0.0
-  checksum: 10c0/c7d75e82331fd26fb6ff312b242c248da9508e4388281c20b13359b20577fc9dc3e9151ab176bbbd55f3367f90a61552e508e69d203c3a2f97284f787fc0e3e5
-  languageName: node
-  linkType: hard
-
 "@sveltejs/adapter-node@npm:^5.2.11":
   version: 5.5.3
   resolution: "@sveltejs/adapter-node@npm:5.5.3"
@@ -2179,13 +2168,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"import-meta-resolve@npm:^4.1.0":
-  version: 4.2.0
-  resolution: "import-meta-resolve@npm:4.2.0"
-  checksum: 10c0/3ee8aeecb61d19b49d2703987f977e9d1c7d4ba47db615a570eaa02fe414f40dfa63f7b953e842cbe8470d26df6371332bfcf21b2fd92b0112f9fea80dde2c4c
-  languageName: node
-  linkType: hard
-
 "imurmurhash@npm:^0.1.4":
   version: 0.1.4
   resolution: "imurmurhash@npm:0.1.4"
@@ -3280,7 +3262,6 @@ __metadata:
   dependencies:
     "@fortawesome/free-solid-svg-icons": "npm:^6.7.2"
     "@internationalized/date": "npm:^3.10.0"
-    "@sveltejs/adapter-auto": "npm:^3.0.0"
     "@sveltejs/adapter-node": "npm:^5.2.11"
     "@sveltejs/kit": "npm:^2.0.0"
     "@sveltejs/vite-plugin-svelte": "npm:^4.0.0"

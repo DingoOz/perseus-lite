@@ -83,7 +83,7 @@
 		getPeerId,
 		newPeerConfigured,
 		peerConnections,
-		ws
+		disconnectFromSignallingServer
 	} from './webrtc/signalHandler.svelte';
 	import VideoWrapper from './webrtc/videoWrapper.svelte';
 
@@ -254,7 +254,7 @@
 			// Web server socket
 			socket.close();
 			// signalling server socket
-			ws?.close();
+			disconnectFromSignallingServer(); // also stops reconnect attempts
 			// Close all peer connections
 			Object.keys(peerConnections).forEach((key) => {
 				peerConnections[key].connection?.close();

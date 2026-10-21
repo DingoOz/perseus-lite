@@ -9,10 +9,28 @@
 	import { OpenInNewWindow } from 'svelte-radix';
 	import { getRosConnection } from '$lib/scripts/rosBridge.svelte';
 
-	let { toggleConnection, changeAddress, address, disableServerIP, customAddress, domainId } =
-		$props();
+	let {
+		toggleConnection,
+		changeAddress,
+		address,
+		disableServerIP,
+		customAddress = $bindable(''),
+		domainId
+	}: {
+		toggleConnection: () => void;
+		changeAddress: (value?: string) => Promise<void>;
+		address: { value: string };
+		disableServerIP: boolean;
+		customAddress?: string;
+		domainId: number;
+	} = $props();
 
 	let openAddressMenu = $state(false);
+
+	const submitCustomAddress = (e: SubmitEvent) => {
+		e.preventDefault(); // don't let the browser submit (reload) the page
+		changeAddress();
+	};
 </script>
 
 <!-- Connection -->
@@ -48,10 +66,10 @@
 </DropdownMenu.Root>
 <Dialog.Root bind:open={openAddressMenu}>
 	<Dialog.Content>
-		<Label for="customAddress">New Ros Domain ID:</Label>
-		<form class="flex space-x-2">
+		<Label for="customAddress">Custom ROS host:</Label>
+		<form class="flex space-x-2" onsubmit={submitCustomAddress}>
 			<Input class="m-auto mb-0" id="customAddress" type="text" bind:value={customAddress} />
-			<Button type="submit" variant="outline" onclick={() => changeAddress()}>Set</Button>
+			<Button type="submit" variant="outline">Set</Button>
 		</form>
 	</Dialog.Content>
 </Dialog.Root>

@@ -35,13 +35,20 @@
 	import * as ROSLIB from 'roslib';
 	import { onMount } from 'svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { TwistStampedType } from '$lib/scripts/rosTypes';
 
 	// wrapper for widget setting
 	let joystickRadius = $derived<number>(Number(settings.groups.General.joyStickRadius.value));
 
-	let topic: ROSLIB.Topic | null = null;
-	let intervalHandle: NodeJS.Timeout | null = null;
-	let lockingTimeoutHandle: NodeJS.Timeout | null = null;
+	// How long the joystick stays unlocked while idle before it re-locks itself.
+	const LOCK_TIMEOUT_MS = 10000;
+	// Publish period while the joystick is held. Must be well under twist_mux's 0.5 s timeout.
+	const PUBLISH_PERIOD_MS = 75;
+
+	let topic: ROSLIB.Topic<TwistStampedType> | null = null;
+	let intervalHandle: ReturnType<typeof setInterval> | null = null;
+	let lockingTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+	let unlockTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 	let joystickValue = { x: 0, y: 0 };
 	let mousePosition = { x: 0, offsetX: 0, y: 0, offsetY: 0 };
 	let unlocked = $state<boolean>(false);
@@ -62,6 +69,24 @@
 	joystickHandle.classList.add('bg-red-500', 'opacity-50', 'rounded-full', 'absolute', 'z-30');
 	joystickBase.classList.add('bg-red-500', 'opacity-50', 'rounded-[10%]', 'absolute', 'z-20');
 
+	// rosbridge does NOT fill in an empty header (it would publish stamp 0), so stamp the
+	// message here with the browser's wall clock.
+	const makeStamp = () => {
+		const ms = Date.now();
+		return { sec: Math.floor(ms / 1000), nanosec: (ms % 1000) * 1_000_000 };
+	};
+
+	const publishTwist = (linearX: number, angularZ: number) => {
+		if (!topic) return;
+		topic.publish({
+			header: { stamp: makeStamp(), frame_id: 'base_link' },
+			twist: {
+				linear: { x: linearX, y: 0, z: 0 },
+				angular: { x: 0, y: 0, z: angularZ }
+			}
+		});
+	};
+
 	const updateJoystick = (x: number, y: number) => {
 		joystickHandle.style.left = `calc(${x}px - ${joystickRadius / 8}px)`;
 		joystickHandle.style.top = `calc(${y}px - ${joystickRadius / 8}px)`;
@@ -73,15 +98,52 @@
 		joystickValue.y = 0;
 		joystick.active = false;
 
-		let forRemove = [];
+		const container = joystick.container;
+		if (!container) return;
 
-		for (const child of joystick.container?.children as HTMLCollection) {
+		const forRemove: Element[] = [];
+		for (const child of container.children) {
 			if (child.nodeName.toLowerCase() === 'div') forRemove.push(child);
 		}
 
 		for (const child of forRemove) {
-			joystick.container?.removeChild(child);
+			container.removeChild(child);
 		}
+	};
+
+	// Release the joystick and, if it was driving, publish a zero twist so the rover stops
+	// immediately instead of relying on the twist_mux / controller timeouts.
+	const stopDriving = () => {
+		const wasActive = joystick.active;
+		hideJoystick();
+		if (wasActive) publishTwist(0, 0);
+	};
+
+	const clearLockTimer = () => {
+		if (lockingTimeoutHandle) clearTimeout(lockingTimeoutHandle);
+		lockingTimeoutHandle = null;
+	};
+
+	const cancelUnlock = () => {
+		if (unlockTimeoutHandle) clearTimeout(unlockTimeoutHandle);
+		unlockTimeoutHandle = null;
+	};
+
+	// Lock the joystick: cancels any pending unlock, stops driving and sends a zero twist.
+	// Used for window blur, tab hidden, idle timeout and unmount.
+	const lock = () => {
+		cancelUnlock();
+		clearLockTimer();
+		unlocked = false;
+		stopDriving();
+	};
+
+	const scheduleLock = () => {
+		clearLockTimer();
+		lockingTimeoutHandle = setTimeout(() => {
+			lockingTimeoutHandle = null;
+			lock();
+		}, LOCK_TIMEOUT_MS);
 	};
 
 	const deadbandAxis = (value: number, deadband: number) => {
@@ -123,11 +185,8 @@
 		joystick.container?.appendChild(joystickBase);
 		updateJoystick(mousePosition.x, mousePosition.y);
 
-		// reset locking timeout
-		if (lockingTimeoutHandle) {
-			clearTimeout(lockingTimeoutHandle);
-		}
-		lockingTimeoutHandle = null;
+		// don't re-lock while the joystick is held
+		clearLockTimer();
 
 		// debug
 		data =
@@ -171,110 +230,91 @@
 			`<p>Offsets with limits: (x: ${joystickValue.x}, y: ${joystickValue.y})</p>`;
 	};
 
+	// pointerup / pointerleave / pointercancel / lostpointercapture. Runs whether or not the
+	// joystick is still unlocked, so releasing always sends a zero twist.
 	const onStop = () => {
-		if (!joystick.active || !unlocked) return;
-		hideJoystick();
+		if (!joystick.active) return;
+		stopDriving();
 
-		// send 0 message to terminate
-		if (topic) {
-			topic.publish({
-				header: {}, // Leaving this empty forces ROS bridge to fill in the timestamp.
-				twist: {
-					linear: {
-						x: 0,
-						y: 0,
-						z: 0
-					},
-					angular: {
-						x: 0,
-						y: 0,
-						z: 0
-					}
-				}
-			});
-		}
-
-		// lock the joystick
-		lockingTimeoutHandle = setTimeout(() => {
-			unlocked = false;
-		}, 10000);
+		// re-lock the joystick after a period of inactivity
+		if (unlocked) scheduleLock();
 	};
 
-	const initTeleop = () => {
-		if (!joystick.container) return;
-
-		joystick.container.addEventListener('pointerdown', onStart);
-		joystick.container.addEventListener('pointermove', onMove);
-		joystick.container.addEventListener('pointerup', onStop);
-		joystick.container.addEventListener('pointerleave', onStop);
-
-		intervalHandle = setInterval(() => {
-			if (joystick.active && topic) {
-				topic.publish({
-					header: {}, // Leaving this empty forces ROS bridge to fill in the timestamp.
-					twist: {
-						linear: {
-							x: -joystickValue.y * Number(settings.groups.General.linearSpeedMultiplier.value),
-							y: 0,
-							z: 0
-						},
-						angular: {
-							x: 0,
-							y: 0,
-							z: -joystickValue.x * Number(settings.groups.General.angularSpeedMultiplier.value)
-						}
-					}
-				});
-			}
-		}, 75);
+	const onVisibilityChange = () => {
+		if (document.visibilityState === 'hidden') lock();
 	};
 
+	// Pointer listeners and the publish loop are installed exactly once per mount (not on every
+	// unlock) and are torn down on unmount.
 	onMount(() => {
 		unlocked = false;
+		const container = joystick.container;
+		const stopEvents = ['pointerup', 'pointerleave', 'pointercancel', 'lostpointercapture'];
+
+		if (container) {
+			container.addEventListener('pointerdown', onStart);
+			container.addEventListener('pointermove', onMove);
+			for (const event of stopEvents) container.addEventListener(event, onStop);
+		}
+
+		intervalHandle = setInterval(() => {
+			// Only ever publish while unlocked AND held.
+			if (!unlocked || !joystick.active || !topic) return;
+			publishTwist(
+				-joystickValue.y * Number(settings.groups.General.linearSpeedMultiplier.value),
+				-joystickValue.x * Number(settings.groups.General.angularSpeedMultiplier.value)
+			);
+		}, PUBLISH_PERIOD_MS);
 
 		return () => {
 			if (intervalHandle) clearInterval(intervalHandle);
+			intervalHandle = null;
+			// stop the rover if the widget is removed mid-drive
+			lock();
+			if (container) {
+				container.removeEventListener('pointerdown', onStart);
+				container.removeEventListener('pointermove', onMove);
+				for (const event of stopEvents) container.removeEventListener(event, onStop);
+			}
 		};
 	});
 
 	// handle ros connection/disconnection
 	$effect(() => {
 		const ros = getRosConnection();
-		if (ros) {
-			topic = new ROSLIB.Topic({
-				ros: ros,
-				name: '/web_vel',
-				messageType: 'geometry_msgs/TwistStamped'
-			});
-		} else {
+		if (!ros) {
 			topic = null;
+			return;
 		}
+
+		const newTopic = new ROSLIB.Topic<TwistStampedType>({
+			ros: ros,
+			name: '/web_vel',
+			messageType: 'geometry_msgs/TwistStamped'
+		});
+		topic = newTopic;
+
+		return () => {
+			// Connection changing or widget unmounting: stop while the old topic is still usable.
+			stopDriving();
+			if (topic === newTopic) topic = null;
+			newTopic.unadvertise();
+		};
 	});
 
-	let unlocking = false;
 	const startUnlockTimer = () => {
-		unlocking = true;
-		setTimeout(() => {
-			if (unlocking) {
-				unlocked = true;
-				unlocking = false;
-				initTeleop();
-
-				// lock the joystick
-				lockingTimeoutHandle = setTimeout(() => {
-					unlocked = false;
-				}, 10000);
-			}
+		cancelUnlock();
+		unlockTimeoutHandle = setTimeout(() => {
+			unlockTimeoutHandle = null;
+			unlocked = true;
+			// lock the joystick again if it isn't used
+			scheduleLock();
 		}, 1000);
-	};
-
-	const stopUnlockTimer = () => {
-		unlocking = false;
-		unlocked = false;
 	};
 </script>
 
-<svelte:window onblur={stopUnlockTimer} />
+<svelte:window onblur={lock} />
+<svelte:document onvisibilitychange={onVisibilityChange} />
 
 <div
 	bind:this={joystick.container}
@@ -300,8 +340,12 @@
 		class="absolute left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%] overflow-hidden text-xl"
 		style:z-index="3"
 	>
-		<Button variant="outline" onpointerdown={startUnlockTimer} onpointerup={stopUnlockTimer}
-			>Hold to unlock</Button
+		<Button
+			variant="outline"
+			onpointerdown={startUnlockTimer}
+			onpointerup={cancelUnlock}
+			onpointerleave={cancelUnlock}
+			onpointercancel={cancelUnlock}>Hold to unlock</Button
 		>
 	</div>
 {/if}

@@ -1,17 +1,33 @@
-// std_msgs types
+// builtin_interfaces / std_msgs types
+export interface TimeType {
+  sec: number;
+  nanosec: number;
+}
+
+export interface HeaderType {
+  stamp?: TimeType; // rosbridge does NOT fill this in; leaving it out publishes a zero stamp
+  frame_id?: string;
+}
+
 export interface Float64MultiArrayType {
   data: Array<number>;
 }
 
-// actuator_msgs types
-export interface ActuatorsMessageType {
-  header: {
-    stamp?: object; // filled by rosbridge
-    frame_id?: string;
-  };
-  position: Array<number>; // float64
-  velocity: Array<number>; // float64
-  normalized: Array<number>; // float64
+// geometry_msgs types
+export interface Vector3Type {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface TwistType {
+  linear: Vector3Type;
+  angular: Vector3Type;
+}
+
+export interface TwistStampedType {
+  header: HeaderType;
+  twist: TwistType;
 }
 
 // Service types

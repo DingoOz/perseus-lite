@@ -45,6 +45,7 @@
 	import { getRosConnection } from '$lib/scripts/rosBridge.svelte';
 	import * as ROSLIB from 'roslib';
 	import { onMount } from 'svelte';
+	import type { TwistStampedType, TwistType } from '$lib/scripts/rosTypes';
 
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let context = $state<CanvasRenderingContext2D | null>(null);
@@ -86,47 +87,91 @@
 		canvas_arrow(context!, canvasSize / 2, canvasSize / 2, canvasSize / 2 + y, canvasSize / 2 + x);
 	};
 
-	let twistTopic: ROSLIB.Topic | null = null;
+	const TWIST_TYPES = [
+		'geometry_msgs/msg/Twist',
+		'geometry_msgs/msg/TwistStamped',
+		'geometry_msgs/Twist',
+		'geometry_msgs/TwistStamped'
+	];
 
+	type TwistOrStamped = TwistType | TwistStampedType;
+
+	// Accept both geometry_msgs/Twist and geometry_msgs/TwistStamped.
+	const extractTwist = (message: TwistOrStamped | null | undefined): TwistType | null => {
+		if (!message) return null;
+		const inner = 'twist' in message ? message.twist : message;
+		if (!inner || !inner.linear || !inner.angular) return null;
+		return inner;
+	};
+
+	const onTwist = (message: TwistOrStamped) => {
+		const value = extractTwist(message);
+		if (!value) return;
+
+		// Switch data so that controls are correct directions
+		twist.y = value.linear.x ?? 0;
+		twist.x = value.linear.y ?? 0;
+		twist.rotation = -(value.angular.z ?? 0);
+
+		context?.clearRect(0, 0, canvasSize, canvasSize);
+		context?.beginPath();
+		drawArrow(
+			(twist.x / Number(settings.groups.General.MaxXValue.value)) * (canvasSize / 2),
+			(twist.y / Number(settings.groups.General.MaxYValue.value)) * (canvasSize / 2)
+		);
+		context?.stroke();
+	};
+
+	// (Re)subscribe whenever the connection or the selected topic changes. The cleanup
+	// unsubscribes the previous topic so subscriptions don't pile up.
 	$effect(() => {
-		if (getRosConnection()) {
-			const ros = getRosConnection() as ROSLIB.Ros;
-			if (settings.groups.General.topic.value !== '') {
-				twistTopic = new ROSLIB.Topic({
-					ros: ros,
-					name: settings.groups.General.topic.value!,
-					messageType: 'geometry_msgs/msg/TwistStamped'
-				});
+		const ros = getRosConnection();
+		const topicName = settings.groups.General.topic.value ?? '';
+		if (!ros) return;
 
-				twistTopic.subscribe((message: any) => {
-					// Switch data so that controls are correct directions
-					twist.y = message.twist.linear.x;
-					twist.x = message.twist.linear.y;
-					twist.rotation = -message.twist.angular.z;
+		let cancelled = false;
+		let twistTopic: ROSLIB.Topic<TwistOrStamped> | null = null;
 
-					context?.clearRect(0, 0, canvasSize, canvasSize);
-					context?.beginPath();
-					drawArrow(
-						(twist.x / Number(settings.groups.General.MaxXValue.value)) * (canvasSize / 2),
-						(twist.y / Number(settings.groups.General.MaxYValue.value)) * (canvasSize / 2)
-					);
-					context?.stroke();
-				});
-			}
-
-			// only add twist topics to the dropdown
-			ros.getTopics((topics) => {
-				settings.groups.General.topic.options = [];
-				for (let i = 0; i < topics.types.length; i++) {
-					if (topics.types[i].includes('Twist')) {
-						settings.groups.General.topic.options.push({
-							value: topics.topics[i],
-							label: topics.topics[i]
-						});
+		if (topicName !== '') {
+			// Look up the real type so both Twist and TwistStamped topics work.
+			ros.getTopicType(
+				topicName,
+				(type) => {
+					if (cancelled) return;
+					if (!TWIST_TYPES.includes(type)) {
+						console.warn(`Twistometer: ${topicName} has unsupported type '${type}'`);
+						return;
 					}
-				}
-			});
+					twistTopic = new ROSLIB.Topic<TwistOrStamped>({
+						ros: ros,
+						name: topicName,
+						messageType: type,
+						throttle_rate: 50,
+						queue_length: 1
+					});
+					twistTopic.subscribe(onTwist);
+				},
+				(error) => console.warn(`Twistometer: could not get the type of ${topicName}`, error)
+			);
 		}
+
+		// only add twist topics to the dropdown
+		ros.getTopics((topics) => {
+			if (cancelled) return;
+			const options: { value: string; label: string }[] = [];
+			for (let i = 0; i < topics.types.length; i++) {
+				if (TWIST_TYPES.includes(topics.types[i])) {
+					options.push({ value: topics.topics[i], label: topics.topics[i] });
+				}
+			}
+			settings.groups.General.topic.options = options;
+		});
+
+		return () => {
+			cancelled = true;
+			twistTopic?.unsubscribe();
+			twistTopic = null;
+		};
 	});
 
 	onMount(() => {
@@ -138,10 +183,6 @@
 			context?.rotate(-Math.PI / 2);
 			context?.translate(-canvasSize / 2, -canvasSize / 2);
 		}
-
-		return () => {
-			if (twistTopic) twistTopic.unsubscribe();
-		};
 	});
 </script>
 
@@ -178,7 +219,7 @@
 			/>
 		</svg>
 		<div
-			class="border-card-foreground relative m-[40px] w-fit rounded-[50%] border"
+			class="relative m-[40px] w-fit rounded-[50%] border border-card-foreground"
 			style:width={`${canvasSize}px`}
 			style:height={`${canvasSize}px`}
 		>
