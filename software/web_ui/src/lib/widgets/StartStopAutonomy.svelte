@@ -2,8 +2,7 @@
 	import type { WidgetGroupType, WidgetSettingsType } from '$lib/scripts/state.svelte';
 
 	export const name = 'Start/Stop';
-	export const description =
-		'Start/Stop autonomy by calling ROS2 services + show waypoint table.';
+	export const description = 'Start/Stop autonomy by calling ROS2 services + show waypoint table.';
 	export const group: WidgetGroupType = 'Autonomy';
 	export const isRosDependent = true;
 
@@ -16,7 +15,7 @@
 					value: '/waypoints_simulation.json',
 					options: [
 						{ label: 'waypoints.json', value: '/waypoints.json' },
-						{ label: 'waypoints_simulation.json', value: '/waypoints_simulation.json' },
+						{ label: 'waypoints_simulation.json', value: '/waypoints_simulation.json' }
 					]
 				}
 			}
@@ -48,7 +47,6 @@
 	// Service status / busy
 	let srvStatus = $state<string>('ROS disconnected');
 	let srvBusy = $state(false);
-
 
 	// ---------------- Hold-to-stop ----------------
 	const HOLD_MS = 3000;
@@ -325,8 +323,10 @@
 	<!-- CONTENT (this is the part that shrinks) -->
 	<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
 		<!-- Waypoints Table -->
-		<div class="rounded-xl border bg-background shadow-sm overflow-hidden flex min-h-0 flex-1 flex-col">
-			<div class="flex items-center justify-between border-b px-3 py-2 shrink-0">
+		<div
+			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm"
+		>
+			<div class="flex shrink-0 items-center justify-between border-b px-3 py-2">
 				<div class="w-full">
 					<p class="text-sm font-semibold">Remaining Waypoints</p>
 
@@ -357,7 +357,7 @@
 							Save JSON
 						</button>
 
-						<label class="rounded-md border px-2 py-1 text-xs hover:bg-accent cursor-pointer">
+						<label class="cursor-pointer rounded-md border px-2 py-1 text-xs hover:bg-accent">
 							<input
 								type="file"
 								accept=".json"
@@ -368,7 +368,7 @@
 						</label>
 
 						{#if isLoadingYaml}
-							<span class="text-xs animate-pulse opacity-70">Loading…</span>
+							<span class="animate-pulse text-xs opacity-70">Loading…</span>
 						{/if}
 					</div>
 				</div>
@@ -410,12 +410,9 @@
 	<div class="mt-auto flex shrink-0 flex-col gap-3 pt-3">
 		<!-- START (fixed height) -->
 		<Button
-			class={
-				(isStarted
-					? 'relative w-full font-bold bg-green-700 ring-2 ring-green-300 text-white'
-					: 'w-full font-bold bg-green-600 text-white hover:bg-green-700') +
-				' h-12 shrink-0'
-			}
+			class={(isStarted
+				? 'relative w-full bg-green-700 font-bold text-white ring-2 ring-green-300'
+				: 'w-full bg-green-600 font-bold text-white hover:bg-green-700') + ' h-12 shrink-0'}
 			disabled={isStarted || !runSrv}
 			onclick={sendStart}
 		>
@@ -430,16 +427,14 @@
 
 		<!-- STOP (fixed height) -->
 		<Button
-			class="relative w-full font-bold bg-red-600 text-white overflow-hidden h-12 shrink-0"
+			class="relative h-12 w-full shrink-0 overflow-hidden bg-red-600 font-bold text-white"
 			disabled={!isStarted || !cancelSrv || srvBusy}
 			onpointerdown={(e: PointerEvent) => e.button === 0 && startHoldStop()}
 			onpointerup={clearHold}
 			onpointerleave={clearHold}
 			onpointercancel={clearHold}
 		>
-			<span
-				class="absolute inset-y-0 left-0 bg-white/25"
-				style={`width:${holdProgress * 100}%`}
+			<span class="absolute inset-y-0 left-0 bg-white/25" style={`width:${holdProgress * 100}%`}
 			></span>
 			<span class="relative z-10">
 				{#if isHoldingStop}
