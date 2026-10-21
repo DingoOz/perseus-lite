@@ -16,11 +16,25 @@ find_package(geometry_msgs REQUIRED)
 find_package(perseus_interfaces REQUIRED)
 
 add_executable(nav2_waypoints_bridge src/nav2_waypoints_bridge.cpp)
+target_include_directories(nav2_waypoints_bridge
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 ament_target_dependencies(nav2_waypoints_bridge rclcpp rclcpp_action nav2_msgs
                           geometry_msgs perseus_interfaces)
 
 install(TARGETS nav2_waypoints_bridge DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+
+# TESTING. Fixture names end in "Test" so gtest_discover_tests yields ctest
+# names matching CI's "-R 'Test\\.'" filter.
+if(BUILD_TESTING)
+  find_package(GTest REQUIRED)
+  include(GoogleTest)
+  add_executable(goal_tracker_test test/goal_tracker_test.cpp)
+  target_include_directories(goal_tracker_test
+                             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(goal_tracker_test GTest::gtest_main)
+  gtest_discover_tests(goal_tracker_test)
+endif()
 
 ament_package()
