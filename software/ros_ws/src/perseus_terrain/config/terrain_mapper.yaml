@@ -1,0 +1,107 @@
+# terrain_mapper parameters for Perseus Lite with the OAK-D Lite (hardware and sim).
+# Every threshold is in metres unless the name says otherwise. See
+# docs/source/systems/software/terrain-autonomy.md for what each one does and how to tune it.
+terrain_mapper:
+  ros__parameters:
+    # ---- Input ---------------------------------------------------------------
+    # "depth": read the depth image + camera_info and project every Nth pixel
+    # (cheapest). "pointcloud": read a PointCloud2 instead.
+    input_type: "depth"
+    depth_topic: "/oak/stereo/image_raw"
+    camera_info_topic: "/oak/stereo/camera_info"
+    pointcloud_topic: "/oak/points"
+    # Frames above this rate are skipped. The classifier gains little past ~10 Hz.
+    max_input_rate_hz: 10.0
+    # 640x480 / 2 = 320x240 = 77k points per frame. Per-frame classification
+    # (below) needs this density: a camera 0.28 m up sees the ground at a grazing
+    # angle, so far rows of pixels land tens of cm apart on the ground.
+    pixel_stride: 2
+    cloud_point_stride: 1
+    # OAK-D Lite stereo: no depth closer than ~0.3 m at 480P, and the error grows
+    # with distance squared (a few cm at 2 m, ~10 cm by 4 m). Past ~3 m the
+    # steps it would report are mostly noise, and the grazing view leaves far
+    # cells too sparse to judge anyway.
+    min_depth_m: 0.3
+    max_depth_m: 3.0
+    # ---- Frames --------------------------------------------------------------
+    # Grids are published in odom: continuous, so the memory never jumps when
+    # slam_toolbox corrects map -> odom. The costmap layer transforms as needed.
+    global_frame: "odom"
+    robot_frame: "base_link"
+    # How long a depth frame may wait for its odom <- camera transform.
+    transform_wait_s: 0.5
+    # ---- Robot-frame crops (applied before anything else) -------------------
+    # Points inside this box (base_link) are the robot itself.
+    body_crop_min: [-0.45, -0.30, -0.10]
+    body_crop_max: [0.25, 0.30, 0.50]
+    # Nothing above this (base_link z) can matter to a 0.35 m tall robot.
+    max_height_above_robot_m: 1.0
+    # ---- Grid and timing -----------------------------------------------------
+    # 5 cm: half a lite wheel radius, fine enough for fist-sized rocks. Nav2's
+    # 10 cm costmaps take the worst terrain cell under each of theirs.
+    resolution_m: 0.05
+    # 0 = PER-FRAME mode: heights are only compared within one depth frame.
+    # The lite's EKF is 2D, so TF cannot follow the chassis bouncing, pitching
+    # or rolling on its rockers; frames a few hundred ms apart then disagree by
+    # centimetres about the same flat ground (measured in Gazebo: ~3.5 cm of
+    # bounce while driving, which made flat sand read as rough/lethal), and
+    # classifying them together turns that into false steps. Memory still
+    # fuses every frame over time, by counting verdicts.
+    # > 0 = classify the last point_buffer_s of frames together: denser, but
+    # only valid with a full 6-DOF state estimate (e.g. LiDAR-inertial odometry).
+    point_buffer_s: 0.0
+    # Local grid: a square of +/- this around the robot. In per-frame mode it is
+    # the latest frame's view.
+    local_half_extent_m: 4.0
+    # At least the camera rate, so every frame is classified.
+    update_rate_hz: 10.0
+    # Memory is republished at this rate (it is updated with every frame).
+    memory_rate_hz: 1.0
+    # Cells under the (padded) footprint are forced free in memory every fold:
+    # nothing can be under the robot, and the camera cannot see there to clear
+    # a stale verdict, which would otherwise fail every plan with "start occupied".
+    clear_under_robot: true
+    footprint: [0.22, 0.27, 0.22, -0.27, -0.42, -0.27, -0.42, 0.27]
+    footprint_padding_m: 0.05
+    # ~/clear_around_robot forgets memory within this radius (behaviour-tree recovery).
+    clear_radius_m: 1.5
+    # /terrain/debug/{step_up,step_down,height_above_ground,points}. Off on the robot.
+    publish_debug: false
+    # ---- Classifier (perseus_terrain/terrain_classifier.hpp) -----------------
+    classifier:
+      # Wheel radius 0.0725 m; the rocker lets the lite climb a little more than
+      # half of that cleanly in sand.
+      max_step_up_m: 0.06
+      max_step_down_m: 0.08
+      # Chassis/lidar ground clearance is ~0.07 m.
+      max_height_above_ground_m: 0.06
+      # The robot (with camera) is ~0.35 m tall.
+      overhead_clearance_m: 0.45
+      # Loose sand: skid-steer traction is gone well before a 30 deg slope.
+      max_slope_deg: 25.0
+      # Obstacles grow outwards by up to this (step-down of the floor beside them).
+      ground_window_m: 0.2
+      min_points_per_cell: 3
+      min_obstacle_cells: 2
+      # Stereo noise makes the minimum an outlier; percentiles are robust to it.
+      floor_percentile: 0.1
+      top_percentile: 0.9
+      # Cells past half of a threshold get a soft cost rising to rough_max_cost,
+      # so the planner prefers flat sand when the detour is cheap.
+      rough_start_fraction: 0.5
+      rough_max_cost: 60
+    # ---- Memory (perseus_terrain/log_odds_map.hpp) ---------------------------
+    # Weights are per FRAME (10 Hz in per-frame mode). Two consecutive obstacle
+    # verdicts (0.8) cross the threshold; a one-frame speckle (0.4) does not.
+    # (2.0 - 0.5) / 0.2 => 8 clear frames (~1 s of looking) to forget a
+    # well-established rock. In window mode, fold rate drops to memory_rate_hz:
+    # raise hit above occupied_threshold (e.g. 0.7) so one fold is enough.
+    memory:
+      log_odds_hit: 0.4
+      log_odds_miss: 0.2
+      log_odds_min: -1.0
+      log_odds_max: 2.0
+      occupied_threshold: 0.5
+      initial_size_m: 20.0
+      growth_step_m: 5.0
+      max_size_m: 200.0

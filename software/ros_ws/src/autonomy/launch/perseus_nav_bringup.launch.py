@@ -37,6 +37,7 @@ def generate_launch_description():
     log_level = LaunchConfiguration("log_level")
     use_localization = LaunchConfiguration("use_localization")
     map_yaml_file = LaunchConfiguration("map")
+    overlay_params_file = LaunchConfiguration("overlay_params_file")
 
     lifecycle_nodes = [
         "controller_server",
@@ -68,6 +69,21 @@ def generate_launch_description():
         ),
         allow_substs=True,
     )
+
+    # Optional overlay applied on top of params_file (later files win per key;
+    # a list replaces the base list). Defaults to an inert file, so without it
+    # every node gets exactly the base configuration. terrain_nav_params.yaml
+    # is the terrain-aware overlay.
+    overlay_params = ParameterFile(
+        RewrittenYaml(
+            source_file=overlay_params_file,
+            root_key=namespace,
+            param_rewrites={},
+            convert_types=True,
+        ),
+        allow_substs=True,
+    )
+    node_params = [configured_params, overlay_params]
 
     stdout_linebuf_envvar = SetEnvironmentVariable(
         "RCUTILS_LOGGING_BUFFERED_STREAM", "1"
@@ -118,6 +134,11 @@ def generate_launch_description():
             description="Also start map_server + AMCL to localize on a saved map (not with SLAM)",
         ),
         DeclareLaunchArgument(
+            "overlay_params_file",
+            default_value=os.path.join(bringup_dir, "config", "nav_overlay_none.yaml"),
+            description="Parameter file applied on top of params_file (e.g. config/terrain_nav_params.yaml)",
+        ),
+        DeclareLaunchArgument(
             "map",
             default_value="",
             description="Full path to the map yaml file (required when use_localization is True)",
@@ -134,7 +155,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
@@ -145,7 +166,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -156,7 +177,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -167,7 +188,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
@@ -178,7 +199,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -189,7 +210,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -200,7 +221,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
@@ -211,7 +232,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -236,7 +257,7 @@ def generate_launch_description():
                 package="rclcpp_components",
                 executable="component_container_isolated",
                 output="screen",
-                parameters=[configured_params, {"autostart": autostart}],
+                parameters=node_params + [{"autostart": autostart}],
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -247,56 +268,56 @@ def generate_launch_description():
                         package="nav2_controller",
                         plugin="nav2_controller::ControllerServer",
                         name="controller_server",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
                     ),
                     ComposableNode(
                         package="nav2_smoother",
                         plugin="nav2_smoother::SmootherServer",
                         name="smoother_server",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings,
                     ),
                     ComposableNode(
                         package="nav2_planner",
                         plugin="nav2_planner::PlannerServer",
                         name="planner_server",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings,
                     ),
                     ComposableNode(
                         package="nav2_behaviors",
                         plugin="behavior_server::BehaviorServer",
                         name="behavior_server",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
                     ),
                     ComposableNode(
                         package="nav2_bt_navigator",
                         plugin="nav2_bt_navigator::BtNavigator",
                         name="bt_navigator",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings,
                     ),
                     ComposableNode(
                         package="nav2_waypoint_follower",
                         plugin="nav2_waypoint_follower::WaypointFollower",
                         name="waypoint_follower",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings,
                     ),
                     ComposableNode(
                         package="nav2_velocity_smoother",
                         plugin="nav2_velocity_smoother::VelocitySmoother",
                         name="velocity_smoother",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
                     ),
                     ComposableNode(
                         package="nav2_collision_monitor",
                         plugin="nav2_collision_monitor::CollisionMonitor",
                         name="collision_monitor",
-                        parameters=[configured_params],
+                        parameters=node_params,
                         remappings=remappings,
                     ),
                     ComposableNode(
@@ -325,7 +346,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params, {"yaml_filename": map_yaml_file}],
+                parameters=node_params + [{"yaml_filename": map_yaml_file}],
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -336,7 +357,7 @@ def generate_launch_description():
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=node_params,
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),

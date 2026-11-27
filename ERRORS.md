@@ -3,6 +3,46 @@
 Defects found and fixed in this codebase, recorded per the error-tracking
 workflow. Review the **Prevention rules** before modifying the listed files.
 
+## Summary
+
+46 entries (2026-06 to 2026-11). Recurring themes, most frequent first:
+
+- **Configuration / toolchain (~19)**: the Nix → Pixi migration (missing deps,
+  stale `nix run` calls, env contamination from system ROS and shared caches),
+  CI that silently ran nothing or stayed advisory, and simulation config that
+  was never exercised end to end (gz plugin tags, sensor frame ids). Rule of
+  thumb: a green build proves nothing about a launch; run it and check the
+  topics, frames and controllers it should produce.
+- **Logic (~19)**: the TF/velocity contract (one publisher per TF edge, one
+  `/cmd_vel` publisher), actuator sign conventions applied asymmetrically,
+  liveness inferred from the wrong signal, and safety exits that did not command
+  zero. Terrain mapping adds a sensing variant: never compare measurements
+  across time unless the state estimate tracks the motion that separates them.
+- **Concurrency / resources (~4)**: stale async callbacks, orphaned process
+  groups, signal-handler I/O.
+- **Convention / API misuse (~4)**: deprecated `tests_require=`, bare
+  `LaunchConfiguration` in parameters, re-declared `use_sim_time`.
+
+### Terrain mapper read chassis bounce as rocks: multi-frame height comparison on a 2D state estimate — 2026-11-27
+
+- **Severity:** High
+- **Category:** Logic Error
+- **File(s):** `perseus_terrain/src/terrain_mapper.cpp`, `perseus_terrain/config/terrain_mapper.yaml`
+- **Pattern:** A perception node fuses several sensor frames geometrically (here, comparing point heights between frames over a 1 s window) using TF from a state estimate that does not observe all of the sensor's motion. The result looks fine while still and fills with false obstacles once the robot moves.
+- **Root cause:** The design came from the perseus-v3 stack, whose LiDAR-inertial odometry tracks full 6-DOF motion. The lite's EKF is 2D (`two_d_mode`), so TF cannot see the chassis bounce on its rockers (~3.5 cm, measured against Gazebo ground truth), pitch or roll. Frames 0.1–1 s apart disagree about flat ground by centimetres, and the height-difference classifier reads that as steps. In Gazebo, spinning at 0.6 rad/s took the local grid from 16 rough / 80 lethal cells (the real rocks) to 1122 / 190.
+- **Fix applied:** Per-frame classification is now the default (`point_buffer_s: 0`): heights are compared only within one depth frame, where every point shares one camera pose, and frames are fused only in the log-odds memory, which counts verdicts. Log-odds weights were re-derived for per-frame folding, and `pixel_stride` dropped to 2 for coverage. The same spin now gives 38–47 rough / 66–84 lethal cells.
+- **Prevention rule:** Before combining measurements from different times geometrically, check which degrees of freedom the TF chain actually estimates (for example `two_d_mode`) and test the result while the robot moves (spin and drive), not only while it is still. When porting a perception design, port its state-estimation assumptions too, or remove the dependency on them.
+
+### Gazebo lidar and IMU stamped with scoped names not in TF (`<frame>` ignored) — SLAM never ran in sim — 2026-11-27
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `perseus_lite_description/urdf/sensors.urdf.xacro`
+- **Pattern:** A Gazebo (Harmonic) sensor in the URDF names its frame with `<frame>`. gz ignores it and stamps messages with the scoped link name (`perseus_lite/base_link/laser`, `…/imu`), which no TF publisher provides. Consumers silently drop the data: slam_toolbox logged only `Message Filter dropping message ... queue is full`, `/map` never appeared, and the Nav2 global costmap failed to activate (`transform from base_link to map did not become available`).
+- **Root cause:** `<frame>` is not a gz-sensors element; the correct one is `<gz_frame_id>`. The sim was never run with SLAM end to end after the fork, so nothing caught it.
+- **Fix applied:** The lidar and IMU sensors use `<gz_frame_id>` (`c1_lidar_frame`, `imu_link`), as does the new OAK-D Lite depth camera (`oak_right_camera_optical_frame`).
+- **Prevention rule:** After adding or changing any Gazebo sensor, run the sim and check `ros2 topic echo --once <topic> | grep frame_id` against `ros2 run tf2_tools view_frames`: the stamped frame must exist in TF. Use `<gz_frame_id>`, never `<frame>`.
+
 ### CI cppcheck and docs builds failed on the vendored rplidar_ros sources — 2026-10-21
 
 - **Severity:** Medium

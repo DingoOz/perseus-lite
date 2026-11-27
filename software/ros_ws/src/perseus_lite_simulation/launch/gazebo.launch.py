@@ -51,6 +51,11 @@ def generate_launch_description():
             description="Initial Z position of the robot",
         ),
         DeclareLaunchArgument(
+            "headless",
+            default_value="false",
+            description="Run the Gazebo server only (no GUI) with EGL headless rendering, for CI or a machine without a display",
+        ),
+        DeclareLaunchArgument(
             "initial_pose_yaw",
             default_value="0.0",
             description="Initial yaw of the robot",
@@ -84,13 +89,18 @@ def generate_launch_description():
             # version). Give this Pixi env its own private cache dir so it
             # never touches the system one.
             gz_launch_env["XDG_CACHE_HOME"] = os.path.join(conda_prefix, "var", "cache")
+        # Headless: server only, rendering sensors (lidar, depth camera) through
+        # EGL instead of a window. Needs access to /dev/dri/renderD* (the
+        # `render` group).
+        headless = LaunchConfiguration("headless").perform(context).lower() == "true"
+        server_flags = "-s --headless-rendering " if headless else ""
         gz_launch = ExecuteProcess(
             cmd=[
                 "ros2",
                 "launch",
                 "ros_gz_sim",
                 "gz_sim.launch.py",
-                f"gz_args:=-r -v 4 {performed_gz_world_path}",
+                f"gz_args:={server_flags}-r -v 4 {performed_gz_world_path}",
             ],
             output="both",
             additional_env=gz_launch_env,

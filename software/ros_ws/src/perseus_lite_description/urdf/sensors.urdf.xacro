@@ -51,7 +51,9 @@
                     <max>12</max>
                 </range>
             </ray>
-            <frame>${prefix}c1_lidar_frame</frame>
+            <!-- gz Harmonic ignores <frame>; without gz_frame_id the scan is stamped
+                 with the scoped name perseus_lite/base_link/laser, which is not in TF. -->
+            <gz_frame_id>${prefix}c1_lidar_frame</gz_frame_id>
         </sensor>
     </gazebo>
 
@@ -92,7 +94,7 @@
             <always_on>true</always_on>
             <update_rate>100</update_rate>
             <topic>imu/data</topic>
-            <frame>${prefix}imu_link</frame>
+            <gz_frame_id>${prefix}imu_link</gz_frame_id>
             <imu>
                 <angular_velocity>
                     <x>
@@ -135,6 +137,106 @@
                     </z>
                 </linear_acceleration>
             </imu>
+        </sensor>
+    </gazebo>
+
+    <!-- OAK-D Lite stereo depth camera (Luxonis) -->
+    <!-- Frame names match what depthai_ros_driver (node name "oak") stamps on its
+         messages, so the real camera and the Gazebo one resolve through the same TF.
+         The driver's own description/TF publisher is NOT used (see the camera env's
+         oak_d_lite.launch.py): this URDF is the single source of the camera frames.
+         Mount pose: front of the chassis, pitched down so the 58 deg vertical field of
+         view covers the ground from ~0.25 m ahead of the lens out to the horizon.
+         MEASURE ON THE ROBOT and update oak_mount_* if the bracket differs. -->
+    <xacro:property name="oak_mount_x" value="0.20"/>
+    <xacro:property name="oak_mount_z" value="0.28"/>
+    <xacro:property name="oak_mount_pitch" value="0.35"/>
+    <!-- 75 mm stereo baseline; RGB in the middle -->
+    <xacro:property name="oak_half_baseline" value="0.0375"/>
+
+    <link name="${prefix}oak_link">
+        <inertial>
+            <mass value="0.061"/>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="0.00001" ixy="0" ixz="0"
+                     iyy="0.00004" iyz="0"
+                     izz="0.00004"/>
+        </inertial>
+        <visual>
+            <origin xyz="-0.0088 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.0175 0.091 0.028"/>
+            </geometry>
+            <material name="grey"/>
+        </visual>
+        <collision>
+            <origin xyz="-0.0088 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.0175 0.091 0.028"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <joint name="${prefix}oak_joint" type="fixed">
+        <parent link="${prefix}base_link"/>
+        <child link="${prefix}oak_link"/>
+        <origin xyz="${oak_mount_x} 0.0 ${oak_mount_z}" rpy="0 ${oak_mount_pitch} 0"/>
+    </joint>
+
+    <xacro:macro name="oak_lens" params="name y">
+        <link name="${prefix}oak_${name}_camera_frame"/>
+        <joint name="${prefix}oak_${name}_camera_joint" type="fixed">
+            <parent link="${prefix}oak_link"/>
+            <child link="${prefix}oak_${name}_camera_frame"/>
+            <origin xyz="0 ${y} 0" rpy="0 0 0"/>
+        </joint>
+        <!-- REP-103 optical frame: z forward, x right, y down -->
+        <link name="${prefix}oak_${name}_camera_optical_frame"/>
+        <joint name="${prefix}oak_${name}_camera_optical_joint" type="fixed">
+            <parent link="${prefix}oak_${name}_camera_frame"/>
+            <child link="${prefix}oak_${name}_camera_optical_frame"/>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+        </joint>
+    </xacro:macro>
+    <xacro:oak_lens name="rgb" y="0.0"/>
+    <xacro:oak_lens name="left" y="${oak_half_baseline}"/>
+    <xacro:oak_lens name="right" y="${-oak_half_baseline}"/>
+
+    <!-- Gazebo stand-in for the stereo depth: an ideal depth camera at the right
+         lens (where the driver's unaligned depth lives), with the OV7251's 480P
+         resolution and ~73 deg horizontal field of view. The real stereo depth is
+         much noisier and has holes; tune against bags, not this. -->
+    <gazebo reference="${prefix}oak_right_camera_frame">
+        <sensor name="oak_stereo_depth" type="rgbd_camera">
+            <pose>0 0 0 0 0 0</pose>
+            <always_on>true</always_on>
+            <update_rate>10</update_rate>
+            <visualize>false</visualize>
+            <topic>oak/stereo</topic>
+            <gz_frame_id>${prefix}oak_right_camera_optical_frame</gz_frame_id>
+            <camera>
+                <horizontal_fov>1.274</horizontal_fov>
+                <image>
+                    <width>640</width>
+                    <height>480</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip>
+                    <near>0.2</near>
+                    <far>10.0</far>
+                </clip>
+                <depth_camera>
+                    <clip>
+                        <near>0.2</near>
+                        <far>10.0</far>
+                    </clip>
+                </depth_camera>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.007</stddev>
+                </noise>
+            </camera>
         </sensor>
     </gazebo>
   </xacro:macro>

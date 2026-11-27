@@ -1,7 +1,12 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -14,6 +19,15 @@ def _include(package, launch_file, launch_arguments):
     )
 
 
+def _scoped_include(package, launch_file, launch_arguments, condition):
+    # Scoped so the include's launch arguments cannot leak into later includes.
+    return GroupAction(
+        scoped=True,
+        condition=condition,
+        actions=[_include(package, launch_file, launch_arguments)],
+    )
+
+
 def generate_launch_description():
     """
     Perseus Lite: hardware bringup + slam_toolbox mapping + Nav2.
@@ -22,6 +36,12 @@ def generate_launch_description():
     EKF (odom -> base_link) and twist_mux; slam_toolbox provides map -> odom;
     Nav2's output enters twist_mux at the lowest priority, so any teleop
     input overrides it.
+
+    terrain:=true adds the OAK-D Lite terrain mapper (perseus_terrain) and the
+    terrain-aware Nav2 overlay. The camera driver itself runs in the separate
+    `camera` Pixi env (`pixi run -e camera oak`), because RoboStack's depthai
+    build cannot share the robot env's solve. monitoring:=true (default) adds
+    the passive topic health and mobility monitors.
     """
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
@@ -33,6 +53,8 @@ def generate_launch_description():
     autostart = LaunchConfiguration("autostart")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
+    terrain = LaunchConfiguration("terrain")
+    monitoring = LaunchConfiguration("monitoring")
 
     arguments = [
         DeclareLaunchArgument(
@@ -87,7 +109,35 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "log_level", default_value="info", description="Nav2 log level"
         ),
+        DeclareLaunchArgument(
+            "terrain",
+            default_value="false",
+            description="OAK-D Lite terrain mapping + terrain-aware Nav2 overlay (start the camera with `pixi run -e camera oak`)",
+        ),
+        DeclareLaunchArgument(
+            "terrain_debug",
+            default_value="false",
+            description="terrain_mapper publishes /terrain/debug/* layers and its classified points",
+        ),
+        DeclareLaunchArgument(
+            "monitoring",
+            default_value="true",
+            description="Topic health + mobility (stall/slip) monitors",
+        ),
     ]
+    autonomy_config = PathJoinSubstitution([FindPackageShare("autonomy"), "config"])
+    nav_overlay = PathJoinSubstitution(
+        [
+            autonomy_config,
+            PythonExpression(
+                [
+                    "'terrain_nav_params.yaml' if '",
+                    terrain,
+                    "'.lower() == 'true' else 'nav_overlay_none.yaml'",
+                ]
+            ),
+        ]
+    )
 
     bringup = _include(
         "perseus_lite",
@@ -109,16 +159,35 @@ def generate_launch_description():
             "autostart": autostart,
         },
     )
+    # Before Nav2: the terrain behaviour tree needs terrain_mapper's service at load.
+    terrain_mapper = _scoped_include(
+        "perseus_terrain",
+        "terrain.launch.py",
+        {
+            "use_sim_time": use_sim_time,
+            "publish_debug": LaunchConfiguration("terrain_debug"),
+        },
+        IfCondition(terrain),
+    )
+    monitors = _scoped_include(
+        "perseus_monitoring",
+        "monitoring.launch.py",
+        {"use_sim_time": use_sim_time, "terrain": terrain},
+        IfCondition(monitoring),
+    )
     nav2 = _include(
         "autonomy",
         "perseus_nav_bringup.launch.py",
         {
             "use_sim_time": use_sim_time,
             "params_file": nav_params_file,
+            "overlay_params_file": nav_overlay,
             "autostart": autostart,
             "use_respawn": use_respawn,
             "log_level": log_level,
         },
     )
 
-    return LaunchDescription(arguments + [bringup, slam, nav2])
+    return LaunchDescription(
+        arguments + [bringup, terrain_mapper, monitors, slam, nav2]
+    )

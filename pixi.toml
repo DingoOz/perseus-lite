@@ -205,7 +205,7 @@ version = "*"
 # Tasks (replace documented `nix develop -c ...` / colcon invocations)
 # ---------------------------------------------------------------------------
 [tasks]
-# Core workspace build — 16 of the 19 workspace packages build in the default env.
+# Core workspace build — 18 of the 21 workspace packages build in the default env.
 # Skipped:
 #   perseus_lite_simulation -> Gazebo deps (use the `simulation` env)
 #   perseus_vision          -> needs onnxruntime-cpp (CUDA) (use the `machine-learning` env)
@@ -236,7 +236,7 @@ build-test = { cmd = "colcon build --symlink-install --cmake-args -DCMAKE_BUILD_
 # Full ament lint on demand: colcon test --packages-select <pkg> --ctest-args -L linter
 # perseus_lite_simulation / perseus_lite_missions tests run in the simulation
 # env, perseus_vision's in the machine-learning env (see their tasks).
-test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_tui perseus_sensors perseus_bt_nodes perseus_autonomy_bridge perseus_input input_devices teleop_diagnostics twist_stamper pcl_to_lsr --return-code-on-test-failure --ctest-args -LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$' && colcon test-result --verbose", cwd = "software/ros_ws" }
+test = { cmd = "colcon test --packages-select perseus_lite_hardware perseus_lite perseus_lite_tui perseus_sensors perseus_terrain perseus_monitoring perseus_bt_nodes perseus_autonomy_bridge perseus_input input_devices teleop_diagnostics twist_stamper pcl_to_lsr --return-code-on-test-failure --ctest-args -LE '^(copyright|cpplint|flake8|lint_cmake|uncrustify)$' && colcon test-result --verbose", cwd = "software/ros_ws" }
 # software/arm-teleop-direct is a plain CMake project outside the colcon
 # workspace. Build it explicitly so toolchain bumps (eg Boost) can't silently
 # break it (see ERRORS.md). Same RelWithDebInfo/-Werror policy as the workspace.
@@ -353,6 +353,30 @@ fmt = "treefmt --allow-missing-formatter"
 fmt-check = "treefmt --allow-missing-formatter --ci"
 
 # ---------------------------------------------------------------------------
+# Feature: camera (Luxonis OAK-D Lite driver) -- linux-64 + linux-aarch64
+# RoboStack builds ros-jazzy-depthai-ros-driver only against a NEWER
+# ros2-distro-mutex (0.20+) than the default env is locked to (0.14), so it
+# cannot join the default solve without upgrading the robot's entire ROS
+# stack. This env is deliberately slim: it holds only the camera driver and
+# runs it as a separate process that talks to the default env over DDS (same
+# Jazzy, same CycloneDDS, same ROS_DOMAIN_ID). It does NOT build or source the
+# colcon workspace -- its launch file is run straight from the source tree.
+# See docs/source/systems/software/terrain-autonomy.md.
+# ---------------------------------------------------------------------------
+[feature.camera]
+platforms = ["linux-64", "linux-aarch64"]
+
+[feature.camera.dependencies]
+python = ">=3.11"
+ros-jazzy-ros-base = "*"
+ros-jazzy-rmw-cyclonedds-cpp = "*"
+ros-jazzy-depthai-ros-driver = "*"
+
+[feature.camera.tasks]
+# Starts the OAK-D Lite driver (depth only, tuned for terrain mapping).
+oak = "ros2 launch software/ros_ws/src/perseus_lite/launch/oak_d_lite.launch.py"
+
+# ---------------------------------------------------------------------------
 # Environment composition
 # ---------------------------------------------------------------------------
 [environments]
@@ -364,3 +388,4 @@ simulation = { features = ["simulation"] }
 machine-learning = { features = ["machine-learning"] }
 docs = { features = ["docs"], no-default-feature = true }
 format = { features = ["format"], no-default-feature = true }
+camera = { features = ["camera"], no-default-feature = true }

@@ -1,0 +1,98 @@
+<!--
+  Perseus Lite terrain-aware NavigateToPose tree (loaded by config/terrain_nav_params.yaml).
+
+  Nav2's stock navigate_to_pose_w_replanning_and_recovery.xml with three additions:
+
+  1. Live planner / controller selection. PlannerSelector and ControllerSelector read the
+     latched /planner_selector and /controller_selector topics on every tick, so any loaded
+     plugin (see terrain_nav_params.yaml) can be picked per goal without a restart:
+       ros2 topic pub -1 /planner_selector std_msgs/String "{data: ThetaStar}"
+     With nothing published the defaults below apply, which are the same plugins the
+     robot-validated stock config uses (GridBased NavFn + FollowPath DWB).
+
+  2. Path smoothing. Grid planners turn in 45/90 degree steps; the smoother rounds those
+     corners off before the controller sees them. It writes back into the same {path}
+     entry, so FollowPath needs no change. It can fail (time budget, or the smoothed path
+     would clip an obstacle the raw one avoided); AlwaysSuccess then carries on with the
+     raw path: degraded, never broken.
+
+  3. Terrain memory in recovery. terrain_mapper remembers what the camera saw, and
+     clearing a Nav2 costmap does not touch that memory (TerrainGridLayer copies it straight
+     back on the next update). So when planning fails because the robot or the goal appears
+     occupied (205 START_OCCUPIED / 206 GOAL_OCCUPIED, e.g. after a dust plume or a person
+     walking past), the tree first forgets terrain memory around the robot, waits for the
+     memory to republish, then clears the Nav2 costmap. The same clear is the last step of
+     the general recovery cycle. A missing terrain_mapper is tolerated (Fallback).
+     ClearEntireCostmap is only the vehicle: terrain_mapper's service has that type.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <Sequence name="PlanAndSmooth">
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+              <Fallback name="SmoothOrKeepRaw">
+                <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="simple_smoother" max_smoothing_duration="0.2" check_for_collisions="true" error_code_id="{smoother_error_code}"/>
+                <AlwaysSuccess/>
+              </Fallback>
+            </Sequence>
+            <Sequence name="PlannerRecovery">
+              <!-- WouldAPlannerRecoveryHelp says no to 205/206, but forgetting stale
+                   terrain memory is exactly what can fix them. -->
+              <Fallback>
+                <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                <ScriptCondition code="compute_path_error_code == 205 || compute_path_error_code == 206"/>
+              </Fallback>
+              <Fallback>
+                <ClearEntireCostmap name="ForgetTerrainAroundRobot" service_name="terrain_mapper/clear_around_robot"/>
+                <AlwaysSuccess/>
+              </Fallback>
+              <!-- terrain_mapper republishes its memory right after the clear; let it land. -->
+              <Wait wait_duration="1.0"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <Sequence>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Wait wait_duration="5.0"/>
+            <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_code_id}"/>
+            <!-- Last resort, after the others have not freed the robot. -->
+            <Sequence name="ForgetTerrainActions">
+              <Fallback>
+                <ClearEntireCostmap name="ForgetTerrainAroundRobot-Subtree" service_name="terrain_mapper/clear_around_robot"/>
+                <AlwaysSuccess/>
+              </Fallback>
+              <Wait wait_duration="1.0"/>
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree2" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree2" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

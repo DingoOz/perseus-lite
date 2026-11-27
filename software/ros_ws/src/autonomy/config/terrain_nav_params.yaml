@@ -1,0 +1,133 @@
+# Terrain-aware Nav2 OVERLAY for Perseus Lite.
+#
+# Applied ON TOP of perseus_nav_params.yaml by perseus_nav_bringup.launch.py's
+# overlay_params_file argument (perseus_lite_slam_and_nav2.launch.py and the sim's
+# autonomy.launch.py pass it when terrain:=true). Only the keys below change;
+# everything else, including the robot-validated DWB tuning, comes from the base
+# file. A ROS parameter list given here REPLACES the base list wholesale (plugins,
+# planner_plugins, controller_plugins), so each list repeats the base entries.
+#
+# Requires perseus_terrain's terrain_mapper to be running BEFORE Nav2 activates:
+# the behaviour tree below calls terrain_mapper/clear_around_robot, and Nav2 refuses
+# to load a tree whose service is missing at activation (it waits 1 s, then throws).
+# See docs/source/systems/software/terrain-autonomy.md.
+bt_navigator:
+  ros__parameters:
+    # Stock replanning/recovery tree + path smoothing + live planner/controller
+    # selection + terrain-memory clearing in recovery.
+    default_nav_to_pose_bt_xml: "$(find-pkg-share autonomy)/behavior_trees/navigate_to_pose_terrain.xml"
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      # The 2D lidar still marks what it sees; the terrain layers add what only the
+      # depth camera can: steps, holes, rocks below the lidar plane (the C1 sits
+      # ~0.11 m up, so anything shorter is invisible to it), and rough ground.
+      plugins: ["obstacle_layer", "terrain_local_layer", "terrain_memory_layer", "inflation_layer"]
+      # Reactive: rebuilt at 5 Hz from the last second of depth frames.
+      terrain_local_layer:
+        plugin: "perseus_terrain::TerrainGridLayer"
+        topic: /terrain/local_grid
+        transient_local: false # volatile publisher: must match or nothing arrives
+        # A dead camera must not leave its last view frozen in front of the robot.
+        max_age_s: 1.0
+        lethal_threshold: 100
+      # Memory: what the camera's narrow (~73 deg) view saw earlier. Without it the
+      # robot forgets a rock as soon as it turns away from it.
+      terrain_memory_layer:
+        plugin: "perseus_terrain::TerrainGridLayer"
+        topic: /terrain/global_grid
+        transient_local: true # latched publisher
+        max_age_s: 0.0 # memory does not expire; terrain_mapper decays it
+        lethal_threshold: 100
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      # The memory is published in odom; the layer transforms it into map through
+      # TF, so slam_toolbox corrections move it with the robot.
+      plugins: ["static_layer", "obstacle_layer", "terrain_memory_layer", "inflation_layer"]
+      terrain_memory_layer:
+        plugin: "perseus_terrain::TerrainGridLayer"
+        topic: /terrain/global_grid
+        transient_local: true
+        max_age_s: 0.0
+        lethal_threshold: 100
+planner_server:
+  ros__parameters:
+    # Several planners loaded at once; the behaviour tree picks one per goal from
+    # /planner_selector (default GridBased, as in the base file).
+    #   ros2 topic pub -1 /planner_selector std_msgs/String "{data: ThetaStar}"
+    planner_plugins: ["GridBased", "ThetaStar", "Smac2D"]
+    # GridBased (NavFn) is inherited unchanged from perseus_nav_params.yaml.
+    # ThetaStar: any-angle A*. Line-of-sight shortcuts across the grid give fewer,
+    # gentler turns than NavFn's 45/90 degree steps, so less pivoting on sand.
+    # Ignores heading: the controller turns onto the path at the start.
+    ThetaStar:
+      plugin: "nav2_theta_star_planner::ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      # Higher than Nav2's 2.0 default so terrain roughness costs steer the path
+      # around lumpy ground when the detour is short.
+      w_traversal_cost: 4.0
+      use_final_approach_orientation: false
+      allow_unknown: true
+    # Smac 2D: cost-aware 8-connected A*. A better-behaved NavFn and a reliable
+    # fallback when ThetaStar cannot find line-of-sight shortcuts in clutter.
+    Smac2D:
+      plugin: "nav2_smac_planner::SmacPlanner2D"
+      tolerance: 0.25
+      downsample_costmap: false
+      downsampling_factor: 1
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        # Smac State Lattice (heading-aware, footprint-checked) is NOT loaded: it
+        # needs motion primitives at the costmap's 0.10 m resolution and Nav2 only
+        # ships 0.05 m sets. See "Adding the Lattice planner" in the terrain-autonomy
+        # docs for the one-off generator command and the block to add here.
+controller_server:
+  ros__parameters:
+    # FollowPath (DWB) is inherited unchanged from perseus_nav_params.yaml and
+    # stays the default. Pick per goal from /controller_selector:
+    #   ros2 topic pub -1 /controller_selector std_msgs/String "{data: RPP}"
+    controller_plugins: ["FollowPath", "RPP"]
+    # Regulated Pure Pursuit: drives the arc to a lookahead point on the path.
+    # Smooth and few-knobbed on open ground; never steers away from the path
+    # (obstacle avoidance lives in the planner), so prefer DWB in clutter.
+    RPP:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # Matches the base DWB's 0.2 m/s ceiling (velocity_smoother caps at 0.25).
+      desired_linear_vel: 0.2
+      lookahead_dist: 0.5
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.8
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: false
+      transform_tolerance: 1.0
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.4
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      # Slows down on high-cost cells, i.e. near obstacles AND on rough terrain:
+      # the terrain roughness cost doubles as a speed limit.
+      use_cost_regulated_linear_velocity_scaling: true
+      cost_scaling_dist: 0.4
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 5.0 # must equal the costmaps' cost_scaling_factor
+      regulated_linear_scaling_min_radius: 0.6
+      regulated_linear_scaling_min_speed: 0.08
+      # Skid-steer: pivot onto the path rather than arcing out to meet it.
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.6
+      rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: 3.0
+      allow_reversing: false
+      max_robot_pose_search_dist: 10.0

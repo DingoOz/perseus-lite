@@ -30,6 +30,9 @@ PINNED = (
     '/tf',
     '/map',
     '/diagnostics',
+    # perseus_monitoring (published when monitoring:=true)
+    '/health/topics',
+    '/mobility/status',
 )
 
 # High-bandwidth message types the monitor never subscribes to: even with

@@ -1,0 +1,5 @@
+<library path="perseus_terrain_layer">
+  <class type="perseus_terrain::TerrainGridLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>Copies a terrain OccupancyGrid (any frame, via TF) into a Nav2 costmap, keeping the worst terrain cell under each costmap cell.</description>
+  </class>
+</library>
