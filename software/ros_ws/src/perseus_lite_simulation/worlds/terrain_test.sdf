@@ -1,0 +1,277 @@
+<?xml version="1.0" ?>
+<!--
+  terrain_test: a 10 m x 10 m walled yard for exercising perseus_terrain.
+  Launch with the robot at the origin facing +x:
+    ros2 launch perseus_lite_simulation perseus_sim.launch.py gz_world:=terrain_test.sdf \
+      initial_pose_x:=0.0 initial_pose_y:=0.0 initial_pose_z:=0.1
+  low_rock_*     8 cm tall: below the 2D lidar's ~0.11 m scan plane, so only the depth
+                 camera can see them (the point of the terrain layers).
+  step_too_tall  15 cm: lethal for 7.25 cm wheels; also below the lidar plane.
+  dune_*_12deg   a 12 degree ridge, up then down: drivable, must not read as an obstacle
+                 (the ridge line itself may read as lightly rough).
+  walls          lidar features for slam_toolbox.
+-->
+<sdf version="1.8">
+    <world name="terrain_test">
+        <physics name="1ms" type="ignored">
+            <max_step_size>0.001</max_step_size>
+            <real_time_factor>1.0</real_time_factor>
+        </physics>
+
+        <plugin filename="libgz-sim-physics-system" name="gz::sim::systems::Physics" />
+        <plugin filename="libgz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+        <plugin filename="libgz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+        <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+            <render_engine>ogre2</render_engine>
+        </plugin>
+        <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact" />
+        <plugin name="gz::sim::systems::Imu" filename="gz-sim-imu-system" />
+
+        <light name='sun' type='directional'>
+            <pose>0 0 10 0 0 0</pose>
+            <cast_shadows>true</cast_shadows>
+            <intensity>1</intensity>
+            <direction>-0.5 0.1 -0.9</direction>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+            <attenuation>
+                <range>1000</range>
+                <linear>0.01</linear>
+                <constant>0.9</constant>
+                <quadratic>0.001</quadratic>
+            </attenuation>
+            <spot>
+                <inner_angle>0</inner_angle>
+                <outer_angle>0</outer_angle>
+                <falloff>0</falloff>
+            </spot>
+        </light>
+        
+        <model name='ground_plane'>
+        <static>true</static>
+        <link name='link'>
+            <collision name='collision'>
+            <geometry>
+                <plane>
+                <normal>0 0 1</normal>
+                <size>100 100</size>
+                </plane>
+            </geometry>
+            <surface>
+                <friction>
+                <ode/>
+                </friction>
+                <bounce/>
+                <contact/>
+            </surface>
+            </collision>
+            <visual name='visual'>
+            <geometry>
+                <plane>
+                <normal>0 0 1</normal>
+                <size>100 100</size>
+                </plane>
+            </geometry>
+            <material>
+                <ambient>0.8 0.8 0.8 1</ambient>
+                <diffuse>0.8 0.8 0.8 1</diffuse>
+                <specular>0.8 0.8 0.8 1</specular>
+            </material>
+            </visual>
+            <pose>0 0 0 0 0 0</pose>
+            <inertial>
+            <pose>0 0 0 0 0 0</pose>
+            <mass>1</mass>
+            <inertia>
+                <ixx>1</ixx>
+                <ixy>0</ixy>
+                <ixz>0</ixz>
+                <iyy>1</iyy>
+                <iyz>0</iyz>
+                <izz>1</izz>
+            </inertia>
+            </inertial>
+            <enable_wind>false</enable_wind>
+        </link>
+        <pose>0 0 0 0 0 0</pose>
+        <self_collide>false</self_collide>
+        </model>
+
+        <model name='low_rock_0'>
+            <static>true</static>
+            <pose>1.6 0.0 0.04 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                    <material>
+                        <ambient>0.45 0.35 0.25 1</ambient>
+                        <diffuse>0.45 0.35 0.25 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='low_rock_1'>
+            <static>true</static>
+            <pose>2.1 0.45 0.04 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                    <material>
+                        <ambient>0.45 0.35 0.25 1</ambient>
+                        <diffuse>0.45 0.35 0.25 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='low_rock_2'>
+            <static>true</static>
+            <pose>2.3 -0.4 0.04 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                    <material>
+                        <ambient>0.45 0.35 0.25 1</ambient>
+                        <diffuse>0.45 0.35 0.25 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='low_rock_3'>
+            <static>true</static>
+            <pose>2.9 0.1 0.04 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.15 0.15 0.08</size></box></geometry>
+                    <material>
+                        <ambient>0.45 0.35 0.25 1</ambient>
+                        <diffuse>0.45 0.35 0.25 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='step_too_tall'>
+            <static>true</static>
+            <pose>3.2 -1.6 0.075 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>1.0 0.6 0.15</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>1.0 0.6 0.15</size></box></geometry>
+                    <material>
+                        <ambient>0.7 0.3 0.25 1</ambient>
+                        <diffuse>0.7 0.3 0.25 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='dune_up_12deg'>
+            <static>true</static>
+            <pose>1.0000 2.0 0.1047 0 -0.20944 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>1.2 0.8 0.04</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>1.2 0.8 0.04</size></box></geometry>
+                    <material>
+                        <ambient>0.35 0.55 0.35 1</ambient>
+                        <diffuse>0.35 0.55 0.35 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='dune_down_12deg'>
+            <static>true</static>
+            <pose>2.1347 2.0 0.1047 0 0.20944 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>1.2 0.8 0.04</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>1.2 0.8 0.04</size></box></geometry>
+                    <material>
+                        <ambient>0.35 0.55 0.35 1</ambient>
+                        <diffuse>0.35 0.55 0.35 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='wall_n'>
+            <static>true</static>
+            <pose>0 5 0.25 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>10.2 0.2 0.5</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>10.2 0.2 0.5</size></box></geometry>
+                    <material>
+                        <ambient>0.6 0.6 0.65 1</ambient>
+                        <diffuse>0.6 0.6 0.65 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='wall_s'>
+            <static>true</static>
+            <pose>0 -5 0.25 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>10.2 0.2 0.5</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>10.2 0.2 0.5</size></box></geometry>
+                    <material>
+                        <ambient>0.6 0.6 0.65 1</ambient>
+                        <diffuse>0.6 0.6 0.65 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='wall_e'>
+            <static>true</static>
+            <pose>5 0 0.25 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.2 10.2 0.5</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.2 10.2 0.5</size></box></geometry>
+                    <material>
+                        <ambient>0.6 0.6 0.65 1</ambient>
+                        <diffuse>0.6 0.6 0.65 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+        <model name='wall_w'>
+            <static>true</static>
+            <pose>-5 0 0.25 0 0.0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>0.2 10.2 0.5</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>0.2 10.2 0.5</size></box></geometry>
+                    <material>
+                        <ambient>0.6 0.6 0.65 1</ambient>
+                        <diffuse>0.6 0.6 0.65 1</diffuse>
+                    </material>
+                </visual>
+            </link>
+        </model>
+    </world>
+</sdf>

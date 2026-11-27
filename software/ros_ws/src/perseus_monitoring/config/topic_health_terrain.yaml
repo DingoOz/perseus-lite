@@ -1,0 +1,32 @@
+# topic_health_monitor: the core stack plus the OAK-D Lite and terrain mapper.
+# Used by monitoring.launch.py when terrain:=true. Keep the core entries in step
+# with topic_health.yaml.
+topic_health_monitor:
+  ros__parameters:
+    topics:
+      - /scan
+      - /scan_filtered
+      - /imu/data
+      - /diff_drive_base_controller/odom
+      - /odometry/filtered
+      - /tf
+      # camera_info is the camera's liveness proxy: same rate as the depth
+      # image, a few hundred bytes instead of ~500 kB per frame.
+      - /oak/stereo/camera_info
+      - /terrain/local_grid
+      - /terrain/global_grid
+    expected_rates_hz:
+      - 10.0
+      - 10.0
+      - 100.0
+      - 50.0
+      - 15.0
+      - 0.0
+      - 10.0
+      - 10.0 # per-frame mode: one local grid per depth frame
+      - 1.0
+    window_s: 4.0
+    rate_tolerance: 0.7
+    stale_timeout_s: 3.0
+    publish_rate_hz: 1.0
+    health_topic: /health/topics

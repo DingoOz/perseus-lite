@@ -66,5 +66,8 @@ install(
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL)
 
+# Planner comparison tool: ros2 run autonomy plan_probe.py <x> <y>
+install(PROGRAMS scripts/plan_probe.py DESTINATION lib/${PROJECT_NAME})
+
 # ROS FINALISATION
 ament_package()

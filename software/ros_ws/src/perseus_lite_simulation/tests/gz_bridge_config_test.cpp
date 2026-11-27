@@ -157,3 +157,19 @@ TEST_F(GzBridgeConfigTest, ExpectedCoreTopics)
             << "Required topic '" << required_topic << "' not found in bridge configuration";
     }
 }
+
+TEST_F(GzBridgeConfigTest, OakDLiteDepthMatchesTheRealDriver)
+{
+    // terrain_mapper reads these topics on the robot (depthai_ros_driver); the sim
+    // must publish the same names or terrain mapping silently gets nothing.
+    auto mappings = load_bridge_mappings();
+    std::unordered_set<std::string> found_topics;
+    for (const auto& mapping : mappings)
+    {
+        found_topics.insert(mapping.ros_topic_name);
+    }
+    for (const std::string topic : {"/oak/stereo/image_raw", "/oak/stereo/camera_info"})
+    {
+        EXPECT_TRUE(found_topics.count(topic) > 0) << "OAK-D Lite topic '" << topic << "' not bridged";
+    }
+}

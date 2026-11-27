@@ -1,0 +1,41 @@
+# mobility_monitor: stall and slip detection for Perseus Lite.
+# Each channel faults when the mean shortfall (1 - measured/commanded) over
+# window_s reaches fault_ratio, after grace_s of a steady command. Commands
+# below min_command are ignored (and reset the channel).
+mobility_monitor:
+  ros__parameters:
+    cmd_vel_topic: /cmd_vel # twist_mux output: what was actually commanded
+    wheel_odom_topic: /diff_drive_base_controller/odom
+    imu_topic: /imu/data
+    # An independent body-velocity source (e.g. visual odometry) enables the
+    # linear_slip channel. Empty = off: on the lite, /odometry/filtered fuses
+    # wheel speed, so it cannot reveal wheel slip.
+    reference_odom_topic: ""
+    status_topic: /mobility/status
+    rate_hz: 10.0
+    # An input older than this resets its channel.
+    max_input_age_s: 0.5
+    # Servos not reaching the commanded wheel speed (bogged, stalled, current limit).
+    drive_linear:
+      min_command: 0.05 # m/s
+      fault_ratio: 0.5
+      window_s: 1.0
+      grace_s: 0.6
+    drive_angular:
+      min_command: 0.2 # rad/s
+      fault_ratio: 0.5
+      window_s: 1.0
+      grace_s: 0.6
+    # Wheels report a turn the gyro does not see: spinning in sand. The wheel
+    # yaw rate already uses the calibrated effective separation (0.8286), so on
+    # firm ground the two agree; loose sand lowers the achieved rate.
+    yaw_slip:
+      min_command: 0.2 # rad/s of wheel-odometry yaw
+      fault_ratio: 0.5
+      window_s: 1.0
+      grace_s: 0.6
+    linear_slip:
+      min_command: 0.05
+      fault_ratio: 0.5
+      window_s: 1.5
+      grace_s: 0.8

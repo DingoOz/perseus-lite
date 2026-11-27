@@ -21,3 +21,25 @@ This ROS2 package is intended to cover functionality to:
 
 SLAM toolbox
 Nav2
+
+### Terrain-aware navigation (overlay)
+
+`config/terrain_nav_params.yaml` is a Nav2 parameter **overlay** for the OAK-D
+Lite terrain mapper (`perseus_terrain`). `perseus_nav_bringup.launch.py` applies
+it on top of `perseus_nav_params.yaml` via `overlay_params_file` (default: the
+inert `config/nav_overlay_none.yaml`). `autonomy.launch.py` and
+`perseus_lite_slam_and_nav2.launch.py` do it for you with `terrain:=true`, and
+start `terrain_mapper` first. It adds:
+
+- `perseus_terrain::TerrainGridLayer` costmap layers (local: live grid + memory;
+  global: memory);
+- extra planners (`ThetaStar`, `Smac2D`) and a controller (`RPP`), picked per goal
+  from `/planner_selector` / `/controller_selector`; the defaults stay
+  `GridBased` + `FollowPath`;
+- `behavior_trees/navigate_to_pose_terrain.xml`: path smoothing, plus
+  terrain-memory clearing in recovery.
+
+`scripts/plan_probe.py` compares planners on one goal without driving:
+`ros2 run autonomy plan_probe.py <x> <y> [--planners ...] [--frame map]`.
+
+Full documentation: `docs/source/systems/software/terrain-autonomy.md`.

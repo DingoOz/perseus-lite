@@ -1,0 +1,28 @@
+# topic_health_monitor: the Perseus Lite core stack (hardware and sim).
+# topics[i] is expected at expected_rates_hz[i]; 0 = only check that it is alive.
+# Adding a topic is a config change; keep the two lists the same length.
+topic_health_monitor:
+  ros__parameters:
+    topics:
+      - /scan
+      - /scan_filtered
+      - /imu/data
+      - /diff_drive_base_controller/odom
+      - /odometry/filtered
+      - /tf
+    expected_rates_hz:
+      - 10.0
+      - 10.0
+      - 100.0
+      - 50.0
+      - 15.0
+      - 0.0
+    # Rates are counted over this window. Long enough that a 1 Hz topic does
+    # not flap between 0.5 and 1.0 Hz.
+    window_s: 4.0
+    # SLOW below rate_tolerance x expected.
+    rate_tolerance: 0.7
+    # STALE after this long without a message (publisher still present).
+    stale_timeout_s: 3.0
+    publish_rate_hz: 1.0
+    health_topic: /health/topics

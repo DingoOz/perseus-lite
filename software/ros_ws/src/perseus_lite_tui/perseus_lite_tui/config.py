@@ -19,6 +19,10 @@ from perseus_lite_tui.registry import (
 )
 
 _MOCK = Option('use_mock_hardware', 'Mock hardware', BOOL, 'False')
+# Terrain-aware autonomy (perseus_terrain + perseus_monitoring). Terrain needs
+# the OAK-D Lite driver running: the 'oak' task on the robot, or the sim camera.
+_TERRAIN = Option('terrain', 'Terrain mapping (OAK-D Lite)', BOOL, 'False')
+_MONITORING = Option('monitoring', 'Health + mobility monitors', BOOL, 'True')
 
 # Every profile that owns the drive goes through twist_mux, whose output is
 # /cmd_vel (the diff_drive_base_controller input). Some launch files default
@@ -73,7 +77,7 @@ PROFILES = (
         'SLAM + Nav2',
         'perseus_lite',
         'perseus_lite_slam_and_nav2.launch.py',
-        options=(_MOCK,),
+        options=(_MOCK, _TERRAIN, _MONITORING),
         group='Autonomy',
         resources=_ROBOT + (SLAM, NAV2),
         fixed_args=_CMD_VEL,
@@ -92,6 +96,7 @@ PROFILES = (
         'Autonomy stack',
         'autonomy',
         'autonomy.launch.py',
+        options=(_TERRAIN, _MONITORING),
         group='Autonomy',
         resources=(SLAM, NAV2),
     ),
@@ -181,6 +186,14 @@ TASKS = (
         note='linux-64 only.',
     ),
     Task('fmt', 'Format (treefmt)', ('pixi', 'run', '-e', 'format', 'fmt')),
+    # --- Sensors -------------------------------------------------------------
+    Task(
+        'oak',
+        'OAK-D Lite camera driver',
+        ('pixi', 'run', '-e', 'camera', 'oak'),
+        group='Sensors',
+        note='Separate `camera` env (depthai); runs until stopped. Robot only.',
+    ),
     # --- Isaac ROS (docker; Jetson only) -------------------------------------
     Task(
         'isaac_build',

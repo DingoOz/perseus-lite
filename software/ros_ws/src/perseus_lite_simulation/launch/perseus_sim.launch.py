@@ -7,7 +7,7 @@ from launch.actions import (
     ExecuteProcess,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import (
     PathJoinSubstitution,
     LaunchConfiguration,
@@ -41,6 +41,11 @@ def generate_launch_description():
             "gz_world",
             default_value="perseus_arc_world.world",
             description="The world file from `perseus_lite_simulation` to use",
+        ),
+        DeclareLaunchArgument(
+            "headless",
+            default_value="false",
+            description="No Gazebo GUI and no RViz (server-only, EGL rendering)",
         ),
         DeclareLaunchArgument(
             "initial_pose_x",
@@ -83,6 +88,7 @@ def generate_launch_description():
             "initial_pose_y": LaunchConfiguration("initial_pose_y"),
             "initial_pose_z": LaunchConfiguration("initial_pose_z"),
             "initial_pose_yaw": LaunchConfiguration("initial_pose_yaw"),
+            "headless": LaunchConfiguration("headless"),
         }.items(),
     )
     rsp_launch = IncludeLaunchDescription(
@@ -155,6 +161,7 @@ def generate_launch_description():
         ],
         output="screen",
         additional_env=rviz_env,
+        condition=UnlessCondition(LaunchConfiguration("headless")),
     )
 
     ekf_node = Node(

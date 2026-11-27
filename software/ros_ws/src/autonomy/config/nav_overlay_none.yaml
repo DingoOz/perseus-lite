@@ -1,0 +1,5 @@
+# Inert Nav2 overlay: the default for perseus_nav_bringup.launch.py's
+# overlay_params_file, so every node can always be given [base, overlay]. Pass
+# terrain_nav_params.yaml instead to enable the terrain-aware configuration.
+/**:
+  ros__parameters: {}

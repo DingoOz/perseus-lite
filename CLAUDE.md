@@ -54,6 +54,7 @@ pixi run -e default build-arm-teleop # arm teleop (plain CMake) build + ctest
 pixi run -e default bringup-mock     # hardware bringup on mock ros2_control hardware
 pixi run -e simulation build # full build incl. perseus_lite_simulation (Gazebo)
 pixi run -e machine-learning build # full build incl. perseus_vision (CUDA ONNX)
+pixi run -e camera oak      # OAK-D Lite driver (separate env, see below)
 
 # Build type: colcon_defaults.yaml sets RelWithDebInfo, which turns on the
 # CMakeLists' `Rel.*` -Werror. The test tasks exclude only the ament linters that
@@ -91,10 +92,10 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
 ### Build system: Pixi/RoboStack (Nix removed)
 
 The project migrated from Nix to **Pixi**. ROS 2 Jazzy + deps come from the
-`robostack-jazzy` conda channel; `pixi.lock` pins exact versions. Four
-environments: `default` (the robot; linux-64 **and** linux-aarch64), `simulation`
+`robostack-jazzy` conda channel; `pixi.lock` pins exact versions. Environments:
+`default` (the robot; linux-64 **and** linux-aarch64), `simulation`
 and `machine-learning` (linux-64 only — Gazebo / CUDA have no aarch64 builds),
-and `docs`. Run `nix fmt`'s replacement with `pixi run -e format fmt`.
+`camera` (OAK-D Lite driver only; both platforms), `docs` and `format`. Run `nix fmt`'s replacement with `pixi run -e format fmt`.
 
 Migration notes:
 
@@ -134,6 +135,14 @@ Migration notes:
   on every `pixi shell`/`pixi run`, but it is a defensive backstop, not a fix
   for a contaminated parent shell — prefer guarding the offending `~/.bashrc`
   source line so it's skipped inside Pixi/conda shells.
+- **`camera` env (OAK-D Lite)**: RoboStack builds `ros-jazzy-depthai-ros-driver`
+  only against `ros2-distro-mutex` 0.20+, but `default` is locked to 0.14, so the
+  driver cannot join the robot solve without upgrading the whole ROS stack. The
+  slim `camera` env (`no-default-feature`) holds only ros-base + CycloneDDS +
+  depthai and runs `perseus_lite/launch/oak_d_lite.launch.py` straight from the
+  source tree (it does NOT build/source the workspace; the launch finds its YAML
+  relative to itself). It is a separate process talking DDS to the robot env — not
+  a violation of the "don't build in one env and run in another" rule.
 - **Resolved: `gz sim`/`rviz2` GUI segfault from a shared fontconfig cache.**
   `pixi run -e simulation sim` (and any GUI `gz sim`/`rviz2` invocation) used
   to reliably segfault a few seconds into startup, inside `libfontconfig`
@@ -168,24 +177,26 @@ the host colcon workspace. Full runbook:
 
 ### KEEP — used directly by lite
 
-| Package / dir                                                           | Role                                                                                                                                                                                                            |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `perseus_lite`                                                          | Lite bringup: launch files, controllers, RViz config                                                                                                                                                            |
-| `perseus_lite_hardware`                                                 | `ros2_control` hardware interface for ST3215 servos over serial                                                                                                                                                 |
-| `perseus_lite_description`                                              | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).                                                                                                                 |
-| `perseus_sensors`                                                       | I2C IMU driver (`/imu/data`, no orientation) + gyro-bias estimator/remover                                                                                                                                      |
-| `rplidar_ros`                                                           | **Vendored** Slamtec `ros2`-branch driver (RoboStack's 2.1.0 has no C1 support). Unmodified, excluded from treefmt — see its `VENDORED.md`.                                                                     |
-| `perseus_interfaces`                                                    | Custom msg/srv definitions (shared)                                                                                                                                                                             |
-| `input_devices`, `perseus_input`, `perseus_input_config`                | Gamepad/keyboard input + routing                                                                                                                                                                                |
-| `teleop_diagnostics`                                                    | TUI debug for teleop (shared)                                                                                                                                                                                   |
-| `perseus_lite_tui`                                                      | Mission-control TUI (`pixi run tui`): launch/monitor/stop the stack, run dev tasks, live topic rates. ament_python + stdlib `curses`; rclpy is a soft dep. Its own `pytest.ini`/`ruff.toml` — see below.        |
-| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `pcl_to_lsr` | Nav2 / SLAM (slam_toolbox) / behavior trees / pointcloud→laserscan                                                                                                                                              |
-| `perseus_vision`                                                        | ONNX detectors (cube, ArUco)                                                                                                                                                                                    |
-| `perseus_lite_simulation`                                               | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3).                                                                                                        |
-| `perseus_lite_missions`                                                 | Mission Zero (Selene Base Rescue) and follow-on scripted missions: orchestrator + map-quality/goal-reached checker nodes (`simulation` env — needs `perseus_lite_simulation`, `ros_gz_bridge`, `slam_toolbox`). |
-| `software/arm-teleop-direct`                                            | Serial Feetech arm teleop                                                                                                                                                                                       |
-| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle). No workspace package builds them any more (so CI doesn't either); consume via CMake `add_subdirectory` if needed.             |
-| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra (`home-manager` is orphaned Nix machine-config — see note below)                                                                                                                                  |
+| Package / dir                                                           | Role                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `perseus_lite`                                                          | Lite bringup: launch files, controllers, RViz config                                                                                                                                                                                                          |
+| `perseus_lite_hardware`                                                 | `ros2_control` hardware interface for ST3215 servos over serial                                                                                                                                                                                               |
+| `perseus_lite_description`                                              | Lite URDF (4-wheel skid-steer, rocker, scaled meshes). All meshes now self-contained (Phase 2).                                                                                                                                                               |
+| `perseus_sensors`                                                       | I2C IMU driver (`/imu/data`, no orientation) + gyro-bias estimator/remover                                                                                                                                                                                    |
+| `rplidar_ros`                                                           | **Vendored** Slamtec `ros2`-branch driver (RoboStack's 2.1.0 has no C1 support). Unmodified, excluded from treefmt — see its `VENDORED.md`.                                                                                                                   |
+| `perseus_interfaces`                                                    | Custom msg/srv definitions (shared)                                                                                                                                                                                                                           |
+| `input_devices`, `perseus_input`, `perseus_input_config`                | Gamepad/keyboard input + routing                                                                                                                                                                                                                              |
+| `teleop_diagnostics`                                                    | TUI debug for teleop (shared)                                                                                                                                                                                                                                 |
+| `perseus_lite_tui`                                                      | Mission-control TUI (`pixi run tui`): launch/monitor/stop the stack, run dev tasks, live topic rates. ament_python + stdlib `curses`; rclpy is a soft dep. Its own `pytest.ini`/`ruff.toml` — see below.                                                      |
+| `autonomy`, `perseus_autonomy_bridge`, `perseus_bt_nodes`, `pcl_to_lsr` | Nav2 / SLAM (slam_toolbox) / behavior trees / pointcloud→laserscan                                                                                                                                                                                            |
+| `perseus_vision`                                                        | ONNX detectors (cube, ArUco)                                                                                                                                                                                                                                  |
+| `perseus_lite_simulation`                                               | Gazebo sim forked from `perseus_simulation`; spawns the lite URDF, vendors `twist_mux` config (Phase 3).                                                                                                                                                      |
+| `perseus_terrain`                                                       | OAK-D Lite terrain mapping: `terrain_mapper` (height-difference classifier → `/terrain/local_grid` + log-odds memory `/terrain/global_grid`) and the `TerrainGridLayer` Nav2 costmap plugin. Concepts from perseus-v3's autonomy stack, independent MIT code. |
+| `perseus_monitoring`                                                    | Passive `topic_health_monitor` (`/health/topics`) and `mobility_monitor` (`/mobility/status`: stall + wheel-slip).                                                                                                                                            |
+| `perseus_lite_missions`                                                 | Mission Zero (Selene Base Rescue) and follow-on scripted missions: orchestrator + map-quality/goal-reached checker nodes (`simulation` env — needs `perseus_lite_simulation`, `ros_gz_bridge`, `slam_toolbox`).                                               |
+| `software/arm-teleop-direct`                                            | Serial Feetech arm teleop                                                                                                                                                                                                                                     |
+| `software/shared`                                                       | Shared C++ libs (fd-wrapper, crc, ptr-wrapper, simple-networking, type-demangle). No workspace package builds them any more (so CI doesn't either); consume via CMake `add_subdirectory` if needed.                                                           |
+| `software/{daemons,scripts,utilities,web_ui,home-manager,native}`       | General infra (`home-manager` is orphaned Nix machine-config — see note below)                                                                                                                                                                                |
 
 ### REMOVED — deleted, not in tree
 
@@ -354,15 +365,26 @@ in context — a reflexive `git merge upstream/main` would undo the divergence.
   `cmd_vel_topic:=...` to bypass it. The gamepad publishes only while its
   deadman is held.
 - Nav2 is started only via `autonomy/launch/perseus_nav_bringup.launch.py`
-  (params `autonomy/config/perseus_nav_params.yaml`); SLAM only via
-  `autonomy/launch/online_async_launch.py` (it's a lifecycle node).
+  (params `autonomy/config/perseus_nav_params.yaml`, plus `overlay_params_file`);
+  SLAM only via `autonomy/launch/online_async_launch.py` (it's a lifecycle node).
+- OAK-D Lite (terrain, `terrain:=true`): frames `oak_link` →
+  `oak_{rgb,left,right}_camera[_optical]_frame`, owned by the URDF (driver TF off).
+  Depth `/oak/stereo/image_raw` (+`camera_info`) in `oak_right_camera_optical_frame`,
+  identical in sim (gz `rgbd_camera`). `terrain_mapper` publishes
+  `/terrain/local_grid` (volatile) and `/terrain/global_grid` (transient local) in
+  `odom`; heights are compared only within one depth frame (`point_buffer_s: 0`)
+  because the 2D EKF cannot track chassis bounce. The terrain overlay
+  (`autonomy/config/terrain_nav_params.yaml`) needs `terrain_mapper` running before
+  Nav2 activates (its BT calls `terrain_mapper/clear_around_robot`; Nav2 throws on a
+  missing BT service). Selectors: `/planner_selector`, `/controller_selector`.
+  Docs: `docs/source/systems/software/terrain-autonomy.md`.
 
 ## 8. First-time-on-this-repo checklist
 
 1. Read this file end-to-end.
 2. `git fetch upstream && git log --oneline HEAD..upstream/main` — see
    pending upstream drift. Use `git cherry-pick`, not `git merge` (§6).
-3. `colcon list` in `software/ros_ws/` — should be 19 packages (the KEEP
+3. `colcon list` in `software/ros_ws/` — should be 21 packages (the KEEP
    table in §4, incl. vendored `rplidar_ros`, plus the in-tree `twist_stamper`).
 4. Check `ERRORS.md` (per global rules) for any prevention rules touching
    files you plan to edit. Create `ERRORS.md` and log new bugs as

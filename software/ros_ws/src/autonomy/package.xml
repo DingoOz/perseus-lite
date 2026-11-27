@@ -18,6 +18,9 @@
   <exec_depend>topic_tools</exec_depend>
   <!-- BT plugins loaded by bt_navigator (plugin_lib_names) -->
   <exec_depend>perseus_bt_nodes</exec_depend>
+  <!-- Terrain-aware Nav2 overlay: TerrainGridLayer plugin + terrain_mapper / monitors launches -->
+  <exec_depend>perseus_terrain</exec_depend>
+  <exec_depend>perseus_monitoring</exec_depend>
   <!-- handheld_mapping -->
   <exec_depend>rplidar_ros</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
