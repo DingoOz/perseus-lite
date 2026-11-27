@@ -52,7 +52,7 @@ Every profile and task is run through `pixi run -e <env>`, so the correct Pixi
 environment activates first (including the path-sanitize hook). This is why the
 **simulation** and **mission** profiles work even when the TUI itself is running
 in the `default` environment: they are routed through `pixi run -e simulation`,
-which builds and runs against the Gazebo environment. Those profiles are hidden
+which builds and runs against the simulation environment (Gazebo or MuJoCo). Those profiles are hidden
 on `aarch64`, where the simulation environment has no packages.
 
 Each launch runs as its own process group. Stopping a job sends `SIGINT` to the

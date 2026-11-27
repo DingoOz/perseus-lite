@@ -5,12 +5,15 @@ workflow. Review the **Prevention rules** before modifying the listed files.
 
 ## Summary
 
-46 entries (2026-06 to 2026-11). Recurring themes, most frequent first:
+51 entries (2026-06 to 2026-11). Recurring themes, most frequent first:
 
 - **Configuration / toolchain (~19)**: the Nix → Pixi migration (missing deps,
   stale `nix run` calls, env contamination from system ROS and shared caches),
   CI that silently ran nothing or stayed advisory, and simulation config that
-  was never exercised end to end (gz plugin tags, sensor frame ids). Rule of
+  was never exercised end to end (gz plugin tags, sensor frame ids, wheel
+  collision geometry, MuJoCo clip planes, an EKF that cannot see sim slip), and
+  Nav2 tuning that could not be seen while the sim could not turn (DWB's
+  `PreferForward`). Rule of
   thumb: a green build proves nothing about a launch; run it and check the
   topics, frames and controllers it should produce.
 - **Logic (~19)**: the TF/velocity contract (one publisher per TF edge, one
@@ -22,6 +25,56 @@ workflow. Review the **Prevention rules** before modifying the listed files.
   groups, signal-handler I/O.
 - **Convention / API misuse (~4)**: deprecated `tests_require=`, bare
   `LaunchConfiguration` in parameters, re-declared `use_sim_time`.
+
+### DWB never turned toward a goal: PreferForward's rotation term outweighed every other critic — 2026-11-27
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `autonomy/config/perseus_nav_params.yaml`
+- **Pattern:** A Nav2 DWB critic is given a large `scale` for one purpose ("penalise backward motion") without checking its other terms. `PreferForward` also scores rotation as `theta_scale` (default 10) × |wz|, so at scale 32 a 1 rad/s trajectory cost 320, against about 60 for every other critic combined. DWB always chose (0.11 m/s, 0 rad/s): for any goal not dead ahead the robot drove straight on, into a rock or wall, until the progress checker aborted. A goal 1.5 m to the left produced no rotation at all.
+- **Root cause:** The critic was tuned by comment, not by its evaluation. With `min_vel_x: 0`, reverse is never sampled, so the critic's intended effect was nil and only the rotation penalty remained. It went unnoticed because Gazebo could not turn the robot anyway, so every failure looked like a sim problem.
+- **Fix applied:** `PreferForward` was removed from the critic list. Measured in MuJoCo: the same 90°-left goal SUCCEEDED, ending 8 cm from the goal; `go_to_destination` reached all three sim destinations.
+- **Prevention rule:** When tuning DWB, dump one `/evaluation` (`dwb_msgs/LocalPlanEvaluation`, on with `debug_trajectory_details`) for a goal that needs a turn, and check that no single critic dominates the scores of the candidates that should win. Test Nav2 with goals to the side and behind, not only straight ahead.
+
+### MuJoCo camera could not see anything closer than ~0.5 m: clip planes scale with model extent — 2026-11-27
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `perseus_lite_mujoco/perseus_lite_mujoco/sim_node.py`
+- **Pattern:** MuJoCo's `visual/map znear` and `zfar` are fractions of `stat.extent`, the model's bounding size. A large world (a 40 m ground box) pushes the near clip plane out by tens of centimetres, and anything nearer than that is not rendered. Here an AprilTag 0.45 m ahead disappeared, and the image showed a wall cut by a diagonal plane, so a destination's tag search failed only at close range.
+- **Root cause:** The rendering defaults assume a small model. The camera was validated only at 1–2 m.
+- **Fix applied:** After loading the model, `znear`/`zfar` are set to 0.02 m / 60 m by dividing by the extent.
+- **Prevention rule:** Any MuJoCo camera used as a sensor gets explicit metric clip planes. Validate a simulated camera at its minimum working distance as well as its typical one.
+
+### MuJoCo EKF heading 40–60° off after Nav2 spins: wheel odometry is the command, turning is not linear — 2026-11-27
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `perseus_lite_mujoco/config/mujoco_ekf.yaml`, `perseus_lite_mujoco/launch/mujoco_sim.launch.py`
+- **Pattern:** The EKF's only yaw source is wheel odometry, and in a mock-hardware sim the wheel odometry is the commanded twist. When the simulated robot does not turn exactly as commanded (skid-steer turn rate is not linear in the command: 1.0x steady, up to 1.5x on short fast turns), heading error accumulates with every turn, slam_toolbox's ±20° rotation search cannot recover it, the map smears, and goals are driven to the wrong place. A separate EKF gate (`odom0_twist_rejection_threshold: 1.0`) also dropped the start of every turn (+44–52° reported for a 113° turn).
+- **Root cause:** The robot's EKF config (wheel odometry only, tight gates) was reused unchanged in a simulator whose wheel odometry does not measure the motion.
+- **Fix applied:** The MuJoCo-only overlay opens the wheel-odometry gates and fuses the simulated gyro's yaw rate. The EKF heading then matched ground truth within 1° through pulses and Nav2 spins up to 172°.
+- **Prevention rule:** When a sim runs mock hardware, compare `/odometry/filtered` with ground truth through turns before trusting SLAM or Nav2 results. Fuse a gyro wherever the wheel odometry cannot observe slip. (Whether the robot itself should fuse its gyro and relax the gate is an open question, flagged in `mujoco-simulation.md`.)
+
+### AprilTag search stopped on unusable sightings and lost tags to Spin overshoot — 2026-11-27
+
+- **Severity:** Medium
+- **Category:** Logic Error
+- **File(s):** `perseus_landmarks/scripts/landmark_navigator.py`, `perseus_landmarks/src/landmark_localiser_node.cpp`, `perseus_landmarks/config/landmarks_params.yaml`
+- **Pattern:** A search treats "detected once" as "found" while the consumer (the localiser) applies stricter gates (range, view angle, reprojection error), then hands over to a step that fails. Variants seen: a tag at 5.5 m or 63° off-normal ended the search and calibration failed with "0 usable sightings"; a single flickering sighting ended it; Nav2 Spin overshot a step by tens of degrees and carried the tag out of view; `min_ambiguity_ratio` 3.0 dropped the facing of every sighting of a clean 59° view (ratio 2.80), so one tag could never calibrate. Separately, `go_to_destination` sent a `site` goal the instant calibration finished, before `site → map` reached Nav2's TF buffer, and it was rejected. After arriving, it measured the remaining error before the localiser had accepted the tag's correction, which counts as a "jump" and waits `jump_confirm_s`.
+- **Root cause:** The search and the localiser had separate ideas of a usable sighting. Turning-dependent behaviour was never run end to end, because Gazebo could not turn the robot.
+- **Fix applied:** The navigator applies the localiser's gates and needs `min_sightings` (3) within `seen_timeout_s`. It watches during each Spin and cancels it at the first usable glimpse, turning back to that heading if the stop overshot. With `calibrate`, the search only succeeds once the fix is taken, and keeps turning otherwise. `min_ambiguity_ratio` is 2.0 (measured 0.7° heading error at 2.56). The localiser's failure message counts rejections by reason. Before navigating, the navigator waits for `site` TF; at the destination it takes a stationary fix instead of waiting for the live estimate.
+- **Prevention rule:** A search's success condition must be the consumer's acceptance, not a weaker proxy: call the consumer (or apply its exact gates) before declaring success. After publishing a new TF frame, wait until it resolves before sending goals in it.
+
+### Sim robot rested on flat discs: wheel collision cylinders upright, inertia and CoM wrong — 2026-11-27
+
+- **Severity:** High
+- **Category:** Configuration
+- **File(s):** `perseus_lite_description/urdf/wheel.urdf.xacro`, `perseus_lite_description/urdf/chassis.urdf.xacro`, `perseus_lite_simulation/worlds/terrain_test.sdf`
+- **Pattern:** A collision (or inertial) block's origin is copied from the `<visual>` of a mesh whose model frame differs from the link frame. The visual looks right in RViz, so nothing seems wrong, but physics is badly off. Here every wheel's collision cylinder stood upright in `base_link` (axis +Z, not the joint's ±Y), so in Gazebo the robot rested on four flat discs, sat 3.5 cm low and bounced while moving. The wheel inertia was ~500× too large and on the wrong axis. The chassis inertial origin and collision box were written in the yawed mesh's frame, putting the centre of mass 8.5 cm right of the centreline. Separately, an infinite `<plane>` ground made DART turn spin commands into straight-line motion.
+- **Root cause:** The URDF was scaled and adapted from the full-size Perseus by eye in RViz. The 2026-10-21 fix to the wheel joint axes did not check the collision geometry against those axes. No sim test checked ride height or wheel/ground contact. Simulation measurements (the terrain bounce numbers in `terrain-autonomy.md`) were then taken on this model and had to be marked superseded.
+- **Fix applied:** Wheel collision origin is identity (the cylinder's own axis is the joint axis); wheel inertia is consistent with its shape and a realistic 80 g mass; the chassis inertial and collision origins are rotated into the link frame (CoM (-0.0855, 0, 0.0737)). `terrain_test` uses a thin box ground. Straight driving in Gazebo is now exact (0.79 m for 0.80 m commanded). Turning in place remains impossible in Gazebo with isotropic friction for this geometry (wheelbase > track); that limit is documented, not worked around.
+- **Prevention rule:** After any change to a link's visual, collision or inertial block, compute each collision geometry's axis and lowest point in `base_link` (forward kinematics on the xacro output) and check them against the joint axes and the ground. Before using a simulator as evidence for a design decision, validate the model's basics against ground truth (`gz model -m <name> -p`): ride height, straight-line distance, and turn rate for a commanded spin. Test scripts that publish `TwistStamped` to a sim must stamp with sim time or zero, or `diff_drive_controller`'s `cmd_vel_timeout` never expires and the last command runs forever.
 
 ### Terrain mapper read chassis bounce as rocks: multi-frame height comparison on a 2D state estimate — 2026-11-27
 

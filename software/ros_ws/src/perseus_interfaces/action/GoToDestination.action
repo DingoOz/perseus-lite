@@ -1,0 +1,13 @@
+# Drive to a named destination from the landmark map (pose in the site frame). If the
+# destination has a tag, find it on arrival, re-localise, and refine the final pose.
+
+string destination
+---
+bool success
+string message
+# Remaining distance to the destination after the final approach, by the tag-based
+# estimate when the destination has a tag, metres (negative if unknown).
+float64 final_error_m
+---
+# "localising", "navigating", "searching", "refining"
+string phase

@@ -142,3 +142,16 @@ This sets the state directly.
 - If the rover doesn't move, make sure the drive controller is activated (step 6)
 
 :::
+
+## The MuJoCo alternative
+
+The same robot stack also runs on MuJoCo, which starts in seconds, needs no
+downloaded assets, and (unlike Gazebo) turns the rover in place:
+
+```bash
+pixi run -e simulation sim-mujoco            # add headless:=true for no windows
+```
+
+The drive controller is activated automatically, and keyboard teleop works as
+above. Worlds are limited to simple geometry (`terrain_test.sdf` by default). See
+[MuJoCo simulation](project:/systems/software/mujoco-simulation.md).

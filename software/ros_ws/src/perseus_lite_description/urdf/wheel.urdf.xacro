@@ -4,8 +4,12 @@
     <link name="${prefix}${end}_${side}_wheel">
       <inertial>
         <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
-        <mass value="0.005"/>  <!-- Scaled mass -->
-        <inertia ixx="0.006434" iyy="0.003644" izz="0.003644" 
+        <mass value="0.08"/>  <!-- wheel + tyre; the old 5 g against a ~1.5 kg body made Gazebo's contact solver let the wheels slip almost freely -->
+        <!-- Solid cylinder r 0.0725, h 0.0575, about this link's axes (the wheel
+             spins about z): izz = m r^2 / 2, ixx = iyy = m (3 r^2 + h^2) / 12.
+             The old values were ~500x too large, on the wrong axis, and made the
+             wheel dynamics unstable in Gazebo. -->
+        <inertia ixx="1.272e-04" iyy="1.272e-04" izz="2.102e-04"
                  ixy="0.0" iyz="0.0" ixz="0.0"/>
       </inertial>
 
@@ -17,7 +21,14 @@
       </visual>
 
       <collision>
-        <origin xyz="0.0 -0.0075 0.0" rpy="1.570796 0.0 ${-pi/2}"/>
+        <!-- In this link's frame the joint axis is +/-Z, which is already a
+             cylinder's own axis, so no rotation. (The old rpy="pi/2 0 -pi/2" was
+             copied from the visual mesh and stood every collision cylinder upright
+             in base_link: in Gazebo the robot rested on four flat discs, sat 3.5 cm
+             low and bounced. The old -0.0075 offset was radial, making the wheels
+             eccentric.) Check after any change: the
+             cylinder axis in base_link must equal the joint axis (+/-Y). -->
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
         <geometry>
           <cylinder length="0.0575" radius="0.0725" />
         </geometry>
@@ -42,6 +53,7 @@
       <dynamics damping="0.5" friction="0.5"/>
     </joint>
   
+
   <transmission name="${prefix}${end}_${side}_wheel_trans">
     <type>transmission_interface/SimpleTransmission</type>
       <joint name="${prefix}${end}_${side}_wheel_joint">

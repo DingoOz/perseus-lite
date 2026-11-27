@@ -138,7 +138,12 @@ controller_server:
       trans_stopped_velocity: 0.2 # Reduced from 0.25
       short_circuit_trajectory_evaluation: true # Changed to true for efficiency
       stateful: true
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist", "PreferForward"]
+      # No PreferForward: min_vel_x is 0, so reverse is never sampled and its only
+      # effect was its rotation term (scale x theta_scale 10 x |wz| = 320 at 1 rad/s,
+      # against ~60 for every other critic combined). DWB then always picked
+      # (0.11, 0.00) and drove straight on into whatever lay ahead for any goal
+      # not dead ahead. Measured in MuJoCo, see ERRORS.md.
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "PathAlign", "PathDist", "GoalAlign", "GoalDist"]
       BaseObstacle.scale: 0.05 # Increased from 0.02 for better obstacle avoidance
       PathAlign.scale: 32.0 # Reduced from 160.0 for less aggressive path following
       PathAlign.forward_point_distance: 0.325
@@ -149,8 +154,6 @@ controller_server:
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
-      PreferForward.penalty: 1.0 # Penalize backward motion
-      PreferForward.scale: 32.0 # Strong preference for forward movement
     enable_stamped_cmd_vel: true
 local_costmap:
   local_costmap:

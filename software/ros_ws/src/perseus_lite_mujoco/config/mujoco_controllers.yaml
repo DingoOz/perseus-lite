@@ -1,0 +1,12 @@
+# Controller overrides for the MuJoCo simulation, applied on top of
+# perseus_lite/config/perseus_lite_controllers.yaml by mujoco_sim.launch.py.
+#
+# wheel_separation is the EFFECTIVE skid-steer separation: the value at which a
+# commanded yaw rate is actually achieved. The real robot's 0.8286 m is calibrated
+# on its tyres in sand; MuJoCo's contact model scrubs differently, so it has its own,
+# found with `ros2 run perseus_lite_mujoco calibrate_turning` (4.9 kg robot, sliding
+# friction 0.6, impratio 1): 0.97x achieved at 0.3 rad/s, 1.03x at 0.6 rad/s.
+# Re-run the tool after changing the robot's mass, wheels or the friction below.
+diff_drive_base_controller:
+  ros__parameters:
+    wheel_separation: 2.693

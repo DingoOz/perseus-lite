@@ -1,0 +1,20 @@
+# Look for known tags: rotate in place in steps, then (optionally) visit search points.
+
+# Tags to look for; empty = any tag in the landmark map.
+int32[] tag_ids
+# Total rotation allowed at each search point, radians (0 = navigator default, 2 pi).
+float64 max_rotation_rad
+# Visit the landmark map's search points if rotating in place finds nothing.
+bool use_search_points
+# On success, take a stationary fix with the localiser.
+bool calibrate
+---
+bool found
+int32[] tag_ids_seen
+bool calibrated
+string message
+---
+# "looking", "rotating", "driving", "calibrating"
+string phase
+float64 rotated_rad
+int32 search_point_index

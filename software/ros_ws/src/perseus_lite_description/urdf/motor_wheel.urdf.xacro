@@ -7,8 +7,13 @@
     <link name="${prefix}${end}_${side}_motor">
       <inertial>
         <origin xyz="0.0 0.1 0.0" rpy="0.0 0.0 0.0"/>
-        <mass value="2.6182895"/>
-        <inertia ixx="0.00125" iyy="0.00125" izz="0.00125" ixy="0.0" iyz="0.0" ixz="0.0"/> <!-- TEMP -->
+        <!-- ST3215 servo (~60 g) plus bracket. The previous 2.6 kg per motor (marked
+             TEMP, carried over from the full-size Perseus) made the model 14.8 kg; at
+             that mass simulated ST3215s (~3 N m) cannot turn the skid-steer, though the
+             real robot turns. Estimate: weigh the robot and correct if needed. Inertia
+             is that of the 50 x 50 x 37.5 mm collision box. -->
+        <mass value="0.15"/>
+        <inertia ixx="4.883e-05" iyy="4.883e-05" izz="6.250e-05" ixy="0.0" iyz="0.0" ixz="0.0"/>
       </inertial>
 
       <visual>

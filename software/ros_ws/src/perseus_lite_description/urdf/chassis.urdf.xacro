@@ -6,11 +6,16 @@
     <link name="${prefix}chassis">
        <inertial>
         <!-- Scaled inertial properties for Perseus Lite -->
-        <origin xyz="0.0 -0.08550236602 0.07366242988" rpy="0 0 0"/>
+        <!-- The chassis mesh is yawed by -pi/2 (see <visual>); these values were
+             derived in the mesh's frame and are rotated into the link frame here
+             (mesh y -> link x, mesh x -> link -y). Unrotated, the centre of mass
+             sat 8.5 cm to the right of the centreline, loading the right wheels
+             so a spin-in-place command drove the sim robot forward instead. -->
+        <origin xyz="-0.08550236602 0.0 0.07366242988" rpy="0 0 0"/>
         <mass value="1.38449701513"/> <!-- Scaled by 0.5 -->
         <!-- Updated inertia values using square scaling factor (0.5^2 = 0.25) -->
-        <inertia ixx="0.005327" iyy="0.002894" izz="0.007011" 
-                 ixy="0.0" iyz="0.000169" ixz="-0.0"/>
+        <inertia ixx="0.002894" iyy="0.005327" izz="0.007011"
+                 ixy="0.0" iyz="0.0" ixz="0.000169"/>
       </inertial>
 
       <visual>
@@ -21,7 +26,9 @@
       </visual>
       
       <collision>
-        <origin xyz="0.0 -0.15 0.05" rpy="0 0.0 ${-pi/2}"/>
+        <!-- Same mesh-frame offset as the inertial: the box belongs centred on the
+             centreline, not 15 cm to the right of it. -->
+        <origin xyz="-0.15 0.0 0.05" rpy="0 0.0 ${-pi/2}"/>
         <geometry>
           <box size="0.2375 0.2625 0.1" />
         </geometry>

@@ -23,8 +23,7 @@
   direction: GZ_TO_ROS
 # OAK-D Lite stereo depth (the URDF's rgbd_camera at the right lens). Same ROS
 # topics and frame as depthai_ros_driver on the robot, so terrain_mapper runs
-# unchanged. The colour image and point cloud are deliberately not bridged:
-# nothing consumes them and they dominate the bridge's CPU.
+# unchanged. The point cloud is deliberately not bridged (nothing consumes it).
 - ros_topic_name: "/oak/stereo/image_raw"
   gz_topic_name: "oak/stereo/depth_image"
   ros_type_name: "sensor_msgs/msg/Image"
@@ -34,4 +33,12 @@
   gz_topic_name: "oak/stereo/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+# The same camera's image stands in for the OAK-D's rectified right mono image (same
+# lens, same frame) for perseus_landmarks' tag_detector. Its camera_info is the depth
+# camera_info above (one sensor), so the sim points the detector there.
+- ros_topic_name: "/oak/right_rect/image_raw"
+  gz_topic_name: "oak/stereo/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS

@@ -31,6 +31,7 @@
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>perseus_terrain</exec_depend>
   <exec_depend>perseus_monitoring</exec_depend>
+  <exec_depend>perseus_landmarks</exec_depend>
 
   <!-- ros2 control -->
   <exec_depend>controller_manager</exec_depend>

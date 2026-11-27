@@ -1,0 +1,22 @@
+# Landmark map for the Gazebo terrain_test world. The site frame IS the Gazebo world
+# frame here, so the localiser's site -> map can be checked against ground truth:
+# with the robot spawned at (x0, y0, yaw0), site -> map must come out as that pose.
+site_frame: site
+tag_family: 36h11
+default_tag_size_m: 0.16
+tags:
+  # Near the default spawn (origin, facing +x): visible from the start.
+  - {id: 0, pose: [2.0, -0.75, 0.25, 180.0]}
+  # On the east wall, facing west.
+  - {id: 1, pose: [4.88, 2.5, 0.25, 180.0]}
+  # On the north wall, facing south.
+  - {id: 2, pose: [-2.0, 4.88, 0.25, -90.0]}
+  # On the west wall, facing east (search-only: no destination uses it).
+  - {id: 3, pose: [-4.88, -2.0, 0.25, 0.0]}
+destinations:
+  - {name: east_dock, pose: [4.0, 2.5, 0.0], tag: 1}
+  - {name: north_bay, pose: [-2.0, 3.9, 90.0], tag: 2}
+  - {name: start, pose: [0.0, 0.0, 0.0], tag: 0}
+search_points:
+  - {xy: [0.0, 1.5]}
+  - {xy: [0.0, -1.5]}

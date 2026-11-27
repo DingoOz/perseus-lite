@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>perseus_lite_mujoco</name>
+  <version>0.1.0</version>
+  <description>MuJoCo simulation of Perseus Lite: builds an MJCF model from the robot's URDF and a Gazebo SDF world, steps it in real time, and publishes the robot's sensors (lidar, IMU, OAK-D depth and image) and /clock, with ros2_control on mock hardware. A second simulator alongside perseus_lite_simulation (Gazebo).</description>
+  <maintainer email="1388693+DingoOz@users.noreply.github.com">DingoOz</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>perseus_lite</exec_depend>
+  <exec_depend>perseus_lite_description</exec_depend>
+  <!-- World files and models (the same worlds Gazebo uses) -->
+  <exec_depend>perseus_lite_simulation</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
+  <!-- mujoco (Python bindings) comes from conda-forge in the `simulation` Pixi env -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,23 @@
+# EKF overrides for the MuJoCo simulation, applied on top of
+# perseus_lite/config/ekf.yaml by mujoco_sim.launch.py.
+#
+# The robot config gates wheel-odometry twist at a Mahalanobis distance of 1.0
+# (one sigma; vyaw sigma 0.1 rad/s). A yaw rate that changes faster than ~0.1 rad/s
+# between 15 Hz EKF updates is then rejected as an outlier, which happens at the
+# start of nearly every turn: in MuJoCo the EKF reported +44..52 deg for a 113 deg
+# turn (wheel odometry and ground truth agreed on ~115). With the gates open it
+# tracks exactly. The simulator has no wheel-odometry outliers, so they are opened
+# here. The same gate very likely costs the real robot heading on fast turns (SLAM
+# scan matching hides it); see docs/source/systems/software/mujoco-simulation.md.
+ekf_filter_node:
+  ros__parameters:
+    odom0_twist_rejection_threshold: 1.0e9
+    odom0_pose_rejection_threshold: 1.0e9
+    # Fuse the gyro's yaw rate. The robot config fuses no IMU axis, so heading is
+    # wheel odometry alone, and the wheel odometry is the COMMANDED twist (mock
+    # hardware mirrors command to state). Skid-steer turning is not linear in the
+    # command (MuJoCo: +15..20% at 1 rad/s, ~0 at 0.4), so a few Nav2 spins put the
+    # heading 40-60 deg off, beyond slam_toolbox's +-20 deg rotation search, and the
+    # map smeared. The simulated gyro is the real IMU's model (noise, no orientation).
+    imu0_config: [false, false, false, false, false, false, false, false, false, false, false, true, false, false, false]
+    imu0_twist_rejection_threshold: 1.0e9

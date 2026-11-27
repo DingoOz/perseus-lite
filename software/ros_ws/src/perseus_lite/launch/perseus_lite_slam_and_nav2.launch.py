@@ -55,6 +55,7 @@ def generate_launch_description():
     log_level = LaunchConfiguration("log_level")
     terrain = LaunchConfiguration("terrain")
     monitoring = LaunchConfiguration("monitoring")
+    landmarks = LaunchConfiguration("landmarks")
 
     arguments = [
         DeclareLaunchArgument(
@@ -124,6 +125,23 @@ def generate_launch_description():
             default_value="true",
             description="Topic health + mobility (stall/slip) monitors",
         ),
+        DeclareLaunchArgument(
+            "landmarks",
+            default_value="false",
+            description="AprilTag localisation (site -> map), tag search and destinations (needs the camera: `pixi run -e camera oak`)",
+        ),
+        DeclareLaunchArgument(
+            "landmarks_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("perseus_landmarks"), "config", "landmarks.yaml"]
+            ),
+            description="Landmark map: your surveyed tags, destinations and search points",
+        ),
+        DeclareLaunchArgument(
+            "search_on_start",
+            default_value="false",
+            description="With landmarks: turn in place at startup until a known tag is seen, then calibrate (MOVES THE ROBOT)",
+        ),
     ]
     autonomy_config = PathJoinSubstitution([FindPackageShare("autonomy"), "config"])
     nav_overlay = PathJoinSubstitution(
@@ -172,8 +190,18 @@ def generate_launch_description():
     monitors = _scoped_include(
         "perseus_monitoring",
         "monitoring.launch.py",
-        {"use_sim_time": use_sim_time, "terrain": terrain},
+        {"use_sim_time": use_sim_time, "terrain": terrain, "landmarks": landmarks},
         IfCondition(monitoring),
+    )
+    landmark_nodes = _scoped_include(
+        "perseus_landmarks",
+        "landmarks.launch.py",
+        {
+            "use_sim_time": use_sim_time,
+            "landmarks_file": LaunchConfiguration("landmarks_file"),
+            "search_on_start": LaunchConfiguration("search_on_start"),
+        },
+        IfCondition(landmarks),
     )
     nav2 = _include(
         "autonomy",
@@ -189,5 +217,5 @@ def generate_launch_description():
     )
 
     return LaunchDescription(
-        arguments + [bringup, terrain_mapper, monitors, slam, nav2]
+        arguments + [bringup, terrain_mapper, monitors, landmark_nodes, slam, nav2]
     )

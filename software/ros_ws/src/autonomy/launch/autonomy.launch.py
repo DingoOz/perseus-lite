@@ -37,6 +37,7 @@ def generate_launch_description():
     autostart = LaunchConfiguration("autostart")
     terrain = LaunchConfiguration("terrain")
     monitoring = LaunchConfiguration("monitoring")
+    landmarks = LaunchConfiguration("landmarks")
 
     arguments = [
         DeclareLaunchArgument(
@@ -77,6 +78,23 @@ def generate_launch_description():
             "monitoring",
             default_value="true",
             description="Topic health + mobility (stall/slip) monitors",
+        ),
+        DeclareLaunchArgument(
+            "landmarks",
+            default_value="false",
+            description="AprilTag localisation (site -> map), tag search and destinations",
+        ),
+        DeclareLaunchArgument(
+            "landmarks_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("perseus_landmarks"), "config", "landmarks_sim.yaml"]
+            ),
+            description="Landmark map (default: the Gazebo terrain_test world's tags)",
+        ),
+        DeclareLaunchArgument(
+            "search_on_start",
+            default_value="false",
+            description="With landmarks: turn in place at startup until a known tag is seen, then calibrate",
         ),
     ]
 
@@ -131,6 +149,7 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": use_sim_time,
                     "terrain": terrain,
+                    "landmarks": landmarks,
                 }.items(),
             )
         ],
@@ -159,6 +178,32 @@ def generate_launch_description():
         }.items(),
     )
 
+    landmarks_launch = GroupAction(
+        scoped=True,
+        condition=IfCondition(landmarks),
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathJoinSubstitution(
+                        [
+                            FindPackageShare("perseus_landmarks"),
+                            "launch",
+                            "landmarks.launch.py",
+                        ]
+                    )
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "landmarks_file": LaunchConfiguration("landmarks_file"),
+                    "search_on_start": LaunchConfiguration("search_on_start"),
+                    # Gazebo's rgbd camera has one camera_info for image and depth.
+                    "camera_info_topic": "/oak/stereo/camera_info",
+                }.items(),
+            )
+        ],
+    )
+
     return LaunchDescription(
-        arguments + [terrain_launch, monitoring_launch, slam_launch, nav_launch]
+        arguments
+        + [terrain_launch, monitoring_launch, landmarks_launch, slam_launch, nav_launch]
     )

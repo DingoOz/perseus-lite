@@ -64,7 +64,15 @@ def test_drive_owners_are_mutually_exclusive():
     # simulated equivalent on the same ROS domain) must claim DRIVE, so the TUI
     # refuses to run two at once.
     profiles = _by_slug()
-    for slug in ('bringup', 'controllers', 'slam_nav2', 'nav2', 'mapping', 'sim'):
+    for slug in (
+        'bringup',
+        'controllers',
+        'slam_nav2',
+        'nav2',
+        'mapping',
+        'sim',
+        'sim_mujoco',
+    ):
         assert registry.DRIVE in profiles[slug].resources, slug
     assert registry.DRIVE not in profiles['rsp'].resources
     assert registry.DRIVE not in profiles['autonomy'].resources

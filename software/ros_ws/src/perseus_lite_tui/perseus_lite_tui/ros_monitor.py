@@ -33,6 +33,8 @@ PINNED = (
     # perseus_monitoring (published when monitoring:=true)
     '/health/topics',
     '/mobility/status',
+    # perseus_landmarks (published when landmarks:=true)
+    '/landmarks/localisation',
 )
 
 # High-bandwidth message types the monitor never subscribes to: even with

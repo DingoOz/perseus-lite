@@ -179,21 +179,24 @@ chassis bouncing, pitching or rolling on its rockers. Two frames a few hundred
 milliseconds apart then disagree about the height of the same flat ground, and
 classifying them together reads that disagreement as steps.
 
-This was measured in Gazebo on flat ground, with the multi-frame window:
+This was first seen in Gazebo: with the multi-frame window, spinning in place
+took the local grid from 16 rough / 80 lethal cells (the rocks) to 1122 / 190, and
+flat ground at 2.5–3.5 m spread up to +15 cm.
 
-|                              | Flat-ground height spread at 2.5–3.5 m (95th percentile) | Rough / lethal cells in the local grid |
-| ---------------------------- | -------------------------------------------------------- | -------------------------------------- |
-| Robot still                  | ±5 mm                                                    | 16 / 80 (the rocks)                    |
-| Spinning in place, 0.6 rad/s | up to +15 cm                                             | 1122 / 190                             |
-
-Gazebo's ground truth showed the chassis bouncing ~3.5 cm vertically while
-moving. The real robot on sand will do at least as much.
+:::{note}
+Those numbers are **superseded**. The simulated robot was later found to be resting
+on its wheels' collision cylinders lying flat (fixed: see `ERRORS.md`), which made it
+bounce ~3.5 cm, far more than a correct model would. The design decision does not
+depend on them: it rests on the real robot's physics (a 2D EKF cannot follow the
+chassis pitching and rolling on its rockers in sand), and per-frame classification is
+correct whatever the amplitude. It has not been re-measured on the corrected model.
+:::
 
 So by default (`point_buffer_s: 0`) heights are **only ever compared within one
 depth frame**, where every point shares one camera pose. Temporal fusion
 happens only in memory, which counts verdicts and never compares heights across
-frames. With the same spin, per-frame mode kept the local grid at 38–47 rough
-and 66–84 lethal cells, i.e. just the rocks. The price is sparser far coverage
+frames. With the same (bouncing) spin, per-frame mode kept the local grid at
+38–47 rough and 66–84 lethal cells, i.e. just the rocks. The price is sparser far coverage
 in each frame, which is why `pixel_stride` defaults to 2 (≈77k points per frame).
 Set `point_buffer_s > 0` only on a robot with a 6-DOF state estimate.
 
@@ -392,8 +395,8 @@ channel. Thresholds are in `perseus_monitoring/config/mobility_monitor.yaml`
 
 In Gazebo, commanding a 0.6 rad/s spin faulted `yaw_slip` after ~3.5 s
 (shortfall 61–72 %) while `drive_angular` stayed healthy: the servos delivered
-the command, but the simulated body barely turned. That is the sim's real,
-pre-existing turning problem (see [Known issues](#known-issues)).
+the command, but the simulated body barely turned. That is the sim's turning
+problem (see [Known issues](#known-issues)), caught live.
 
 ## Running it
 
@@ -433,6 +436,11 @@ ros2 launch perseus_lite_simulation perseus_sim.launch.py gz_world:=terrain_test
 # second terminal (same env):
 ros2 launch autonomy autonomy.launch.py terrain:=true terrain_debug:=true
 ```
+
+The same works in MuJoCo, which also turns the robot in place (Gazebo cannot; see
+[Known issues](#known-issues)) and renders the OAK-D's depth and image into the same
+topics: `pixi run -e simulation sim-mujoco`, then the same autonomy launch. See
+[MuJoCo simulation](mujoco-simulation.md).
 
 `headless:=true` on the sim launch runs the Gazebo server only (EGL rendering,
 no GUI, no RViz), for CI or a machine without a display; it needs access to
@@ -556,23 +564,33 @@ _driving_ to a goal could not be validated in simulation (see below).
 
 ## Known issues
 
-Found while validating this feature; pre-existing, and **not** fixed here:
+Simulation fidelity problems found while validating this feature:
 
-- **Sim wheel separation.** The sim uses the robot's sand-calibrated effective
-  `wheel_separation` (0.8286 m). In Gazebo the effective value is ~0.35 m, so
-  sim odometry under-reports yaw ~2.4×.
-- **Sim skid-steer turning.** Gazebo does not turn the robot in place: a
-  0.6 rad/s spin command (correct, equal and opposite wheel speeds) moved the
-  body ~0.8 m forward and turned it ~7°. Any sim test that turns therefore has
-  badly wrong odometry, so `odom`-frame memory smears and Nav2 goals fail.
-- **SLAM in sim** did not correct `map → odom` in these runs, so the odometry
-  errors above were not rescued.
-
-One sim defect **was** fixed because it blocked everything: the lidar and IMU
-Gazebo sensors used `<frame>`, which Gazebo Harmonic ignores, so their messages
-were stamped `perseus_lite/base_link/laser` / `…/imu`. Those frames are not in
-TF, so slam_toolbox dropped every scan and `map` never appeared. They now use
-`<gz_frame_id>` (see `ERRORS.md`).
+- **Fixed: the sim robot did not stand on its wheels.** Every wheel's collision
+  cylinder stood upright (its axis vertical) because its orientation was copied from
+  the visual mesh, the wheel inertia was ~500× too large on the wrong axis, and the
+  chassis centre of mass and collision box were 8.5 cm and 15 cm off the centreline.
+  In Gazebo the robot rested on four flat discs, sat 3.5 cm low and bounced. All
+  four are corrected in `perseus_lite_description`; straight driving is now exact
+  (0.79 m for 0.80 m commanded). See `ERRORS.md`.
+- **Fixed: lidar and IMU frame ids.** They used `<frame>`, which Gazebo Harmonic
+  ignores, so their messages were stamped `perseus_lite/base_link/laser` / `…/imu`,
+  frames not in TF: slam_toolbox dropped every scan and `map` never appeared. They
+  now use `<gz_frame_id>`.
+- **Open: Gazebo cannot turn this skid-steer in place.** With isotropic wheel
+  friction, a skid-steer whose wheelbase (0.47 m) is longer than its track (0.375 m)
+  cannot generate enough turning moment to overcome its wheels' sideways scrub, and
+  Gazebo's default DART engine models exactly that: a spin command leaves the robot's
+  heading unchanged. Real tyres turn because they slip and deform sideways far more
+  easily than they roll. Anisotropic wheel friction (`fdir1`) changed the behaviour
+  but not into anything usable (pure spins turned the wrong way), so it was left out.
+  Turning-dependent validation (driving to goals, rotating searches) is done in
+  [MuJoCo](mujoco-simulation.md) instead, which turns the robot in place.
+- **Gazebo wheel separation.** Gazebo shares the robot's sand-calibrated
+  `wheel_separation` (0.8286 m), which will not match whatever turning model it ends
+  up with. MuJoCo has its own calibrated value (2.693 m) and a tool to find it.
+- **Worked around: plane grounds.** Infinite `<plane>` grounds misbehave with
+  cylinder wheels in DART; `terrain_test` uses a thin box ground instead.
 
 ## Safety
 
@@ -614,5 +632,5 @@ rely on.
   layer handles any frame) but untested; it trades odometry drift for small
   jumps on SLAM corrections.
 - **Lattice planner** primitives, as above.
-- **Sim fidelity**: fix the sim wheel separation and turning (see
-  [Known issues](#known-issues)) so driving can be validated end to end.
+- **Gazebo fidelity**: make Gazebo's skid-steer turn (see
+  [Known issues](#known-issues)). MuJoCo covers turning in the meantime.

@@ -1,0 +1,29 @@
+# mujoco_sim node parameters (robot_description, world_file and the spawn pose are
+# passed by mujoco_sim.launch.py).
+mujoco_sim:
+  ros__parameters:
+    real_time_factor: 1.0
+    clock_rate_hz: 250.0
+    imu_rate_hz: 100.0
+    scan_rate_hz: 10.0
+    # OAK-D Lite depth + rectified image. Rendering costs ~30 ms per image; turn off
+    # (camera: false) if nothing needs the camera and the machine is slow.
+    camera: true
+    camera_rate_hz: 10.0
+    # RPLidar C1
+    lidar_min_range: 0.3
+    lidar_max_range: 12.0
+    lidar_samples: 360
+    # Noise (same as the Gazebo sensors)
+    gyro_noise: 0.0002
+    accel_noise: 0.017
+    depth_noise: 0.007
+    # Contact and drive. Sliding friction 0.6 suits loose sand; impratio 1 lets
+    # wheels slip as on loose ground. If you change these, re-run
+    # calibrate_turning and update mujoco_controllers.yaml.
+    wheel_friction: [0.6, 0.005, 0.0001]
+    world_friction: [0.6, 0.005, 0.0001]
+    impratio: 1.0
+    # ST3215 velocity servo: gain and stall torque (N m).
+    wheel_kv: 5.0
+    wheel_max_torque: 3.0

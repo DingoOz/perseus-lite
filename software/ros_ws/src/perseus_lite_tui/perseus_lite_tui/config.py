@@ -23,6 +23,12 @@ _MOCK = Option('use_mock_hardware', 'Mock hardware', BOOL, 'False')
 # the OAK-D Lite driver running: the 'oak' task on the robot, or the sim camera.
 _TERRAIN = Option('terrain', 'Terrain mapping (OAK-D Lite)', BOOL, 'False')
 _MONITORING = Option('monitoring', 'Health + mobility monitors', BOOL, 'True')
+# AprilTag localisation (perseus_landmarks): site -> map from tags, tag search,
+# named destinations. search_on_start TURNS THE ROBOT at startup.
+_LANDMARKS = Option('landmarks', 'AprilTag localisation', BOOL, 'False')
+_SEARCH_ON_START = Option(
+    'search_on_start', 'Search for a tag at start (moves robot)', BOOL, 'False'
+)
 
 # Every profile that owns the drive goes through twist_mux, whose output is
 # /cmd_vel (the diff_drive_base_controller input). Some launch files default
@@ -77,7 +83,7 @@ PROFILES = (
         'SLAM + Nav2',
         'perseus_lite',
         'perseus_lite_slam_and_nav2.launch.py',
-        options=(_MOCK, _TERRAIN, _MONITORING),
+        options=(_MOCK, _TERRAIN, _MONITORING, _LANDMARKS, _SEARCH_ON_START),
         group='Autonomy',
         resources=_ROBOT + (SLAM, NAV2),
         fixed_args=_CMD_VEL,
@@ -96,7 +102,7 @@ PROFILES = (
         'Autonomy stack',
         'autonomy',
         'autonomy.launch.py',
-        options=(_TERRAIN, _MONITORING),
+        options=(_TERRAIN, _MONITORING, _LANDMARKS, _SEARCH_ON_START),
         group='Autonomy',
         resources=(SLAM, NAV2),
     ),
@@ -153,6 +159,17 @@ PROFILES = (
         group='Simulation',
         linux64_only=True,
         note='First launch may trigger a large simulation-env install.',
+        resources=_ROBOT,
+    ),
+    Profile(
+        'sim_mujoco',
+        'MuJoCo simulation',
+        'perseus_lite_mujoco',
+        'mujoco_sim.launch.py',
+        env='simulation',
+        group='Simulation',
+        linux64_only=True,
+        note='Turns in place (Gazebo cannot); simple-geometry worlds only.',
         resources=_ROBOT,
     ),
     Profile(

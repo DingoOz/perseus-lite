@@ -10,6 +10,7 @@
   dune_*_12deg   a 12 degree ridge, up then down: drivable, must not read as an obstacle
                  (the ridge line itself may read as lightly rough).
   walls          lidar features for slam_toolbox.
+  apriltag_*     36h11 tags 0-3 at the poses in perseus_landmarks/config/landmarks_sim.yaml.
 -->
 <sdf version="1.8">
     <world name="terrain_test">
@@ -47,54 +48,25 @@
             </spot>
         </light>
         
+        <!-- Ground: a thin box, NOT an infinite <plane>. In gz-sim's default DART
+             engine, cylinder-vs-plane contacts are unreliable: on a plane the robot
+             could not turn in place (a spin command drove it straight forward),
+             while on a box or mesh it turns as commanded. -->
         <model name='ground_plane'>
-        <static>true</static>
-        <link name='link'>
-            <collision name='collision'>
-            <geometry>
-                <plane>
-                <normal>0 0 1</normal>
-                <size>100 100</size>
-                </plane>
-            </geometry>
-            <surface>
-                <friction>
-                <ode/>
-                </friction>
-                <bounce/>
-                <contact/>
-            </surface>
-            </collision>
-            <visual name='visual'>
-            <geometry>
-                <plane>
-                <normal>0 0 1</normal>
-                <size>100 100</size>
-                </plane>
-            </geometry>
-            <material>
-                <ambient>0.8 0.8 0.8 1</ambient>
-                <diffuse>0.8 0.8 0.8 1</diffuse>
-                <specular>0.8 0.8 0.8 1</specular>
-            </material>
-            </visual>
-            <pose>0 0 0 0 0 0</pose>
-            <inertial>
-            <pose>0 0 0 0 0 0</pose>
-            <mass>1</mass>
-            <inertia>
-                <ixx>1</ixx>
-                <ixy>0</ixy>
-                <ixz>0</ixz>
-                <iyy>1</iyy>
-                <iyz>0</iyz>
-                <izz>1</izz>
-            </inertia>
-            </inertial>
-            <enable_wind>false</enable_wind>
-        </link>
-        <pose>0 0 0 0 0 0</pose>
-        <self_collide>false</self_collide>
+            <static>true</static>
+            <pose>0 0 -0.05 0 0 0</pose>
+            <link name='link'>
+                <collision name='collision'>
+                    <geometry><box><size>40 40 0.1</size></box></geometry>
+                </collision>
+                <visual name='visual'>
+                    <geometry><box><size>40 40 0.1</size></box></geometry>
+                    <material>
+                        <ambient>0.8 0.75 0.6 1</ambient>
+                        <diffuse>0.8 0.75 0.6 1</diffuse>
+                    </material>
+                </visual>
+            </link>
         </model>
 
         <model name='low_rock_0'>
@@ -273,5 +245,27 @@
                 </visual>
             </link>
         </model>
+
+        <!-- AprilTags: poses from perseus_landmarks/config/landmarks_sim.yaml (site = world). -->
+        <include>
+            <uri>model://apriltag_36h11_0</uri>
+            <name>apriltag_0</name>
+            <pose>2.0 -0.75 0.25 0 0 3.141593</pose>
+        </include>
+        <include>
+            <uri>model://apriltag_36h11_1</uri>
+            <name>apriltag_1</name>
+            <pose>4.88 2.5 0.25 0 0 3.141593</pose>
+        </include>
+        <include>
+            <uri>model://apriltag_36h11_2</uri>
+            <name>apriltag_2</name>
+            <pose>-2.0 4.88 0.25 0 0 -1.570796</pose>
+        </include>
+        <include>
+            <uri>model://apriltag_36h11_3</uri>
+            <name>apriltag_3</name>
+            <pose>-4.88 -2.0 0.25 0 0 0.000000</pose>
+        </include>
     </world>
 </sdf>

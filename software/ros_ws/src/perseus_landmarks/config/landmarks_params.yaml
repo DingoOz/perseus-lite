@@ -1,0 +1,80 @@
+# Node parameters for perseus_landmarks (the landmark MAP is a separate file:
+# landmarks_file, passed by landmarks.launch.py).
+tag_detector:
+  ros__parameters:
+    # OAK-D Lite rectified right mono camera (global shutter, same frame as the
+    # depth). VERIFY the topic on the robot: `ros2 topic list | grep rect`.
+    image_topic: /oak/right_rect/image_raw
+    camera_info_topic: /oak/right_rect/camera_info
+    rectified: true
+    # Detection is the expensive part; tags only need a few looks per second.
+    max_rate_hz: 5.0
+    # Smallest tag as a fraction of the image's larger side. 0.03 on 640 px is
+    # ~20 px of tag edge: a 16 cm tag out to ~3.5 m.
+    min_marker_perimeter_rate: 0.03
+    # subpix: detects furthest and at the steepest angles (default); apriltag:
+    # most accurate corners but drops out sooner; none.
+    corner_refinement: subpix
+    publish_debug_image: false
+landmark_localiser:
+  ros__parameters:
+    map_frame: map
+    odom_topic: /odometry/filtered
+    # Sightings are ignored beyond this range, more oblique than this, with a worse
+    # corner fit than this, or while the robot turns faster than this.
+    max_range_m: 4.0
+    max_view_angle_deg: 60.0
+    max_reprojection_px: 2.0
+    # Below this IPPE ambiguity ratio a sighting's orientation is ignored (its
+    # position is still used). Low ratios (head-on or distant tags) are where IPPE's
+    # two mirror-tilted solutions are hard to tell apart and facing errors of tens of
+    # degrees or 180 deg flips occur. Measured in MuJoCo, single tag, robot still:
+    # ratio 2.56 -> 0.7 deg heading error, 2.80 -> 2.4 deg, 3.6 -> 0.5 deg. The
+    # earlier 3.0 dropped the facing of every sighting of a clean 59 deg view (ratio
+    # 2.80), so a
+    # single tag seen from there could never calibrate.
+    min_ambiguity_ratio: 2.0
+    max_yaw_rate_rad_s: 0.3
+    transform_wait_s: 0.5
+    tf_rate_hz: 20.0
+    # ~/calibrate: collect this many sightings (robot still), within this time.
+    calibrate_min_detections: 10
+    calibrate_timeout_s: 5.0
+    estimator:
+      window_s: 2.0
+      min_observations: 5
+      # A fix whose observed tags land further than this from their surveyed
+      # positions is rejected (a moved tag, a misdetection).
+      max_residual_m: 0.15
+      # Two tags closer than this cannot define the yaw by their positions.
+      min_tag_separation_m: 0.5
+      blend_alpha: 0.3
+      # A correction bigger than this is a jump: accepted only if it persists.
+      max_jump_m: 0.3
+      max_jump_yaw_deg: 8.0
+      jump_confirm_s: 3.0
+landmark_navigator:
+  ros__parameters:
+    map_frame: map
+    robot_frame: base_link
+    # Search: turn this far per step, then stop and look for dwell_s.
+    step_deg: 45.0
+    dwell_s: 1.5
+    max_rotation_deg: 360.0
+    # A tag counts as found after min_sightings usable sightings within
+    # seen_timeout_s: one flickering sighting at the edge of the view is not enough.
+    min_sightings: 3
+    seen_timeout_s: 1.0
+    # A sighting only counts as "found" if the localiser would accept it: keep these
+    # equal to landmark_localiser's gates above.
+    max_range_m: 4.0
+    max_view_angle_deg: 60.0
+    max_reprojection_px: 2.0
+    calibrate_timeout_s: 6.0
+    # Destinations with a tag: re-drive the last bit if the corrected estimate puts
+    # the robot further than this from the destination.
+    refine_tolerance_m: 0.15
+    settle_s: 2.0
+    nav_timeout_s: 180.0
+    # go_to_destination localises first (search + calibrate) when not calibrated.
+    auto_localise: true

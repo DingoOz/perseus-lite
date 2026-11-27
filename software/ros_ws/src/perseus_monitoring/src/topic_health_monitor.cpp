@@ -29,8 +29,23 @@ namespace perseus_monitoring
         explicit TopicHealthMonitor(const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
             : rclcpp::Node("topic_health_monitor", options)
         {
-            const auto topics = declare_parameter<std::vector<std::string>>("topics", std::vector<std::string>{});
+            auto topics = declare_parameter<std::vector<std::string>>("topics", std::vector<std::string>{});
             auto rates = declare_parameter<std::vector<double>>("expected_rates_hz", std::vector<double>{});
+            // Appended to the lists above, so a launch file can add an optional subsystem's
+            // topics without a separate config file. A one-element placeholder ("") is
+            // ignored: ROS cannot type an empty list parameter from a launch file.
+            const auto extra_topics = declare_parameter<std::vector<std::string>>("extra_topics", std::vector<std::string>{""});
+            const auto extra_rates = declare_parameter<std::vector<double>>("extra_expected_rates_hz", std::vector<double>{0.0});
+            rates.resize(topics.size(), 0.0);
+            for (std::size_t i = 0; i < extra_topics.size(); ++i)
+            {
+                if (extra_topics[i].empty())
+                {
+                    continue;
+                }
+                topics.push_back(extra_topics[i]);
+                rates.push_back(i < extra_rates.size() ? extra_rates[i] : 0.0);
+            }
             window_s_ = declare_parameter<double>("window_s", 2.0);
             rate_tolerance_ = declare_parameter<double>("rate_tolerance", 0.7);
             stale_timeout_s_ = declare_parameter<double>("stale_timeout_s", 2.0);

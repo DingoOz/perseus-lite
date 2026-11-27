@@ -1,0 +1,30 @@
+# Landmark map for Perseus Lite: AprilTags at known places, named destinations, and
+# where to search. Everything is in the SITE frame: your own surveyed coordinates for
+# the area (x east, y north, z up is a good convention), unrelated to wherever SLAM
+# happened to start its map.
+#
+# THIS FILE IS A TEMPLATE: measure your tags and edit. A single tag near where the
+# rover starts is enough to localise; more tags (and tags at destinations) make it
+# better. Print tags from the tag36h11 family; size_m is the BLACK square's edge.
+#
+# Tag pose: [x, y, z, yaw_deg] of the tag centre, where yaw is the direction the tag
+# FACES (its outward normal): a tag on a wall, readable by someone looking west, faces
+# east (yaw 0). Mount tags upright at about camera height (0.2-0.35 m) for best range.
+site_frame: site
+tag_family: 36h11
+default_tag_size_m: 0.16
+tags:
+  # Start tag: 2 m in front of where the rover usually starts, facing it.
+  - {id: 0, pose: [2.0, 0.0, 0.25, 180.0]}
+# Named destinations: pose [x, y, yaw_deg]. "tag" (optional) is a tag visible from
+# the destination: on arrival the rover finds it, re-localises, and corrects.
+destinations:
+  - {name: start, pose: [0.0, 0.0, 0.0], tag: 0}
+# Where to look when no tag is in view (after a full turn in place). frame "start":
+# relative to the robot when the search begins (x forward, y left); "site": in site
+# coordinates (only used once localised).
+search_points:
+  - {xy: [1.0, 0.0]}
+  - {xy: [0.0, 1.0]}
+  - {xy: [-1.0, 0.0]}
+  - {xy: [0.0, -1.0]}

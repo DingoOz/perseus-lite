@@ -21,6 +21,7 @@
   <!-- Terrain-aware Nav2 overlay: TerrainGridLayer plugin + terrain_mapper / monitors launches -->
   <exec_depend>perseus_terrain</exec_depend>
   <exec_depend>perseus_monitoring</exec_depend>
+  <exec_depend>perseus_landmarks</exec_depend>
   <!-- handheld_mapping -->
   <exec_depend>rplidar_ros</exec_depend>
   <exec_depend>tf2_ros</exec_depend>

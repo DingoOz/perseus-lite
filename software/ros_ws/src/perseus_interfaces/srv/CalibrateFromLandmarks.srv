@@ -1,0 +1,15 @@
+# Take a fresh site -> map fix from known tags, with the robot standing still.
+# Replaces the current estimate (rather than blending into it).
+
+# How long to collect detections, seconds (0 = the localiser's default).
+float64 timeout_s
+# Minimum accepted tag sightings before solving (0 = the localiser's default).
+int32 min_detections
+---
+bool success
+string message
+float64 x
+float64 y
+float64 yaw
+float64 residual_m
+int32[] tags_used
